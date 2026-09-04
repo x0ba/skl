@@ -80,12 +80,13 @@ CI workflow: [`.github/workflows/cli-binaries.yml`](.github/workflows/cli-binari
 
 ### Two-machine smoke
 
-Same `ALLOW_DEV_AUTH` user, two `HOME`s, API on `:8787`. Clash/scrub is `scripts/smoke-clash.sh` on the conflict/scrub PR; this harness is the full import → sync → `skl use` path.
+Same `ALLOW_DEV_AUTH` user, two `HOME`s, API on `:8787`. Shared helpers live in `scripts/smoke-lib.sh`.
 
 ```bash
 # API already up (ALLOW_DEV_AUTH=true)
 cargo build -p skl
-./scripts/smoke-import-sync-use.sh
+./scripts/smoke-import-sync-use.sh   # init → sync → skl use
+./scripts/smoke-clash.sh             # keep-local / keep-remote + scrub
 
 # Boot postgres + apps/api here
 START_API=1 ./scripts/smoke-import-sync-use.sh

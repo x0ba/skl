@@ -13,6 +13,7 @@ on:
       - "scripts/cross-compile.sh"
       - "scripts/smoke-lib.sh"
       - "scripts/smoke-import-sync-use.sh"
+      - "scripts/smoke-clash.sh"
       - "apps/api/**"
       - "docker-compose.yml"
       - ".github/workflows/cli-binaries.yml"
@@ -25,6 +26,7 @@ on:
       - "scripts/cross-compile.sh"
       - "scripts/smoke-lib.sh"
       - "scripts/smoke-import-sync-use.sh"
+      - "scripts/smoke-clash.sh"
       - "apps/api/**"
       - "docker-compose.yml"
       - ".github/workflows/cli-binaries.yml"
@@ -58,7 +60,7 @@ jobs:
             dist/SHA256SUMS
 
   smoke-import-sync-use:
-    name: import → sync → use
+    name: import → sync → use + clash
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -89,4 +91,6 @@ jobs:
           ALLOW_DEV_AUTH: "true"
           START_API: "1"
           SKIP_DOCKER: "1"
-        run: ./scripts/smoke-import-sync-use.sh
+        run: |
+          ./scripts/smoke-import-sync-use.sh
+          ./scripts/smoke-clash.sh
