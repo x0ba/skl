@@ -88,7 +88,10 @@ pub async fn run_with_opts(
     for resolution in &resolutions {
         match resolution.choice {
             ConflictChoice::KeepLocal => {
-                eprintln!("keep-local: {}", crate::prompt::display_label(&resolution.skill))
+                eprintln!(
+                    "keep-local: {}",
+                    crate::prompt::display_label(&resolution.skill)
+                )
             }
             ConflictChoice::KeepRemote => {
                 eprintln!(

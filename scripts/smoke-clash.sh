@@ -79,10 +79,8 @@ wait_for_api() {
 }
 
 require_bin() {
-  if [[ ! -x "$BIN" ]]; then
-    echo "==> building skl"
-    (cd "$ROOT" && cargo build -p skl)
-  fi
+  echo "==> building skl"
+  (cd "$ROOT" && cargo build -p skl)
   if [[ ! -x "$BIN" ]]; then
     echo "missing $BIN" >&2
     exit 1
