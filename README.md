@@ -74,7 +74,7 @@ cargo run -p skl -- unuse greeter
 cargo run -p skl -- use greeter --project /path/to/proj
 ```
 
-`skl use` refuses to overwrite a real directory that is not a symlink. Hammer conflict/scrub stay TODO hooks in `crates/cli/src/hooks/`.
+`skl use` refuses to overwrite a real directory that is not a symlink. Conflict/scrub hooks live in `crates/cli/src/hooks/` (`skl sync --keep-local` / `--keep-remote`).
 
 ### Cross-compile (single binary)
 
