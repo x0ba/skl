@@ -8,7 +8,7 @@
 #   - ALLOW_DEV_AUTH=true (or CLERK_SECRET_KEY unset)
 #   - Postgres reachable as DATABASE_URL (see apps/api/.env.example)
 #
-# Usage:
+# Usage (crate path crates/cli; package name skl):
 #   cargo build -p skl
 #   ./scripts/smoke-clash.sh
 #   START_API=1 ./scripts/smoke-clash.sh

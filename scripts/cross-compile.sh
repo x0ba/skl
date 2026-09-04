@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Build a single portable `skl` CLI binary (no brew, no installer).
+# Crate path is crates/cli; package/binary name is skl.
 #
 # Default: host triple via `cargo build --release -p skl`, plus a static-ish
 # Linux musl binary when zig + cargo-zigbuild (or musl-gcc) are available.

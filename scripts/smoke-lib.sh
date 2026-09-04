@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Shared helpers for two-HOME CLI smokes against cipher's API on :8787.
+# CLI crate path is crates/cli; package/binary name is skl (`cargo build -p skl`).
 #
 # Used by scripts/smoke-import-sync-use.sh. The clash + scrub harness
 # (scripts/smoke-clash.sh on the conflict/scrub PR) uses the same HOME /
