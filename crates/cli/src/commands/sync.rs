@@ -68,8 +68,11 @@ pub async fn run(api_base: String) -> Result<()> {
         eprintln!("TODO(hammer): resolve tree-hash conflicts");
         for conflict in &plan.conflicts {
             eprintln!(
-                "  {}  local={}  remote={}",
-                conflict.skill, conflict.local_tree_hash, conflict.remote_tree_hash
+                "  {}  local={}  remote={}  remote_updated_at={:?}",
+                conflict.skill,
+                conflict.local_tree_hash,
+                conflict.remote_tree_hash,
+                conflict.remote_updated_at
             );
         }
     }
