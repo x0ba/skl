@@ -58,6 +58,10 @@ async function resolveDeviceAuth(token: string): Promise<AuthContext> {
   if (!row) {
     throw new AuthError("invalid_token");
   }
+  await db
+    .update(devices)
+    .set({ lastUsedAt: new Date() })
+    .where(eq(devices.id, row.deviceId));
   return {
     userId: row.userId,
     clerkUserId: row.clerkUserId,

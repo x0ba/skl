@@ -14,13 +14,33 @@ export const blobRoutes = new Hono<{ Variables: AuthVariables }>();
 
 blobRoutes.use("/blobs/:hash", requireAuth);
 
+async function readBlobBody(c: Parameters<typeof jsonError>[0]): Promise<Uint8Array | Response> {
+  const contentType = c.req.header("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    const parsed: unknown = await c.req.json();
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("content_base64" in parsed) ||
+      typeof parsed.content_base64 !== "string"
+    ) {
+      return jsonError(c, 400, "invalid_body", "Expected { content_base64 }");
+    }
+    return new Uint8Array(Buffer.from(parsed.content_base64, "base64"));
+  }
+  return new Uint8Array(await c.req.arrayBuffer());
+}
+
 blobRoutes.put("/blobs/:hash", async (c) => {
   const hash = normalizeHash(c.req.param("hash"));
   if (!isSha256Hex(hash)) {
     return jsonError(c, 400, "invalid_hash", "Expected lowercase hex SHA-256");
   }
 
-  const raw = new Uint8Array(await c.req.arrayBuffer());
+  const raw = await readBlobBody(c);
+  if (raw instanceof Response) {
+    return raw;
+  }
   if (raw.byteLength > MAX_BLOB_BYTES) {
     return jsonError(c, 413, "blob_too_large", `Max ${MAX_BLOB_BYTES} bytes`);
   }

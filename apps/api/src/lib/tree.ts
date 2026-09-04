@@ -1,8 +1,9 @@
-import type { SkillFile } from "../contracts";
 import { sha256Hex } from "./hash";
 
+export type PathHash = { path: string; hash: string };
+
 export function filesToRecord(
-  files: SkillFile[] | Record<string, string>,
+  files: PathHash[] | Record<string, string>,
 ): Record<string, string> {
   if (!Array.isArray(files)) {
     return { ...files };
@@ -14,7 +15,7 @@ export function filesToRecord(
   return record;
 }
 
-export function filesToList(files: Record<string, string>): SkillFile[] {
+export function filesToList(files: Record<string, string>): PathHash[] {
   return Object.keys(files)
     .sort()
     .map((path) => {

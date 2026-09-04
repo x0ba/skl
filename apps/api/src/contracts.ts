@@ -1,73 +1,67 @@
 /**
- * skl API contracts — furnace (CLI + device-approve page) imports this file.
+ * skl API contracts — furnace (CLI + device-approve page) mirrors this file.
  *
- * ALL routes are under /v1. There are no unversioned aliases.
+ * Unversioned paths only (no /v1):
  *
- *   POST   /v1/auth/device/code
- *   POST   /v1/auth/device/token
- *   POST   /v1/auth/device/approve
- *   GET    /v1/devices
- *   DELETE /v1/devices/:id
- *   POST   /v1/sync
- *   PUT    /v1/blobs/:hash
- *   GET    /v1/blobs/:hash
- *   PUT    /v1/skills/:name/tree
- *   GET    /v1/skills
- *   GET    /v1/skills/:name
- *   GET    /v1/health
+ *   POST   /auth/device/code
+ *   POST   /auth/device/token
+ *   POST   /auth/device/approve
+ *   GET    /devices
+ *   DELETE /devices/:id
+ *   POST   /sync
+ *   PUT    /blobs/:hash
+ *   GET    /blobs/:hash
+ *   PUT    /skills/:name/tree
+ *   GET    /skills
+ *   GET    /skills/:name
+ *   GET    /health
  *
- * Auth:
- *   - Device token: `Authorization: Bearer skl_dt_<hex>`
- *   - Clerk session JWT: `Authorization: Bearer <jwt>`
- *   - Local only (no CLERK_SECRET_KEY): `Authorization: Bearer dev:<clerk_user_id>`
- *
- * Tokens: long-lived device access_token only. No refresh_token.
+ * Auth: `Authorization: Bearer` Clerk JWT (web) or device token (CLI).
+ * Local only (no CLERK_SECRET_KEY): `Authorization: Bearer dev:<clerk_user_id>`.
+ * Store only hashed device tokens. No refresh_token.
  *
  * Content addressing (E2EE-ready):
- *   - Blob hash = lowercase hex SHA-256 of the raw bytes. Server stores bytes
- *     opaquely and never interprets them.
- *   - Tree hash = lowercase hex SHA-256 of the canonical file map:
- *       sort paths lexicographically as UTF-8
- *       join each entry as `${path}\0${hash}` with `\n` between entries
- *       empty tree => SHA-256 of the empty string
+ *   - Blob hash = lowercase hex SHA-256 of the raw bytes.
+ *   - Tree hash = SHA-256 of sorted `${path}\0${hash}` lines (`\n`-joined).
+ *     Empty tree => SHA-256 of the empty string.
  */
 
-export const API_PREFIX = "/v1" as const;
 export const DEVICE_TOKEN_PREFIX = "skl_dt_" as const;
 export const DEV_AUTH_PREFIX = "dev:" as const;
 export const HASH_ALG = "sha256" as const;
+export const DEVICE_GRANT_TYPE =
+  "urn:ietf:params:oauth:grant-type:device_code" as const;
 
 export const API_ROUTES = {
-  health: "/v1/health",
-  deviceCode: "/v1/auth/device/code",
-  deviceToken: "/v1/auth/device/token",
-  deviceApprove: "/v1/auth/device/approve",
-  devices: "/v1/devices",
-  device: "/v1/devices/:id",
-  sync: "/v1/sync",
-  blob: "/v1/blobs/:hash",
-  skills: "/v1/skills",
-  skill: "/v1/skills/:name",
-  skillTree: "/v1/skills/:name/tree",
+  health: "/health",
+  deviceCode: "/auth/device/code",
+  deviceToken: "/auth/device/token",
+  deviceApprove: "/auth/device/approve",
+  devices: "/devices",
+  device: "/devices/:id",
+  sync: "/sync",
+  blob: "/blobs/:hash",
+  skills: "/skills",
+  skill: "/skills/:name",
+  skillTree: "/skills/:name/tree",
 } as const;
 
 export function devicePath(id: string): string {
-  return `/v1/devices/${id}`;
+  return `/devices/${id}`;
 }
 
 export function blobPath(hash: string): string {
-  return `/v1/blobs/${hash}`;
+  return `/blobs/${hash}`;
 }
 
 export function skillPath(name: string): string {
-  return `/v1/skills/${encodeURIComponent(name)}`;
+  return `/skills/${encodeURIComponent(name)}`;
 }
 
 export function skillTreePath(name: string): string {
-  return `/v1/skills/${encodeURIComponent(name)}/tree`;
+  return `/skills/${encodeURIComponent(name)}/tree`;
 }
 
-/** Machine-readable error body used by every JSON error response. */
 export type ErrorBody = {
   error: string;
   error_description?: string;
@@ -75,12 +69,10 @@ export type ErrorBody = {
 
 export type HealthResponse = {
   ok: true;
-  db: boolean;
 };
 
 export type DeviceCodeRequest = {
-  /** Human label shown on the approve page and stored on the device. */
-  device_name?: string;
+  client_name?: string;
 };
 
 export type DeviceCodeResponse = {
@@ -94,29 +86,23 @@ export type DeviceCodeResponse = {
 
 export type DeviceTokenRequest = {
   device_code: string;
+  grant_type: typeof DEVICE_GRANT_TYPE;
 };
 
-/**
- * RFC 8628-style poll errors. HTTP 400.
- * `slow_down` means the client must increase its poll interval.
- */
 export type DeviceTokenErrorCode =
   | "authorization_pending"
   | "slow_down"
   | "expired_token"
-  | "access_denied"
-  | "invalid_grant";
+  | "access_denied";
 
 export type DeviceTokenError = {
   error: DeviceTokenErrorCode;
   error_description?: string;
 };
 
-/** Issued once. Server stores only a hash of access_token. No refresh_token. */
+/** Issued once. Server stores only a hash of access_token. */
 export type DeviceTokenSuccess = {
   access_token: string;
-  token_type: "Bearer";
-  device_id: string;
 };
 
 export type DeviceTokenResponse = DeviceTokenSuccess | DeviceTokenError;
@@ -127,84 +113,59 @@ export type DeviceApproveRequest = {
 };
 
 export type DeviceApproveResponse = {
-  approved: true;
-  device_name: string;
+  ok: true;
+  device_id: string;
 };
 
 export type DeviceRecord = {
   id: string;
   name: string;
   created_at: string;
+  last_used_at: string | null;
   revoked_at: string | null;
-  /** True when the caller authenticated with this device token. */
-  current: boolean;
 };
 
 export type DevicesListResponse = {
   devices: DeviceRecord[];
 };
 
-export type DeviceRevokeResponse = {
-  revoked: true;
-};
+export type FileHashMap = Record<string, string>;
 
-/**
- * Per-skill client snapshot.
- * A bare string is accepted as a `tree_hash` shorthand.
- */
 export type ClientSkillState = {
   tree_hash: string;
-  /** Last tree_hash the client successfully synced from the server. */
-  base_tree_hash?: string;
-  /** Optional path → blob hash map for file-level upload/download sets. */
-  files?: Record<string, string>;
+  files: FileHashMap;
 };
 
 export type SyncRequest = {
-  skills: Record<string, ClientSkillState | string>;
+  skills: Record<string, ClientSkillState>;
 };
 
-export type SkillFile = {
-  path: string;
+export type SyncDownloadBlob = {
   hash: string;
-};
-
-export type SyncDownloadSkill = {
-  name: string;
-  tree_hash: string;
-  version_id: string;
-  updated_at: string;
-  files: SkillFile[];
+  skills: string[];
+  paths: string[];
 };
 
 export type SyncConflict = {
   skill: string;
   local_tree_hash: string;
   remote_tree_hash: string;
-  remote_updated_at: string;
 };
 
 export type SyncResponse = {
-  upload: {
-    skills: string[];
-    blobs: string[];
-  };
-  download: {
-    skills: SyncDownloadSkill[];
-    blobs: string[];
-  };
+  upload: string[];
+  download: SyncDownloadBlob[];
   conflicts: SyncConflict[];
+  missing_skills: string[];
 };
 
 export type PutSkillTreeRequest = {
   tree_hash: string;
-  metadata?: Record<string, unknown>;
-  files: SkillFile[] | Record<string, string>;
+  files: FileHashMap;
 };
 
 export type PutSkillTreeResponse = {
   name: string;
-  version_id: string;
   tree_hash: string;
   updated_at: string;
 };
@@ -212,8 +173,6 @@ export type PutSkillTreeResponse = {
 export type SkillSummary = {
   name: string;
   tree_hash: string;
-  version_id: string;
-  metadata: Record<string, unknown>;
   updated_at: string;
 };
 
@@ -221,16 +180,18 @@ export type SkillsListResponse = {
   skills: SkillSummary[];
 };
 
-export type SkillDetailResponse = SkillSummary & {
-  files: SkillFile[];
+export type SkillDetailResponse = {
+  name: string;
+  tree_hash: string;
+  files: FileHashMap;
+  updated_at: string;
+};
+
+export type PutBlobJsonRequest = {
+  content_base64: string;
 };
 
 export type PutBlobResponse = {
   hash: string;
   size: number;
-};
-
-export type MissingBlobsError = ErrorBody & {
-  error: "missing_blobs";
-  hashes: string[];
 };

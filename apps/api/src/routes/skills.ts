@@ -19,18 +19,11 @@ import {
   putSkillTree,
   SkillError,
 } from "../lib/skills";
-
-const fileList = z.array(
-  z.object({
-    path: z.string().min(1),
-    hash: z.string().min(1),
-  }),
-);
+import { filesToRecord } from "../lib/tree";
 
 const putTreeBody = z.object({
   tree_hash: z.string().min(1),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-  files: z.union([fileList, z.record(z.string(), z.string())]),
+  files: z.record(z.string(), z.string()),
 });
 
 export const skillRoutes = new Hono<{ Variables: AuthVariables }>();
@@ -40,13 +33,7 @@ skillRoutes.use("/skills/*", requireAuth);
 
 function handleSkillError(c: Parameters<typeof jsonError>[0], error: unknown) {
   if (error instanceof SkillError) {
-    return jsonError(
-      c,
-      error.status,
-      error.message,
-      undefined,
-      error.extra,
-    );
+    return jsonError(c, error.status, error.message, undefined, error.extra);
   }
   throw error;
 }
@@ -60,16 +47,9 @@ skillRoutes.put(
       const name = parseSkillName(c.req.param("name"));
       const input = c.req.valid("json");
       const files = normalizeFileMap(input.files);
-      const result = await putSkillTree(
-        auth,
-        name,
-        input.tree_hash,
-        files,
-        input.metadata ?? {},
-      );
+      const result = await putSkillTree(auth, name, input.tree_hash, files, {});
       const body: PutSkillTreeResponse = {
         name: result.name,
-        version_id: result.version_id,
         tree_hash: result.tree_hash,
         updated_at: iso(result.updated_at),
       };
@@ -90,12 +70,10 @@ skillRoutes.get("/skills", async (c) => {
 
   const body: SkillsListResponse = {
     skills: rows
-      .filter((row) => row.currentVersionId && row.currentTreeHash)
+      .filter((row) => row.currentTreeHash)
       .map((row) => ({
         name: row.name,
         tree_hash: row.currentTreeHash as string,
-        version_id: row.currentVersionId as string,
-        metadata: row.metadata,
         updated_at: iso(row.updatedAt),
       })),
   };
@@ -115,14 +93,12 @@ skillRoutes.get("/skills/:name", async (c) => {
     if (!skill || !skill.currentVersionId || !skill.currentTreeHash) {
       return jsonError(c, 404, "skill_not_found");
     }
-    const files = await listSkillFiles(skill.currentVersionId);
+    const files = filesToRecord(await listSkillFiles(skill.currentVersionId));
     const body: SkillDetailResponse = {
       name: skill.name,
       tree_hash: skill.currentTreeHash,
-      version_id: skill.currentVersionId,
-      metadata: skill.metadata,
-      updated_at: iso(skill.updatedAt),
       files,
+      updated_at: iso(skill.updatedAt),
     };
     return c.json(body);
   } catch (error) {

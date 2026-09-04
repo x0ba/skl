@@ -1,6 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
-import type { DeviceRecord, DeviceRevokeResponse, DevicesListResponse } from "../contracts";
+import type { DeviceRecord, DevicesListResponse } from "../contracts";
 import { db } from "../db";
 import { devices } from "../db/schema";
 import type { AuthVariables } from "../lib/auth";
@@ -25,8 +25,8 @@ deviceRoutes.get("/devices", async (c) => {
       id: row.id,
       name: row.name,
       created_at: iso(row.createdAt),
+      last_used_at: row.lastUsedAt ? iso(row.lastUsedAt) : null,
       revoked_at: row.revokedAt ? iso(row.revokedAt) : null,
-      current: auth.deviceId === row.id,
     })),
   };
   return c.json(body);
@@ -52,6 +52,5 @@ deviceRoutes.delete("/devices/:id", async (c) => {
       .where(eq(devices.id, device.id));
   }
 
-  const body: DeviceRevokeResponse = { revoked: true };
-  return c.json(body);
+  return c.body(null, 204);
 });

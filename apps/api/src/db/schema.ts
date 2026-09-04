@@ -46,10 +46,11 @@ export const devices = pgTable("devices", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  tokenHash: text("token_hash").notNull(),
+  tokenHash: text("token_hash"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
   revokedAt: timestamp("revoked_at", { withTimezone: true }),
 }, (table) => [
   uniqueIndex("devices_token_hash_idx").on(table.tokenHash),

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  DEVICE_GRANT_TYPE,
   DEVICE_TOKEN_PREFIX,
   type DeviceApproveResponse,
   type DeviceCodeResponse,
@@ -24,11 +25,12 @@ import { hashToken, randomHex } from "../lib/hash";
 import { jsonError } from "../lib/http";
 
 const deviceCodeBody = z.object({
-  device_name: z.string().trim().min(1).max(80).optional(),
+  client_name: z.string().trim().min(1).max(80).optional(),
 });
 
 const deviceTokenBody = z.object({
   device_code: z.string().min(1),
+  grant_type: z.literal(DEVICE_GRANT_TYPE),
 });
 
 const deviceApproveBody = z.object({
@@ -36,13 +38,20 @@ const deviceApproveBody = z.object({
   device_name: z.string().trim().min(1).max(80).optional(),
 });
 
+function tokenError(
+  error: DeviceTokenError["error"],
+  error_description?: string,
+): DeviceTokenError {
+  return error_description ? { error, error_description } : { error };
+}
+
 export const authDeviceRoutes = new Hono();
 
 authDeviceRoutes.post(
   "/auth/device/code",
   zValidator("json", deviceCodeBody),
   async (c) => {
-    const { device_name } = c.req.valid("json");
+    const { client_name } = c.req.valid("json");
     const deviceCode = generateDeviceCode();
     const userCode = generateUserCode();
     const expiresAt = new Date(Date.now() + DEFAULT_DEVICE_EXPIRES_IN * 1000);
@@ -51,7 +60,7 @@ authDeviceRoutes.post(
       deviceCodeHash: hashToken(deviceCode),
       userCode: userCode.display,
       userCodeNormalized: userCode.normalized,
-      deviceName: device_name ?? "cli",
+      deviceName: client_name ?? "cli",
       intervalSeconds: DEFAULT_DEVICE_INTERVAL,
       pollIntervalSeconds: DEFAULT_DEVICE_INTERVAL,
       expiresAt,
@@ -85,38 +94,22 @@ authDeviceRoutes.post(
     const authz = rows[0];
 
     if (!authz) {
-      const body: DeviceTokenError = {
-        error: "invalid_grant",
-        error_description: "Unknown device_code",
-      };
-      return c.json(body, 400);
+      return c.json(tokenError("access_denied", "Unknown device_code"), 400);
     }
 
     if (authz.expiresAt.getTime() <= now.getTime()) {
-      const body: DeviceTokenError = {
-        error: "expired_token",
-        error_description: "device_code has expired",
-      };
-      return c.json(body, 400);
+      return c.json(tokenError("expired_token", "device_code has expired"), 400);
     }
 
     if (authz.deniedAt) {
-      const body: DeviceTokenError = {
-        error: "access_denied",
-        error_description: "User denied the request",
-      };
-      return c.json(body, 400);
+      return c.json(tokenError("access_denied", "User denied the request"), 400);
     }
 
     if (authz.tokenIssuedAt) {
-      const body: DeviceTokenError = {
-        error: "invalid_grant",
-        error_description: "device_code already used",
-      };
-      return c.json(body, 400);
+      return c.json(tokenError("access_denied", "device_code already used"), 400);
     }
 
-    const approved = Boolean(authz.approvedAt && authz.userId);
+    const approved = Boolean(authz.approvedAt && authz.userId && authz.deviceId);
     const minIntervalMs = authz.pollIntervalSeconds * 1000;
     if (
       !approved &&
@@ -130,11 +123,7 @@ authDeviceRoutes.post(
           pollIntervalSeconds: authz.pollIntervalSeconds + DEFAULT_DEVICE_INTERVAL,
         })
         .where(eq(deviceAuthorizations.id, authz.id));
-      const body: DeviceTokenError = {
-        error: "slow_down",
-        error_description: "Polling too frequently",
-      };
-      return c.json(body, 400);
+      return c.json(tokenError("slow_down", "Polling too frequently"), 400);
     }
 
     await db
@@ -142,41 +131,28 @@ authDeviceRoutes.post(
       .set({ lastPolledAt: now })
       .where(eq(deviceAuthorizations.id, authz.id));
 
-    if (!approved || !authz.userId) {
-      const body: DeviceTokenError = {
-        error: "authorization_pending",
-        error_description: "Waiting for user approval",
-      };
-      return c.json(body, 400);
+    if (!approved || !authz.deviceId) {
+      return c.json(
+        tokenError("authorization_pending", "Waiting for user approval"),
+        400,
+      );
     }
 
     const rawToken = `${DEVICE_TOKEN_PREFIX}${randomHex(32)}`;
-    const [device] = await db
-      .insert(devices)
-      .values({
-        userId: authz.userId,
-        name: authz.deviceName,
+    await db
+      .update(devices)
+      .set({
         tokenHash: hashToken(rawToken),
+        lastUsedAt: now,
       })
-      .returning();
-
-    if (!device) {
-      return jsonError(c, 500, "device_create_failed");
-    }
+      .where(eq(devices.id, authz.deviceId));
 
     await db
       .update(deviceAuthorizations)
-      .set({
-        tokenIssuedAt: now,
-        deviceId: device.id,
-      })
+      .set({ tokenIssuedAt: now })
       .where(eq(deviceAuthorizations.id, authz.id));
 
-    const body: DeviceTokenSuccess = {
-      access_token: rawToken,
-      token_type: "Bearer",
-      device_id: device.id,
-    };
+    const body: DeviceTokenSuccess = { access_token: rawToken };
     return c.json(body, 200);
   },
 );
@@ -212,18 +188,31 @@ authDeviceRoutes.post(
     }
 
     const nextName = device_name ?? authz.deviceName;
+    const created = await db
+      .insert(devices)
+      .values({
+        userId: auth.userId,
+        name: nextName,
+      })
+      .returning();
+    const device = created[0];
+    if (!device) {
+      return jsonError(c, 500, "device_create_failed");
+    }
+
     await db
       .update(deviceAuthorizations)
       .set({
         approvedAt: now,
         userId: auth.userId,
         deviceName: nextName,
+        deviceId: device.id,
       })
       .where(eq(deviceAuthorizations.id, authz.id));
 
     const body: DeviceApproveResponse = {
-      approved: true,
-      device_name: nextName,
+      ok: true,
+      device_id: device.id,
     };
     return c.json(body, 200);
   },

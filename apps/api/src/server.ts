@@ -7,5 +7,5 @@ await migrate();
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   console.log(`skl api listening on http://localhost:${info.port}`);
-  console.log(`health: http://localhost:${info.port}/v1/health`);
+  console.log(`health: http://localhost:${info.port}/health`);
 });
