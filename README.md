@@ -31,6 +31,8 @@ pnpm dev
 
 `skl login` opens `http://localhost:3000/device?user_code=…`. Paste the code if needed, approve, then check `/` for the new device.
 
+If `apps/api/.env` sets `ALLOW_DEV_AUTH=false`, local `dev:<user_id>` approve fails with `clerk_not_configured` even when `CLERK_SECRET_KEY` is empty. Leave that flag unset (or `true`).
+
 ## CLI
 
 `API_BASE` / `--api-base` defaults to `http://localhost:8787`. Contracts stay `/v1`.
