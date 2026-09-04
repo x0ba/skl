@@ -135,6 +135,90 @@ impl LocalDb {
         }
         Ok(SyncRequest { skills: map })
     }
+
+    pub fn skill_count(&self) -> Result<u64> {
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM skills", [], |row| row.get(0))?;
+        Ok(count as u64)
+    }
+
+    pub fn find_skill(&self, name: &str) -> Result<Option<DiscoveredSkill>> {
+        Ok(self
+            .list_skills()?
+            .into_iter()
+            .find(|skill| skill.name == name))
+    }
+
+    /// Locate a local file whose content hash matches.
+    pub fn find_file_by_hash(&self, hash: &str) -> Result<Option<(std::path::PathBuf, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT s.path, f.path
+             FROM skill_files f
+             JOIN skills s ON s.name = f.skill_name AND s.source = f.source
+             WHERE f.hash = ?1
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query(params![hash])?;
+        if let Some(row) = rows.next()? {
+            let skill_dir: String = row.get(0)?;
+            let rel: String = row.get(1)?;
+            return Ok(Some((skill_dir.into(), rel)));
+        }
+        Ok(None)
+    }
+
+    pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_meta(&self, key: &str) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare("SELECT value FROM meta WHERE key = ?1")?;
+        let mut rows = stmt.query(params![key])?;
+        if let Some(row) = rows.next()? {
+            return Ok(Some(row.get(0)?));
+        }
+        Ok(None)
+    }
+
+    pub fn record_sync_summary(&self, summary: &SyncSummary) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        self.set_meta("last_sync_at", &now.to_string())?;
+        self.set_meta(
+            "last_sync_json",
+            &serde_json::to_string(summary).map_err(SklError::from)?,
+        )?;
+        Ok(())
+    }
+
+    pub fn last_sync_summary(&self) -> Result<Option<(i64, SyncSummary)>> {
+        let Some(at) = self.get_meta("last_sync_at")? else {
+            return Ok(None);
+        };
+        let Some(json) = self.get_meta("last_sync_json")? else {
+            return Ok(None);
+        };
+        let at: i64 = at.parse().unwrap_or(0);
+        let summary: SyncSummary = serde_json::from_str(&json)?;
+        Ok(Some((at, summary)))
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, Default)]
+pub struct SyncSummary {
+    pub uploaded: usize,
+    pub downloaded: usize,
+    pub pushed: usize,
+    pub conflicts: usize,
+    pub missing_skills: usize,
 }
 
 #[cfg(test)]
@@ -159,5 +243,19 @@ mod tests {
         .unwrap();
         let req = db.sync_request().unwrap();
         assert_eq!(req.skills["foo"].tree_hash, tree.tree_hash);
+        let found = db.find_file_by_hash(&tree.files["SKILL.md"]).unwrap();
+        assert!(found.is_some());
+        db.record_sync_summary(&SyncSummary {
+            uploaded: 1,
+            downloaded: 0,
+            pushed: 1,
+            conflicts: 0,
+            missing_skills: 0,
+        })
+        .unwrap();
+        let (at, summary) = db.last_sync_summary().unwrap().unwrap();
+        assert!(at > 0);
+        assert_eq!(summary.uploaded, 1);
+        assert_eq!(db.skill_count().unwrap(), 1);
     }
 }

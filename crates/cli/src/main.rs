@@ -3,7 +3,9 @@ mod auth;
 mod commands;
 mod config;
 mod error;
+mod hooks;
 mod local;
+mod sync;
 
 use clap::{Parser, Subcommand};
 
@@ -29,11 +31,19 @@ struct Cli {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Device authorization: poll for approval, store token in OS keyring.
-    Login,
+    Login {
+        /// Local-only: store `Authorization: Bearer dev:<USER_ID>` (no Clerk / no device poll).
+        #[arg(long, value_name = "USER_ID")]
+        dev_user: Option<String>,
+    },
     /// Import skills from ~/.claude/skills, ~/.cursor/skills, and ~/.codex/skills if present.
     Init,
-    /// POST /v1/sync with the local inventory (blob/conflict steps are stubs).
+    /// Hash sync: POST /v1/sync, PUT blobs, PUT trees, GET downloads.
     Sync,
+    /// Show login, api_base, local skill count, last sync.
+    Status,
+    /// List local skills from state.db (and remote presence when logged in).
+    List,
 }
 
 #[tokio::main]
@@ -54,8 +64,10 @@ async fn run() -> Result<(), SklError> {
     let api_base = resolve_api_base(cli.api_base.as_deref(), &stored);
 
     match cli.command {
-        Command::Login => commands::login::run(api_base).await,
+        Command::Login { dev_user } => commands::login::run(api_base, dev_user).await,
         Command::Init => commands::init::run(),
         Command::Sync => commands::sync::run(api_base).await,
+        Command::Status => commands::status::run(api_base),
+        Command::List => commands::list::run(api_base).await,
     }
 }

@@ -1,28 +1,13 @@
-//! Locked API shapes (Bob/cipher hard lock). Paths MUST use `/v1`.
-//!
-//! Device auth:
-//!   POST /v1/auth/device/code
-//!   POST /v1/auth/device/token
-//!   POST /v1/auth/device/approve   (web/Clerk; CLI does not call this)
-//!
-//! Sync:
-//!   POST /v1/sync
-//!   PUT  /v1/blobs/:hash
-//!   GET  /v1/blobs/:hash
-//!   PUT  /v1/skills/:name/tree
-//!
-//! Read models:
-//!   GET    /v1/skills
-//!   GET    /v1/skills/:name
-//!   GET    /v1/devices
-//!   DELETE /v1/devices/:id
-//!   GET    /v1/health
+//! Locked API shapes from `apps/api/src/contracts.ts` (`@skl/api/contracts`).
+//! Paths MUST use `/v1`. Do not register or call unversioned aliases.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 pub const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
+pub const DEVICE_TOKEN_PREFIX: &str = "skl_dt_";
+pub const DEV_AUTH_PREFIX: &str = "dev:";
 
 // --- Device auth -----------------------------------------------------------
 
@@ -59,12 +44,14 @@ impl DeviceTokenRequest {
 }
 
 /// 200 body. `expires_in` is null for a long-lived device token.
+/// Contract: `{ access_token, expires_in: null }`. `token_type` is ignored if present.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceTokenSuccess {
     pub access_token: String,
-    pub token_type: String,
     #[serde(default)]
     pub expires_in: Option<u64>,
+    #[serde(default)]
+    pub token_type: Option<String>,
 }
 
 /// 400 body. `slow_down` may include a new `interval`.
@@ -93,10 +80,12 @@ pub enum DeviceTokenPoll {
     Denied,
 }
 
-/// POST /v1/auth/device/approve — Clerk/web only. Typed here so the client matches the lock.
+/// POST /v1/auth/device/approve — Clerk/web only. CLI login does not call this.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceApproveRequest {
     pub user_code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -118,7 +107,7 @@ pub struct SyncRequest {
     pub skills: BTreeMap<String, SkillTree>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SyncResponse {
     pub upload: Vec<String>,
     pub download: Vec<SyncDownload>,
@@ -133,20 +122,13 @@ pub struct SyncDownload {
     pub paths: Vec<String>,
 }
 
-/// Cipher may emit unix millis or an ISO string; typed exports win when they land.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-pub enum Timestamp {
-    Millis(i64),
-    Iso(String),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SyncConflict {
     pub skill: String,
     pub local_tree_hash: String,
     pub remote_tree_hash: String,
-    pub remote_updated_at: Timestamp,
+    /// ISO-8601 from the remote skill row.
+    pub remote_updated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -155,55 +137,58 @@ pub struct SkillTreePut {
     pub files: BTreeMap<String, String>,
 }
 
-// --- Read models (loosely typed until cipher publishes field lists) --------
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PutSkillTreeResponse {
+    pub name: String,
+    pub tree_hash: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PutBlobResponse {
+    pub hash: String,
+    pub size: u64,
+}
+
+// --- Read models -----------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthResponse {
-    #[serde(default)]
-    pub ok: Option<bool>,
-    #[serde(default)]
-    pub status: Option<String>,
+    pub ok: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SkillSummary {
     pub name: String,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, serde_json::Value>,
+    pub tree_hash: String,
+    pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillsListResponse {
+    pub skills: Vec<SkillSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SkillDetail {
     pub name: String,
-    #[serde(default)]
-    pub tree_hash: Option<String>,
-    #[serde(default)]
-    pub files: Option<BTreeMap<String, String>>,
-    #[serde(default)]
-    pub updated_at: Option<Timestamp>,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, serde_json::Value>,
+    pub tree_hash: String,
+    pub files: BTreeMap<String, String>,
+    pub updated_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum SkillList {
-    Names(Vec<String>),
-    Objects(Vec<SkillSummary>),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DeviceSummary {
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DeviceRecord {
     pub id: String,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, serde_json::Value>,
+    pub name: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+    pub revoked_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum DeviceList {
-    Ids(Vec<String>),
-    Objects(Vec<DeviceSummary>),
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DevicesListResponse {
+    pub devices: Vec<DeviceRecord>,
 }
 
 #[cfg(test)]
@@ -224,14 +209,12 @@ mod tests {
     }
 
     #[test]
-    fn device_token_success_null_expires() {
-        let tok: DeviceTokenSuccess = serde_json::from_str(
-            r#"{"access_token":"dev_abc","token_type":"Bearer","expires_in":null}"#,
-        )
-        .unwrap();
-        assert_eq!(tok.access_token, "dev_abc");
-        assert_eq!(tok.token_type, "Bearer");
+    fn device_token_success_matches_contract() {
+        let tok: DeviceTokenSuccess =
+            serde_json::from_str(r#"{"access_token":"skl_dt_abc","expires_in":null}"#).unwrap();
+        assert_eq!(tok.access_token, "skl_dt_abc");
         assert_eq!(tok.expires_in, None);
+        assert_eq!(tok.token_type, None);
     }
 
     #[test]
@@ -260,29 +243,44 @@ mod tests {
     }
 
     #[test]
-    fn conflict_includes_remote_updated_at() {
-        let millis: SyncConflict = serde_json::from_str(
-            r#"{"skill":"demo","local_tree_hash":"aaa","remote_tree_hash":"bbb","remote_updated_at":1710000000}"#,
+    fn conflict_remote_updated_at_is_iso() {
+        let conflict: SyncConflict = serde_json::from_str(
+            r#"{"skill":"demo","local_tree_hash":"aaa","remote_tree_hash":"bbb","remote_updated_at":"2026-09-04T08:00:00.000Z"}"#,
         )
         .unwrap();
-        assert_eq!(millis.remote_updated_at, Timestamp::Millis(1_710_000_000));
-
-        let iso: SyncConflict = serde_json::from_str(
-            r#"{"skill":"demo","local_tree_hash":"aaa","remote_tree_hash":"bbb","remote_updated_at":"2026-09-04T08:00:00Z"}"#,
-        )
-        .unwrap();
-        assert_eq!(
-            iso.remote_updated_at,
-            Timestamp::Iso("2026-09-04T08:00:00Z".into())
-        );
+        assert_eq!(conflict.remote_updated_at, "2026-09-04T08:00:00.000Z");
     }
 
     #[test]
-    fn skill_detail_includes_updated_at() {
-        let detail: SkillDetail = serde_json::from_str(
-            r#"{"name":"demo","updated_at":1710000000}"#,
+    fn skills_list_is_wrapped() {
+        let list: SkillsListResponse = serde_json::from_str(
+            r#"{"skills":[{"name":"greeter","tree_hash":"abc","updated_at":"2026-09-04T08:00:00.000Z"}]}"#,
         )
         .unwrap();
-        assert_eq!(detail.updated_at, Some(Timestamp::Millis(1_710_000_000)));
+        assert_eq!(list.skills.len(), 1);
+        assert_eq!(list.skills[0].name, "greeter");
+    }
+
+    #[test]
+    fn devices_list_is_wrapped() {
+        let list: DevicesListResponse = serde_json::from_str(
+            r#"{"devices":[{"id":"d1","name":"laptop","created_at":"2026-09-04T08:00:00.000Z","last_used_at":null,"revoked_at":null}]}"#,
+        )
+        .unwrap();
+        assert_eq!(list.devices[0].id, "d1");
+        assert_eq!(list.devices[0].last_used_at, None);
+    }
+
+    #[test]
+    fn health_is_ok_true() {
+        let health: HealthResponse = serde_json::from_str(r#"{"ok":true}"#).unwrap();
+        assert!(health.ok);
+    }
+
+    #[test]
+    fn put_blob_response() {
+        let body: PutBlobResponse = serde_json::from_str(r#"{"hash":"abc","size":12}"#).unwrap();
+        assert_eq!(body.hash, "abc");
+        assert_eq!(body.size, 12);
     }
 }

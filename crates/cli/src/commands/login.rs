@@ -5,9 +5,13 @@ use crate::auth;
 use crate::config::{self, Paths};
 use crate::error::{Result, SklError};
 
-pub async fn run(api_base: String) -> Result<()> {
+pub async fn run(api_base: String, dev_user: Option<String>) -> Result<()> {
     let paths = Paths::resolve()?;
     paths.ensure()?;
+
+    if let Some(user) = dev_user {
+        return store_dev_user(&paths, api_base, &user);
+    }
 
     let client = ApiClient::new(&api_base)?;
     let client_name = default_client_name();
@@ -48,11 +52,10 @@ pub async fn run(api_base: String) -> Result<()> {
             DeviceTokenPoll::Expired => return Err(SklError::DeviceAuthExpired),
             DeviceTokenPoll::Denied => return Err(SklError::DeviceAuthDenied),
             DeviceTokenPoll::Success(token) => {
-                if token.token_type != "Bearer" {
-                    eprintln!(
-                        "warning: expected token_type \"Bearer\", got {:?}",
-                        token.token_type
-                    );
+                if let Some(kind) = &token.token_type {
+                    if kind != "Bearer" {
+                        eprintln!("warning: unexpected token_type {kind:?}");
+                    }
                 }
                 auth::store_device_token(&token.access_token)?;
                 let mut cfg = config::load(&paths).unwrap_or_default();
@@ -69,6 +72,19 @@ pub async fn run(api_base: String) -> Result<()> {
             }
         }
     }
+}
+
+fn store_dev_user(paths: &Paths, api_base: String, user: &str) -> Result<()> {
+    let token = auth::format_dev_token(user)?;
+    auth::store_device_token(&token)?;
+    let mut cfg = config::load(paths).unwrap_or_default();
+    cfg.api_base = Some(api_base.clone());
+    config::save(paths, &cfg)?;
+    eprintln!("Stored local dev token (no device poll)");
+    eprintln!("  Authorization: Bearer {token}");
+    eprintln!("  api_base {api_base} → {}", paths.config_file.display());
+    eprintln!("API accepts this only when CLERK_SECRET_KEY is unset (ALLOW_DEV_AUTH).");
+    Ok(())
 }
 
 fn default_client_name() -> String {

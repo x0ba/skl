@@ -5,8 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Result, SklError};
 
-/// Default API origin. Override with `--api-base` or `API_BASE`.
-pub const DEFAULT_API_BASE: &str = "http://localhost:3000";
+/// Default API origin (`apps/api` listens on PORT=8787).
+/// Override with `--api-base` or `API_BASE`.
+pub const DEFAULT_API_BASE: &str = "http://localhost:8787";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {

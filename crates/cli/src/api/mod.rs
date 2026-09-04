@@ -1,5 +1,5 @@
-//! Full locked `/v1` surface. Login/init/sync call a subset; the rest is for
-//! hammer / the next pass.
+//! Full locked `/v1` surface from `apps/api/src/contracts.ts`.
+//! Unused client methods stay so the crate mirrors every `/v1` route.
 #![allow(dead_code)]
 
 pub mod client;

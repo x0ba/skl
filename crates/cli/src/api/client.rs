@@ -4,9 +4,9 @@ use serde::Serialize;
 
 use super::types::{
     DeviceApproveRequest, DeviceApproveResponse, DeviceCodeRequest, DeviceCodeResponse,
-    DeviceList, DeviceTokenErrorBody, DeviceTokenErrorKind, DeviceTokenPoll, DeviceTokenRequest,
-    DeviceTokenSuccess, HealthResponse, SkillDetail, SkillList, SkillTreePut, SyncRequest,
-    SyncResponse,
+    DeviceTokenErrorBody, DeviceTokenErrorKind, DeviceTokenPoll, DeviceTokenRequest,
+    DeviceTokenSuccess, DevicesListResponse, HealthResponse, PutBlobResponse, PutSkillTreeResponse,
+    SkillDetail, SkillTreePut, SkillsListResponse, SyncRequest, SyncResponse,
 };
 use crate::error::{Result, SklError};
 
@@ -137,12 +137,17 @@ impl ApiClient {
     }
 
     /// Web/Clerk approve. CLI login does not call this; included for contract completeness.
-    pub async fn approve_device(&self, user_code: &str) -> Result<DeviceApproveResponse> {
+    pub async fn approve_device(
+        &self,
+        user_code: &str,
+        device_name: Option<String>,
+    ) -> Result<DeviceApproveResponse> {
         self.send_json(
             Method::POST,
             "/v1/auth/device/approve",
             Some(&DeviceApproveRequest {
                 user_code: user_code.to_string(),
+                device_name,
             }),
             true,
         )
@@ -154,7 +159,8 @@ impl ApiClient {
             .await
     }
 
-    pub async fn put_blob(&self, hash: &str, bytes: Vec<u8>) -> Result<()> {
+    /// PUT /v1/blobs/:hash with raw octets. API also accepts `{ content_base64 }`.
+    pub async fn put_blob(&self, hash: &str, bytes: Vec<u8>) -> Result<PutBlobResponse> {
         let path = format!("/v1/blobs/{hash}");
         let response = self
             .apply_auth(self.http.put(self.url(&path)))
@@ -166,14 +172,18 @@ impl ApiClient {
                 url: self.url(&path),
                 source: err.to_string(),
             })?;
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let body = response.text().await.unwrap_or_default();
-            return Err(SklError::Api { status, body });
+        let status = response.status();
+        let body = response.bytes().await?;
+        if !status.is_success() {
+            return Err(SklError::Api {
+                status: status.as_u16(),
+                body: String::from_utf8_lossy(&body).into_owned(),
+            });
         }
-        Ok(())
+        serde_json::from_slice(&body).map_err(SklError::from)
     }
 
+    /// GET /v1/blobs/:hash → `application/octet-stream`.
     pub async fn get_blob(&self, hash: &str) -> Result<Vec<u8>> {
         let path = format!("/v1/blobs/{hash}");
         let response = self
@@ -192,48 +202,38 @@ impl ApiClient {
         Ok(response.bytes().await?.to_vec())
     }
 
-    pub async fn put_skill_tree(&self, name: &str, body: &SkillTreePut) -> Result<()> {
-        let path = format!("/v1/skills/{name}/tree");
-        let _: serde_json::Value = self
-            .send_json(Method::PUT, &path, Some(body), true)
-            .await
-            .or_else(|err| match err {
-                SklError::Json(_) => Ok(serde_json::Value::Null),
-                other => Err(other),
-            })?;
-        Ok(())
+    pub async fn put_skill_tree(
+        &self,
+        name: &str,
+        body: &SkillTreePut,
+    ) -> Result<PutSkillTreeResponse> {
+        let path = format!("/v1/skills/{}/tree", encode_path_segment(name));
+        self.send_json(Method::PUT, &path, Some(body), true).await
     }
 
     pub async fn health(&self) -> Result<HealthResponse> {
         self.send_json::<(), _>(Method::GET, "/v1/health", None, false)
             .await
-            .or_else(|err| match err {
-                SklError::Json(_) => Ok(HealthResponse {
-                    ok: Some(true),
-                    status: Some("ok".into()),
-                }),
-                other => Err(other),
-            })
     }
 
-    pub async fn list_skills(&self) -> Result<SkillList> {
+    pub async fn list_skills(&self) -> Result<SkillsListResponse> {
         self.send_json::<(), _>(Method::GET, "/v1/skills", None, true)
             .await
     }
 
     pub async fn get_skill(&self, name: &str) -> Result<SkillDetail> {
-        let path = format!("/v1/skills/{name}");
+        let path = format!("/v1/skills/{}", encode_path_segment(name));
         self.send_json::<(), _>(Method::GET, &path, None, true)
             .await
     }
 
-    pub async fn list_devices(&self) -> Result<DeviceList> {
+    pub async fn list_devices(&self) -> Result<DevicesListResponse> {
         self.send_json::<(), _>(Method::GET, "/v1/devices", None, true)
             .await
     }
 
     pub async fn delete_device(&self, id: &str) -> Result<()> {
-        let path = format!("/v1/devices/{id}");
+        let path = format!("/v1/devices/{}", encode_path_segment(id));
         let response = self
             .apply_auth(self.http.delete(self.url(&path)))
             .send()
@@ -255,6 +255,20 @@ fn trim_slash(value: &str) -> String {
     value.trim_end_matches('/').to_string()
 }
 
+/// Skill names are already slug-safe; encode anything outside unreserved.
+fn encode_path_segment(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,7 +288,10 @@ mod tests {
                 device_code: "dc-1".into(),
                 user_code: "ABCD-1234".into(),
                 verification_uri: format!("{}/device", server.uri()),
-                verification_uri_complete: Some(format!("{}/device?user_code=ABCD-1234", server.uri())),
+                verification_uri_complete: Some(format!(
+                    "{}/device?user_code=ABCD-1234",
+                    server.uri()
+                )),
                 expires_in: 600,
                 interval: 1,
             }))
@@ -297,8 +314,7 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/auth/device/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "access_token": "dev_tok",
-                "token_type": "Bearer",
+                "access_token": "skl_dt_tok",
                 "expires_in": null
             })))
             .mount(&server)
@@ -318,8 +334,7 @@ mod tests {
         );
         match client.poll_device_token("dc-1").await.unwrap() {
             DeviceTokenPoll::Success(tok) => {
-                assert_eq!(tok.access_token, "dev_tok");
-                assert_eq!(tok.token_type, "Bearer");
+                assert_eq!(tok.access_token, "skl_dt_tok");
                 assert_eq!(tok.expires_in, None);
             }
             other => panic!("expected success, got {other:?}"),
@@ -331,7 +346,7 @@ mod tests {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/sync"))
-            .and(header("authorization", "Bearer dev_tok"))
+            .and(header("authorization", "Bearer dev:alice"))
             .and(body_json(json!({ "skills": {} })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "upload": [],
@@ -342,10 +357,41 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = ApiClient::new(server.uri()).unwrap().with_token("dev_tok");
+        let client = ApiClient::new(server.uri())
+            .unwrap()
+            .with_token("dev:alice");
         let res = client.sync(&SyncRequest::default()).await.unwrap();
         assert!(res.upload.is_empty());
         assert!(res.conflicts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn blob_put_raw_and_get_octets() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/blobs/aabb"))
+            .and(header("content-type", "application/octet-stream"))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "hash": "aabb",
+                "size": 5
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/v1/blobs/aabb"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "application/octet-stream")
+                    .set_body_bytes(b"hello"),
+            )
+            .mount(&server)
+            .await;
+
+        let client = ApiClient::new(server.uri()).unwrap().with_token("dev:alice");
+        let put = client.put_blob("aabb", b"hello".to_vec()).await.unwrap();
+        assert_eq!(put.hash, "aabb");
+        assert_eq!(put.size, 5);
+        assert_eq!(client.get_blob("aabb").await.unwrap(), b"hello");
     }
 
     #[tokio::test]
@@ -364,6 +410,26 @@ mod tests {
 
         let client = ApiClient::new(server.uri()).unwrap();
         let health = client.health().await.unwrap();
-        assert_eq!(health.ok, Some(true));
+        assert!(health.ok);
+    }
+
+    #[tokio::test]
+    async fn list_skills_wrapped() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/skills"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "skills": [{
+                    "name": "greeter",
+                    "tree_hash": "abc",
+                    "updated_at": "2026-09-04T08:00:00.000Z"
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = ApiClient::new(server.uri()).unwrap().with_token("dev:alice");
+        let list = client.list_skills().await.unwrap();
+        assert_eq!(list.skills[0].name, "greeter");
     }
 }

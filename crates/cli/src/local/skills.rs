@@ -23,17 +23,53 @@ pub fn hash_bytes(bytes: &[u8]) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// Canonical tree hash: SHA-256 of sorted `"{path}\0{hash}\n"` lines.
-/// Cipher should treat this as the local algorithm until a shared spec lands.
+/// Canonical tree hash from `apps/api/src/lib/tree.ts` / contracts.ts:
+/// SHA-256 of sorted `${path}\0${hash}` lines joined by `\n`.
+/// Empty tree => SHA-256 of the empty string.
 pub fn tree_hash(files: &BTreeMap<String, String>) -> String {
-    let mut canonical = String::new();
-    for (path, hash) in files {
-        canonical.push_str(path);
-        canonical.push('\0');
-        canonical.push_str(hash);
-        canonical.push('\n');
+    if files.is_empty() {
+        return hash_bytes(b"");
     }
+    let canonical = files
+        .iter()
+        .map(|(path, hash)| format!("{path}\0{hash}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     hash_bytes(canonical.as_bytes())
+}
+
+/// Same path rules as `apps/api/src/lib/tree.ts` `isSafeFilePath`.
+pub fn is_safe_file_path(path: &str) -> bool {
+    if path.is_empty() || path.len() > 512 {
+        return false;
+    }
+    if path.starts_with('/') || path.starts_with('\\') {
+        return false;
+    }
+    path.split('/').all(|part| !part.is_empty() && part != "." && part != "..")
+}
+
+pub fn write_blob_file(skill_dir: &Path, rel: &str, bytes: &[u8]) -> Result<()> {
+    if !is_safe_file_path(rel) {
+        return Err(crate::error::SklError::LocalState(format!(
+            "refusing unsafe skill path `{rel}`"
+        )));
+    }
+    let dest = skill_dir.join(rel);
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(dest, bytes)?;
+    Ok(())
+}
+
+pub fn default_pull_root(home: &Path) -> PathBuf {
+    for root in skill_roots(home) {
+        if root.path.is_dir() {
+            return root.path;
+        }
+    }
+    home.join(".claude").join("skills")
 }
 
 pub fn hash_skill_dir(dir: &Path) -> Result<SkillTree> {
@@ -125,6 +161,27 @@ mod tests {
             tree.files["SKILL.md"],
             hash_bytes(b"---\nname: demo\n---\n# hi\n")
         );
+    }
+
+    #[test]
+    fn tree_hash_matches_api_contract() {
+        // apps/api/src/tree.test.ts
+        assert_eq!(
+            tree_hash(&BTreeMap::new()),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        let mut files = BTreeMap::new();
+        files.insert("b.md".into(), "bb".into());
+        files.insert("a.md".into(), "aa".into());
+        assert_eq!(tree_hash(&files), hash_bytes(b"a.md\0aa\nb.md\0bb"));
+    }
+
+    #[test]
+    fn rejects_unsafe_paths() {
+        assert!(is_safe_file_path("SKILL.md"));
+        assert!(is_safe_file_path("scripts/run.sh"));
+        assert!(!is_safe_file_path("../secret"));
+        assert!(!is_safe_file_path("/etc/passwd"));
     }
 
     #[test]
