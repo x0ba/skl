@@ -121,7 +121,9 @@ fn fs_canonicalize(path: &Path) -> Result<PathBuf> {
 fn action_label(action: LinkAction) -> &'static str {
     match action {
         LinkAction::Created => "symlink",
+        LinkAction::Copied => "copy",
         LinkAction::Replaced => "replace",
+        LinkAction::CopyReplaced => "replace",
         LinkAction::Unchanged => "ok",
         LinkAction::Removed => "removed",
         LinkAction::Absent => "absent",

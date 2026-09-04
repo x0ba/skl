@@ -9,6 +9,7 @@ use crate::auth::{self, TokenPresence, KEYRING_ACCOUNT, KEYRING_SERVICE, TOKEN_E
 use crate::config::{self, Paths, SkillRoot};
 use crate::error::Result;
 use crate::local::db::LocalDb;
+use crate::local::linker::{self, WINDOWS_SYMLINK_NOTE};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -25,6 +26,8 @@ pub struct RootStatus {
     pub source: String,
     pub status: PathStatus,
     pub skill_count: Option<u64>,
+    /// `None` when the root is missing (nothing to probe).
+    pub symlink: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +48,12 @@ pub struct DoctorReport {
     pub state_db: Option<PathStatus>,
     pub local_skills: Option<u64>,
     pub roots: Vec<RootStatus>,
+    pub symlink: bool,
+    pub symlink_detail: String,
+    pub windows_note: Option<String>,
+    /// Activated skill modes from cwd `skills.toml` (last symlink vs copy).
+    pub project_manifest: Option<PathBuf>,
+    pub project_modes: Vec<(String, String)>,
 }
 
 pub async fn run(api_base: String) -> Result<()> {
@@ -83,6 +92,14 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         .map(|root| inspect_root(root))
         .collect();
 
+    let probe = linker::probe_symlink(&std::env::temp_dir());
+    let windows_note = if cfg!(windows) || !probe.ok {
+        Some(WINDOWS_SYMLINK_NOTE.to_string())
+    } else {
+        None
+    };
+    let (project_manifest, project_modes) = project_link_modes();
+
     DoctorReport {
         api_base: api_base.to_string(),
         health,
@@ -94,6 +111,11 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         state_db,
         local_skills,
         roots,
+        symlink: probe.ok,
+        symlink_detail: probe.detail,
+        windows_note,
+        project_manifest,
+        project_modes,
     }
 }
 
@@ -116,11 +138,37 @@ fn inspect_root(root: SkillRoot) -> RootStatus {
     } else {
         None
     };
+    let status = inspect_dir(&root.path);
+    let symlink = if status.exists && root.path.is_dir() {
+        Some(linker::probe_symlink(&root.path).ok)
+    } else {
+        None
+    };
     RootStatus {
         source: root.source.to_string(),
-        status: inspect_dir(&root.path),
+        status,
         skill_count,
+        symlink,
     }
+}
+
+fn project_link_modes() -> (Option<PathBuf>, Vec<(String, String)>) {
+    let Ok(cwd) = std::env::current_dir() else {
+        return (None, Vec::new());
+    };
+    let path = linker::manifest_path(&cwd);
+    if !path.exists() {
+        return (None, Vec::new());
+    }
+    let Ok(manifest) = linker::load_manifest(&cwd) else {
+        return (Some(path), Vec::new());
+    };
+    let modes = manifest
+        .skills
+        .into_iter()
+        .map(|skill| (skill.name, skill.mode))
+        .collect();
+    (Some(path), modes)
 }
 
 fn inspect_dir(path: &Path) -> PathStatus {
@@ -284,12 +332,44 @@ fn print_report(report: &DoctorReport) {
         } else {
             root.status.detail.clone()
         };
+        let link = match root.symlink {
+            Some(true) => "  symlink=yes",
+            Some(false) => "  symlink=no (use will copy)",
+            None => "",
+        };
         println!(
-            "{:<12} {}  {}{skills}",
+            "{:<12} {}  {}{skills}{link}",
             root.source,
             root.status.path.display(),
             writable
         );
+    }
+
+    println!();
+    println!("== Linking");
+    if report.symlink {
+        println!("symlink      ok");
+    } else {
+        println!(
+            "symlink      unavailable  {}  → use will copy",
+            report.symlink_detail
+        );
+    }
+    if let Some(note) = &report.windows_note {
+        println!("windows      {note}");
+    }
+    match (&report.project_manifest, report.project_modes.is_empty()) {
+        (Some(path), true) => println!("project      {}  (no activated skills)", path.display()),
+        (Some(path), false) => {
+            let modes = report
+                .project_modes
+                .iter()
+                .map(|(name, mode)| format!("{name}={mode}"))
+                .collect::<Vec<_>>()
+                .join("  ");
+            println!("project      {}  {modes}", path.display());
+        }
+        (None, _) => {}
     }
 }
 
@@ -350,13 +430,19 @@ mod tests {
         let claude_root = report.roots.iter().find(|r| r.source == "claude").unwrap();
         assert!(claude_root.status.exists);
         assert_eq!(claude_root.skill_count, Some(1));
+        assert_eq!(claude_root.symlink, Some(true));
         let cursor_root = report.roots.iter().find(|r| r.source == "cursor").unwrap();
         assert!(cursor_root.status.exists);
         assert_eq!(cursor_root.skill_count, Some(0));
+        assert_eq!(cursor_root.symlink, Some(true));
         let codex_root = report.roots.iter().find(|r| r.source == "codex").unwrap();
         assert!(!codex_root.status.exists);
+        assert_eq!(codex_root.symlink, None);
         assert!(!report.config.as_ref().unwrap().exists);
         assert!(report.state_db.as_ref().unwrap().exists);
+        assert!(report.symlink, "host temp dir should allow symlinks");
+        assert_eq!(report.symlink_detail, "ok");
+        assert!(report.windows_note.is_none());
     }
 
     #[tokio::test]

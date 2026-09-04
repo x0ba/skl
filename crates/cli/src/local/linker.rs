@@ -1,6 +1,7 @@
 //! Project multi-agent linker: symlink skills into agent dirs + `skills.toml`.
 //!
-//! Default (only) mode is **symlink**, not copy. Codex is optional if present.
+//! Default is **symlink**. On EPERM / ENOTSUP / Windows privilege errors,
+//! fall back to a copy. Codex is optional if present.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -10,13 +11,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::SkillRoot;
 use crate::error::{Result, SklError};
-use crate::local::skills::{is_safe_file_path, DiscoveredSkill};
+use crate::local::skills::{hash_skill_dir, is_safe_file_path, DiscoveredSkill};
 
 pub const LINK_MODE: &str = "symlink";
+pub const COPY_MODE: &str = "copy";
 pub const MANIFEST_NAME: &str = "skills.toml";
 
+/// `skl doctor` Windows note — directory symlinks need a privilege.
+pub const WINDOWS_SYMLINK_NOTE: &str =
+    "directory symlinks need Developer Mode or SeCreateSymbolicLink; use copies on EPERM";
+
 const MANIFEST_HEADER: &str =
-    "# Managed by `skl use` / `skl unuse`. Mode is symlink (not copy).\n\n";
+    "# Managed by `skl use` / `skl unuse`. Prefer symlink; copy if the filesystem refuses.\n\n";
+
+#[cfg(test)]
+use std::cell::Cell;
+
+#[cfg(test)]
+thread_local! {
+    static FORCE_SYMLINK_FAIL: Cell<bool> = const { Cell::new(false) };
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SkillsManifest {
@@ -44,6 +58,8 @@ pub enum LinkAction {
     Unchanged,
     Removed,
     Absent,
+    Copied,
+    CopyReplaced,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +76,8 @@ pub struct ActivateOutcome {
     pub source_path: PathBuf,
     pub links: Vec<LinkChange>,
     pub manifest: PathBuf,
+    pub mode: String,
+    pub fallback: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,6 +86,12 @@ pub struct DeactivateOutcome {
     pub links: Vec<LinkChange>,
     pub manifest: PathBuf,
     pub was_listed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymlinkProbe {
+    pub ok: bool,
+    pub detail: String,
 }
 
 pub fn validate_skill_name(name: &str) -> Result<()> {
@@ -83,7 +107,7 @@ pub fn validate_skill_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Project agent dirs that receive symlinks.
+/// Project agent dirs that receive links (symlink, or copy on fallback).
 ///
 /// Claude and Cursor always. Codex only if home `~/.codex/skills` exists
 /// or the project already has `.codex`.
@@ -144,23 +168,41 @@ pub fn activate(project: &Path, home: &Path, skill: &DiscoveredSkill) -> Result<
     }
 
     let source = canonicalize_dir(&skill.path)?;
+    let mut manifest = load_manifest(project)?;
+    let prior_copy = manifest
+        .skills
+        .iter()
+        .any(|s| s.name == skill.name && s.mode == COPY_MODE);
+
     let mut links = Vec::new();
+    let mut used_copy = false;
+    let mut fallback = None;
     for root in project_link_roots(project, home) {
         let dest = root.path.join(&skill.name);
-        let action = ensure_symlink(&source, &dest)?;
+        let placed = ensure_link(&source, &dest, prior_copy)?;
+        if placed.mode == COPY_MODE {
+            used_copy = true;
+            if fallback.is_none() {
+                fallback = placed.fallback;
+            }
+        }
         links.push(LinkChange {
             agent: root.source.to_string(),
             path: dest,
-            action,
+            action: placed.action,
         });
     }
 
-    let mut manifest = load_manifest(project)?;
+    let mode = if used_copy {
+        COPY_MODE.to_string()
+    } else {
+        LINK_MODE.to_string()
+    };
     let entry = ActivatedSkill {
         name: skill.name.clone(),
         source: skill.source.clone(),
         path: source.to_string_lossy().into_owned(),
-        mode: LINK_MODE.to_string(),
+        mode: mode.clone(),
     };
     if let Some(existing) = manifest.skills.iter_mut().find(|s| s.name == skill.name) {
         *existing = entry;
@@ -175,6 +217,8 @@ pub fn activate(project: &Path, home: &Path, skill: &DiscoveredSkill) -> Result<
         source_path: source,
         links,
         manifest: manifest_path(project),
+        mode,
+        fallback,
     })
 }
 
@@ -182,13 +226,18 @@ pub fn deactivate(project: &Path, home: &Path, name: &str) -> Result<DeactivateO
     validate_skill_name(name)?;
 
     let mut manifest = load_manifest(project)?;
-    let was_listed = manifest.skills.iter().any(|s| s.name == name);
+    let listed = manifest.skills.iter().find(|s| s.name == name).cloned();
+    let was_listed = listed.is_some();
+    let allow_copy_dir = listed
+        .as_ref()
+        .map(|s| s.mode == COPY_MODE)
+        .unwrap_or(false);
     manifest.skills.retain(|s| s.name != name);
 
     let mut links = Vec::new();
     for root in project_link_roots(project, home) {
         let dest = root.path.join(name);
-        let action = remove_managed_link(&dest)?;
+        let action = remove_managed_link(&dest, allow_copy_dir)?;
         links.push(LinkChange {
             agent: root.source.to_string(),
             path: dest,
@@ -213,47 +262,147 @@ pub fn deactivate(project: &Path, home: &Path, name: &str) -> Result<DeactivateO
     })
 }
 
+/// Probe whether `in_dir` can hold a directory symlink (temp name, always cleaned up).
+pub fn probe_symlink(in_dir: &Path) -> SymlinkProbe {
+    if !in_dir.is_dir() {
+        return SymlinkProbe {
+            ok: false,
+            detail: "not a directory".into(),
+        };
+    }
+    let link = in_dir.join(format!(".skl-link-probe-{}", std::process::id()));
+    let _ = fs::remove_file(&link);
+    let result = match create_symlink_io(in_dir, &link) {
+        Ok(()) => {
+            let _ = fs::remove_file(&link);
+            SymlinkProbe {
+                ok: true,
+                detail: "ok".into(),
+            }
+        }
+        Err(err) => {
+            let _ = fs::remove_file(&link);
+            SymlinkProbe {
+                ok: false,
+                detail: err.to_string(),
+            }
+        }
+    };
+    result
+}
+
+pub fn is_symlink_fallback_error(err: &std::io::Error) -> bool {
+    if matches!(
+        err.kind(),
+        ErrorKind::PermissionDenied | ErrorKind::Unsupported
+    ) {
+        return true;
+    }
+    // Windows privilege / unsupported FS; Unix EPERM/EACCES/ENOTSUP/EOPNOTSUPP.
+    matches!(
+        err.raw_os_error(),
+        Some(1) | Some(5) | Some(13) | Some(45) | Some(95) | Some(102) | Some(1314)
+    )
+}
+
 fn canonicalize_dir(path: &Path) -> Result<PathBuf> {
     fs::canonicalize(path)
         .map_err(|err| SklError::LocalState(format!("cannot resolve {}: {err}", path.display())))
 }
 
-fn ensure_symlink(target: &Path, link: &Path) -> Result<LinkAction> {
-    match dest_kind(link)? {
+struct Placed {
+    action: LinkAction,
+    mode: &'static str,
+    fallback: Option<String>,
+}
+
+fn ensure_link(target: &Path, dest: &Path, managed_copy: bool) -> Result<Placed> {
+    match dest_kind(dest)? {
         DestKind::Missing => {
-            if let Some(parent) = link.parent() {
+            if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
-            create_symlink(target, link)?;
-            Ok(LinkAction::Created)
+            place_link(target, dest, false)
         }
         DestKind::Symlink => {
-            let current = fs::read_link(link)?;
-            if same_path(&current, target, link) {
-                Ok(LinkAction::Unchanged)
+            let current = fs::read_link(dest)?;
+            if same_path(&current, target, dest) {
+                Ok(Placed {
+                    action: LinkAction::Unchanged,
+                    mode: LINK_MODE,
+                    fallback: None,
+                })
             } else {
-                fs::remove_file(link)?;
-                create_symlink(target, link)?;
-                Ok(LinkAction::Replaced)
+                fs::remove_file(dest)?;
+                place_link(target, dest, true)
             }
         }
-        DestKind::Other => Err(SklError::LocalState(format!(
-            "{} exists and is not a symlink; refusing to overwrite (skl use is symlink-only)",
-            link.display()
+        DestKind::Directory if managed_copy => refresh_copy(target, dest),
+        DestKind::Directory | DestKind::Other => Err(SklError::LocalState(format!(
+            "{} exists and is not a symlink; refusing to overwrite (skl use will not clobber a real directory)",
+            dest.display()
         ))),
     }
 }
 
-fn remove_managed_link(link: &Path) -> Result<LinkAction> {
-    match dest_kind(link)? {
+fn place_link(target: &Path, dest: &Path, replacing: bool) -> Result<Placed> {
+    match create_symlink_io(target, dest) {
+        Ok(()) => Ok(Placed {
+            action: if replacing {
+                LinkAction::Replaced
+            } else {
+                LinkAction::Created
+            },
+            mode: LINK_MODE,
+            fallback: None,
+        }),
+        Err(err) if is_symlink_fallback_error(&err) => {
+            let reason = err.to_string();
+            copy_skill_tree(target, dest)?;
+            Ok(Placed {
+                action: if replacing {
+                    LinkAction::CopyReplaced
+                } else {
+                    LinkAction::Copied
+                },
+                mode: COPY_MODE,
+                fallback: Some(reason),
+            })
+        }
+        Err(err) => Err(SklError::from(err)),
+    }
+}
+
+fn refresh_copy(target: &Path, dest: &Path) -> Result<Placed> {
+    if same_skill_tree(target, dest) {
+        return Ok(Placed {
+            action: LinkAction::Unchanged,
+            mode: COPY_MODE,
+            fallback: None,
+        });
+    }
+    copy_skill_tree(target, dest)?;
+    Ok(Placed {
+        action: LinkAction::CopyReplaced,
+        mode: COPY_MODE,
+        fallback: None,
+    })
+}
+
+fn remove_managed_link(dest: &Path, allow_copy_dir: bool) -> Result<LinkAction> {
+    match dest_kind(dest)? {
         DestKind::Missing => Ok(LinkAction::Absent),
         DestKind::Symlink => {
-            fs::remove_file(link)?;
+            fs::remove_file(dest)?;
             Ok(LinkAction::Removed)
         }
-        DestKind::Other => Err(SklError::LocalState(format!(
+        DestKind::Directory if allow_copy_dir => {
+            fs::remove_dir_all(dest)?;
+            Ok(LinkAction::Removed)
+        }
+        DestKind::Directory | DestKind::Other => Err(SklError::LocalState(format!(
             "{} exists and is not a symlink; refusing to delete",
-            link.display()
+            dest.display()
         ))),
     }
 }
@@ -261,12 +410,14 @@ fn remove_managed_link(link: &Path) -> Result<LinkAction> {
 enum DestKind {
     Missing,
     Symlink,
+    Directory,
     Other,
 }
 
 fn dest_kind(path: &Path) -> Result<DestKind> {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.file_type().is_symlink() => Ok(DestKind::Symlink),
+        Ok(meta) if meta.file_type().is_dir() => Ok(DestKind::Directory),
         Ok(_) => Ok(DestKind::Other),
         Err(err) if err.kind() == ErrorKind::NotFound => Ok(DestKind::Missing),
         Err(err) => Err(SklError::from(err)),
@@ -289,22 +440,82 @@ fn same_path(current: &Path, target: &Path, link: &Path) -> bool {
     }
 }
 
-fn create_symlink(target: &Path, link: &Path) -> Result<()> {
+fn same_skill_tree(a: &Path, b: &Path) -> bool {
+    match (hash_skill_dir(a), hash_skill_dir(b)) {
+        (Ok(left), Ok(right)) => left.tree_hash == right.tree_hash,
+        _ => false,
+    }
+}
+
+fn copy_skill_tree(src: &Path, dest: &Path) -> Result<()> {
+    match dest_kind(dest) {
+        Ok(DestKind::Directory) => fs::remove_dir_all(dest)?,
+        Ok(DestKind::Symlink) | Ok(DestKind::Other) => {
+            fs::remove_file(dest)?;
+        }
+        Ok(DestKind::Missing) | Err(_) => {}
+    }
+    fs::create_dir_all(dest)?;
+    for entry in walkdir::WalkDir::new(src)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            name != ".git" && name != ".DS_Store" && name != "node_modules"
+        })
+    {
+        let entry = entry.map_err(|err| {
+            SklError::LocalState(format!("copy {}: {err}", src.display()))
+        })?;
+        if entry.path() == src {
+            continue;
+        }
+        let rel = entry
+            .path()
+            .strip_prefix(src)
+            .unwrap_or(entry.path())
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel.is_empty() || !is_safe_file_path(&rel) {
+            continue;
+        }
+        let to = dest.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&to)?;
+        } else if entry.file_type().is_file() {
+            if let Some(parent) = to.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(entry.path(), &to)?;
+        }
+    }
+    Ok(())
+}
+
+fn create_symlink_io(target: &Path, link: &Path) -> std::io::Result<()> {
+    #[cfg(test)]
+    {
+        if FORCE_SYMLINK_FAIL.with(Cell::get) {
+            return Err(std::io::Error::new(
+                ErrorKind::PermissionDenied,
+                "EPERM: operation not permitted",
+            ));
+        }
+    }
     #[cfg(unix)]
     {
-        std::os::unix::fs::symlink(target, link)?;
-        Ok(())
+        std::os::unix::fs::symlink(target, link)
     }
     #[cfg(windows)]
     {
-        std::os::windows::fs::symlink_dir(target, link)?;
-        Ok(())
+        std::os::windows::fs::symlink_dir(target, link)
     }
     #[cfg(not(any(unix, windows)))]
     {
         let _ = (target, link);
-        Err(SklError::LocalState(
-            "symlinks are not supported on this platform".into(),
+        Err(std::io::Error::new(
+            ErrorKind::Unsupported,
+            "symlinks are not supported on this platform",
         ))
     }
 }
@@ -330,6 +541,16 @@ mod tests {
         }
     }
 
+    fn with_forced_symlink_fail<T>(f: impl FnOnce() -> T) -> T {
+        FORCE_SYMLINK_FAIL.with(|cell| cell.set(true));
+        let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+        FORCE_SYMLINK_FAIL.with(|cell| cell.set(false));
+        match out {
+            Ok(value) => value,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
+
     #[test]
     fn use_symlinks_claude_and_cursor_and_writes_manifest() {
         let tmp = tempfile::tempdir().unwrap();
@@ -342,6 +563,8 @@ mod tests {
         assert_eq!(out.skill, "greeter");
         assert_eq!(out.links.len(), 2);
         assert!(out.links.iter().all(|l| l.action == LinkAction::Created));
+        assert_eq!(out.mode, LINK_MODE);
+        assert!(out.fallback.is_none());
 
         let claude = project.join(".claude/skills/greeter");
         let cursor = project.join(".cursor/skills/greeter");
@@ -441,5 +664,114 @@ mod tests {
         assert!(validate_skill_name("a/b").is_err());
         assert!(validate_skill_name(".hidden").is_err());
         assert!(validate_skill_name("").is_err());
+    }
+
+    #[test]
+    fn falls_back_to_copy_when_symlink_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+
+        let out = with_forced_symlink_fail(|| activate(&project, &home, &skill)).unwrap();
+        assert_eq!(out.mode, COPY_MODE);
+        assert!(out.fallback.as_ref().unwrap().contains("EPERM"), "{out:?}");
+        assert!(out.links.iter().all(|l| l.action == LinkAction::Copied));
+
+        let claude = project.join(".claude/skills/greeter");
+        let cursor = project.join(".cursor/skills/greeter");
+        assert!(claude.is_dir());
+        assert!(!claude.symlink_metadata().unwrap().file_type().is_symlink());
+        assert!(cursor.is_dir());
+        assert_eq!(
+            fs::read_to_string(claude.join("SKILL.md")).unwrap(),
+            "# greeter\n"
+        );
+
+        let manifest = load_manifest(&project).unwrap();
+        assert_eq!(manifest.skills[0].mode, COPY_MODE);
+        assert!(fs::read_to_string(manifest_path(&project))
+            .unwrap()
+            .contains("copy"));
+
+        let again = with_forced_symlink_fail(|| activate(&project, &home, &skill)).unwrap();
+        assert!(again
+            .links
+            .iter()
+            .all(|l| l.action == LinkAction::Unchanged));
+        assert_eq!(again.mode, COPY_MODE);
+    }
+
+    #[test]
+    fn unuse_removes_copy_mode_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+        with_forced_symlink_fail(|| activate(&project, &home, &skill)).unwrap();
+        assert!(project.join(".claude/skills/greeter").is_dir());
+
+        let out = deactivate(&project, &home, "greeter").unwrap();
+        assert!(out.was_listed);
+        assert!(out.links.iter().all(|l| l.action == LinkAction::Removed));
+        assert!(!project.join(".claude/skills/greeter").exists());
+        assert!(!project.join(".cursor/skills/greeter").exists());
+        assert!(load_manifest(&project).unwrap().skills.is_empty());
+    }
+
+    #[test]
+    fn unuse_still_refuses_unmanaged_directory() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(project.join(".claude/skills/greeter")).unwrap();
+        fs::write(project.join(".claude/skills/greeter/SKILL.md"), "mine").unwrap();
+
+        let err = deactivate(&project, &home, "greeter")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not a symlink"), "{err}");
+        assert_eq!(
+            fs::read_to_string(project.join(".claude/skills/greeter/SKILL.md")).unwrap(),
+            "mine"
+        );
+    }
+
+    #[test]
+    fn fallback_error_matches_eperm_enotsup_privilege() {
+        assert!(is_symlink_fallback_error(&std::io::Error::new(
+            ErrorKind::PermissionDenied,
+            "EPERM"
+        )));
+        assert!(is_symlink_fallback_error(&std::io::Error::new(
+            ErrorKind::Unsupported,
+            "ENOTSUP"
+        )));
+        assert!(is_symlink_fallback_error(&std::io::Error::from_raw_os_error(
+            1314
+        )));
+        assert!(!is_symlink_fallback_error(&std::io::Error::new(
+            ErrorKind::AlreadyExists,
+            "exists"
+        )));
+    }
+
+    #[test]
+    fn probe_symlink_reports_ok_in_temp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let probe = probe_symlink(tmp.path());
+        assert!(probe.ok, "{probe:?}");
+        assert_eq!(probe.detail, "ok");
+    }
+
+    #[test]
+    fn probe_symlink_unavailable_when_forced() {
+        let tmp = tempfile::tempdir().unwrap();
+        let probe = with_forced_symlink_fail(|| probe_symlink(tmp.path()));
+        assert!(!probe.ok, "{probe:?}");
+        assert!(probe.detail.contains("EPERM"), "{probe:?}");
     }
 }

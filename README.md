@@ -43,7 +43,7 @@ cargo run -p skl -- --help
 
 ### doctor
 
-Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`.
+Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`.
 
 ```bash
 # API down is still a successful report (health = unreachable)
@@ -55,7 +55,7 @@ API_BASE=http://localhost:8787 cargo run -p skl -- doctor
 
 ### use / unuse
 
-Default is **symlink** (not copy) into the project's `.claude/skills` and `.cursor/skills`. Codex is linked only if `~/.codex/skills` exists or the project already has `.codex`. Writes/updates project `skills.toml`. `--project` overrides cwd.
+Default is **symlink** into the project's `.claude/skills` and `.cursor/skills`. If the filesystem refuses (EPERM / ENOTSUP / Windows privilege), `skl use` copies instead and records `mode = "copy"` in `skills.toml`. Codex is linked only if `~/.codex/skills` exists or the project already has `.codex`. `--project` overrides cwd.
 
 ```bash
 # Home skill (or a path already imported by `skl init`)
@@ -74,7 +74,7 @@ cargo run -p skl -- unuse greeter
 cargo run -p skl -- use greeter --project /path/to/proj
 ```
 
-`skl use` refuses to overwrite a real directory that is not a symlink. Conflict/scrub hooks live in `crates/cli/src/hooks/` (`skl sync --keep-local` / `--keep-remote`).
+`skl use` refuses to overwrite a real directory it did not create. `skl unuse` removes symlinks and copy-mode dirs it created. Conflict/scrub hooks live in `crates/cli/src/hooks/` (`skl sync --keep-local` / `--keep-remote`).
 
 ### Cross-compile (single binary)
 
