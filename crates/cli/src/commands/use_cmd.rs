@@ -123,7 +123,7 @@ fn action_label(action: LinkAction) -> &'static str {
         LinkAction::Created => "symlink",
         LinkAction::Copied => "copy",
         LinkAction::Replaced => "replace",
-        LinkAction::CopyReplaced => "replace",
+        LinkAction::CopyReplaced => "copy*",
         LinkAction::Unchanged => "ok",
         LinkAction::Removed => "removed",
         LinkAction::Absent => "absent",
