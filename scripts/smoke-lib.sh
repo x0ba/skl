@@ -77,6 +77,7 @@ skl_start_api() {
       fi
     fi
   fi
+  mkdir -p "$WORKDIR"
   (
     cd "$ROOT/apps/api"
     if [[ ! -f .env ]]; then
@@ -88,7 +89,7 @@ skl_start_api() {
     pnpm migrate
     # Override .env.example's ALLOW_DEV_AUTH=false (dot-env loader skips set keys).
     ALLOW_DEV_AUTH=true pnpm start
-  ) &
+  ) >"$WORKDIR/api.log" 2>&1 &
   API_PID=$!
 }
 
