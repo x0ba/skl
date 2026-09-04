@@ -1,13 +1,31 @@
 //! Locked API shapes from `apps/api/src/contracts.ts` (`@skl/api/contracts`).
 //! Paths MUST use `/v1`. Do not register or call unversioned aliases.
+//!
+//! Read models are wrapped objects, never bare `string[]`:
+//!   GET /v1/skills  → `{ skills: { name, tree_hash, updated_at }[] }`
+//!   GET /v1/devices → `{ devices: { id, name, created_at, last_used_at, revoked_at }[] }`
+//!   GET /v1/health  → `{ ok: true }` exactly
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 pub const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 pub const DEVICE_TOKEN_PREFIX: &str = "skl_dt_";
 pub const DEV_AUTH_PREFIX: &str = "dev:";
+pub const HASH_ALG: &str = "sha256";
+pub const API_PREFIX: &str = "/v1";
+pub const X_CONTENT_HASH: &str = "x-content-hash";
+
+fn deserialize_ok_true<'de, D>(deserializer: D) -> std::result::Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match bool::deserialize(deserializer)? {
+        true => Ok(true),
+        false => Err(serde::de::Error::custom("expected ok: true")),
+    }
+}
 
 // --- Device auth -----------------------------------------------------------
 
@@ -22,8 +40,7 @@ pub struct DeviceCodeResponse {
     pub device_code: String,
     pub user_code: String,
     pub verification_uri: String,
-    #[serde(default)]
-    pub verification_uri_complete: Option<String>,
+    pub verification_uri_complete: String,
     pub expires_in: u64,
     pub interval: u64,
 }
@@ -43,23 +60,20 @@ impl DeviceTokenRequest {
     }
 }
 
-/// 200 body. `expires_in` is null for a long-lived device token.
-/// Contract: `{ access_token, expires_in: null }`. `token_type` is ignored if present.
+/// 200 body. Contract: `{ access_token, expires_in: null }`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceTokenSuccess {
     pub access_token: String,
     #[serde(default)]
     pub expires_in: Option<u64>,
-    #[serde(default)]
-    pub token_type: Option<String>,
 }
 
-/// 400 body. `slow_down` may include a new `interval`.
+/// 400 body from `DeviceTokenError`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceTokenErrorBody {
     pub error: DeviceTokenErrorKind,
     #[serde(default)]
-    pub interval: Option<u64>,
+    pub error_description: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -75,7 +89,7 @@ pub enum DeviceTokenErrorKind {
 pub enum DeviceTokenPoll {
     Success(DeviceTokenSuccess),
     Pending,
-    SlowDown { interval: Option<u64> },
+    SlowDown,
     Expired,
     Denied,
 }
@@ -90,6 +104,7 @@ pub struct DeviceApproveRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceApproveResponse {
+    #[serde(deserialize_with = "deserialize_ok_true")]
     pub ok: bool,
     pub device_id: String,
 }
@@ -145,6 +160,11 @@ pub struct PutSkillTreeResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PutBlobJsonRequest {
+    pub content_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PutBlobResponse {
     pub hash: String,
     pub size: u64,
@@ -154,6 +174,7 @@ pub struct PutBlobResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthResponse {
+    #[serde(deserialize_with = "deserialize_ok_true")]
     pub ok: bool,
 }
 
@@ -200,21 +221,25 @@ mod tests {
         let pending: DeviceTokenErrorBody =
             serde_json::from_str(r#"{"error":"authorization_pending"}"#).unwrap();
         assert_eq!(pending.error, DeviceTokenErrorKind::AuthorizationPending);
-        assert_eq!(pending.interval, None);
+        assert_eq!(pending.error_description, None);
 
-        let slow: DeviceTokenErrorBody =
-            serde_json::from_str(r#"{"error":"slow_down","interval":10}"#).unwrap();
+        let slow: DeviceTokenErrorBody = serde_json::from_str(
+            r#"{"error":"slow_down","error_description":"Polling too frequently"}"#,
+        )
+        .unwrap();
         assert_eq!(slow.error, DeviceTokenErrorKind::SlowDown);
-        assert_eq!(slow.interval, Some(10));
+        assert_eq!(
+            slow.error_description.as_deref(),
+            Some("Polling too frequently")
+        );
     }
 
     #[test]
     fn device_token_success_matches_contract() {
         let tok: DeviceTokenSuccess =
             serde_json::from_str(r#"{"access_token":"skl_dt_abc","expires_in":null}"#).unwrap();
-        assert_eq!(tok.access_token, "skl_dt_abc");
+        assert!(tok.access_token.starts_with(DEVICE_TOKEN_PREFIX));
         assert_eq!(tok.expires_in, None);
-        assert_eq!(tok.token_type, None);
     }
 
     #[test]
@@ -240,6 +265,9 @@ mod tests {
         let v = serde_json::to_value(&req).unwrap();
         assert_eq!(v["grant_type"], DEVICE_GRANT_TYPE);
         assert_eq!(v["device_code"], "dc");
+        assert_eq!(DEVICE_TOKEN_PREFIX, "skl_dt_");
+        assert_eq!(HASH_ALG, "sha256");
+        assert_eq!(API_PREFIX, "/v1");
     }
 
     #[test]
@@ -275,6 +303,14 @@ mod tests {
     fn health_is_ok_true() {
         let health: HealthResponse = serde_json::from_str(r#"{"ok":true}"#).unwrap();
         assert!(health.ok);
+        assert!(serde_json::from_str::<HealthResponse>(r#"{"ok":false}"#).is_err());
+        assert!(serde_json::from_str::<HealthResponse>(r#"{"status":"ok"}"#).is_err());
+    }
+
+    #[test]
+    fn skills_and_devices_are_not_string_arrays() {
+        assert!(serde_json::from_str::<SkillsListResponse>(r#"["greeter"]"#).is_err());
+        assert!(serde_json::from_str::<DevicesListResponse>(r#"["d1"]"#).is_err());
     }
 
     #[test]

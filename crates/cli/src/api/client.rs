@@ -122,9 +122,7 @@ impl ApiClient {
                 })?;
                 Ok(match body.error {
                     DeviceTokenErrorKind::AuthorizationPending => DeviceTokenPoll::Pending,
-                    DeviceTokenErrorKind::SlowDown => DeviceTokenPoll::SlowDown {
-                        interval: body.interval,
-                    },
+                    DeviceTokenErrorKind::SlowDown => DeviceTokenPoll::SlowDown,
                     DeviceTokenErrorKind::ExpiredToken => DeviceTokenPoll::Expired,
                     DeviceTokenErrorKind::AccessDenied => DeviceTokenPoll::Denied,
                 })
@@ -159,7 +157,7 @@ impl ApiClient {
             .await
     }
 
-    /// PUT /v1/blobs/:hash with raw octets. API also accepts `{ content_base64 }`.
+    /// PUT /v1/blobs/:hash with raw octets. Response `{ hash, size }`.
     pub async fn put_blob(&self, hash: &str, bytes: Vec<u8>) -> Result<PutBlobResponse> {
         let path = format!("/v1/blobs/{hash}");
         let response = self
@@ -183,7 +181,18 @@ impl ApiClient {
         serde_json::from_slice(&body).map_err(SklError::from)
     }
 
-    /// GET /v1/blobs/:hash → `application/octet-stream`.
+    /// PUT /v1/blobs/:hash as `{ content_base64 }` (alternate contract body).
+    pub async fn put_blob_json(&self, hash: &str, bytes: &[u8]) -> Result<PutBlobResponse> {
+        use base64::Engine;
+        use super::types::PutBlobJsonRequest;
+        let path = format!("/v1/blobs/{hash}");
+        let body = PutBlobJsonRequest {
+            content_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+        };
+        self.send_json(Method::PUT, &path, Some(&body), true).await
+    }
+
+    /// GET /v1/blobs/:hash → `application/octet-stream` (+ `x-content-hash`).
     pub async fn get_blob(&self, hash: &str) -> Result<Vec<u8>> {
         let path = format!("/v1/blobs/{hash}");
         let response = self
@@ -199,7 +208,22 @@ impl ApiClient {
             let body = response.text().await.unwrap_or_default();
             return Err(SklError::Api { status, body });
         }
-        Ok(response.bytes().await?.to_vec())
+        let header_hash = response
+            .headers()
+            .get(super::types::X_CONTENT_HASH)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.trim().to_ascii_lowercase());
+        let bytes = response.bytes().await?.to_vec();
+        if let Some(got) = header_hash {
+            let expected = hash.trim().to_ascii_lowercase();
+            if got != expected {
+                return Err(SklError::Api {
+                    status: 200,
+                    body: format!("x-content-hash {got} != requested {expected}"),
+                });
+            }
+        }
+        Ok(bytes)
     }
 
     pub async fn put_skill_tree(
@@ -288,10 +312,10 @@ mod tests {
                 device_code: "dc-1".into(),
                 user_code: "ABCD-1234".into(),
                 verification_uri: format!("{}/device", server.uri()),
-                verification_uri_complete: Some(format!(
+                verification_uri_complete: format!(
                     "{}/device?user_code=ABCD-1234",
                     server.uri()
-                )),
+                ),
                 expires_in: 600,
                 interval: 1,
             }))
@@ -382,6 +406,7 @@ mod tests {
             .respond_with(
                 ResponseTemplate::new(200)
                     .insert_header("content-type", "application/octet-stream")
+                    .insert_header("x-content-hash", "aabb")
                     .set_body_bytes(b"hello"),
             )
             .mount(&server)
@@ -392,6 +417,49 @@ mod tests {
         assert_eq!(put.hash, "aabb");
         assert_eq!(put.size, 5);
         assert_eq!(client.get_blob("aabb").await.unwrap(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn blob_put_json_base64() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v1/blobs/ccdd"))
+            .and(header("content-type", "application/json"))
+            .and(body_json(json!({ "content_base64": "aGVsbG8=" })))
+            .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+                "hash": "ccdd",
+                "size": 5
+            })))
+            .mount(&server)
+            .await;
+
+        let client = ApiClient::new(server.uri()).unwrap().with_token("dev:alice");
+        let put = client.put_blob_json("ccdd", b"hello").await.unwrap();
+        assert_eq!(put.hash, "ccdd");
+        assert_eq!(put.size, 5);
+    }
+
+    #[tokio::test]
+    async fn list_devices_wrapped() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/devices"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "devices": [{
+                    "id": "d1",
+                    "name": "laptop",
+                    "created_at": "2026-09-04T08:00:00.000Z",
+                    "last_used_at": null,
+                    "revoked_at": null
+                }]
+            })))
+            .mount(&server)
+            .await;
+
+        let client = ApiClient::new(server.uri()).unwrap().with_token("dev:alice");
+        let list = client.list_devices().await.unwrap();
+        assert_eq!(list.devices[0].id, "d1");
+        assert_eq!(list.devices[0].last_used_at, None);
     }
 
     #[tokio::test]

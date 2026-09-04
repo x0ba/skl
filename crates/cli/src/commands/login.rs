@@ -21,11 +21,7 @@ pub async fn run(api_base: String, dev_user: Option<String>) -> Result<()> {
 
     eprintln!();
     eprintln!("To approve this device, open:");
-    if let Some(complete) = &code.verification_uri_complete {
-        eprintln!("  {complete}");
-    } else {
-        eprintln!("  {}", code.verification_uri);
-    }
+    eprintln!("  {}", code.verification_uri_complete);
     eprintln!("And enter code:  {}", code.user_code);
     eprintln!();
     eprintln!("Waiting for approval (poll /v1/auth/device/token) ...");
@@ -41,22 +37,12 @@ pub async fn run(api_base: String, dev_user: Option<String>) -> Result<()> {
         tokio::time::sleep(interval).await;
         match client.poll_device_token(&code.device_code).await? {
             DeviceTokenPoll::Pending => {}
-            DeviceTokenPoll::SlowDown {
-                interval: new_interval,
-            } => {
-                interval = match new_interval {
-                    Some(secs) => Duration::from_secs(secs.max(1)),
-                    None => interval + Duration::from_secs(5),
-                };
+            DeviceTokenPoll::SlowDown => {
+                interval += Duration::from_secs(5);
             }
             DeviceTokenPoll::Expired => return Err(SklError::DeviceAuthExpired),
             DeviceTokenPoll::Denied => return Err(SklError::DeviceAuthDenied),
             DeviceTokenPoll::Success(token) => {
-                if let Some(kind) = &token.token_type {
-                    if kind != "Bearer" {
-                        eprintln!("warning: unexpected token_type {kind:?}");
-                    }
-                }
                 auth::store_device_token(&token.access_token)?;
                 let mut cfg = config::load(&paths).unwrap_or_default();
                 cfg.api_base = Some(api_base.clone());

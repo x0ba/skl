@@ -16,23 +16,32 @@ pub struct DiscoveredSkill {
     pub tree: SkillTree,
 }
 
-/// SHA-256 hex of file bytes.
+/// SHA-256 hex of raw bytes (lowercase), matching `apps/api/src/lib/hash.ts`.
 pub fn hash_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    hex::encode(hasher.finalize())
+    hex::encode(hasher.finalize()).to_ascii_lowercase()
+}
+
+pub fn normalize_hash(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
 }
 
 /// Canonical tree hash from `apps/api/src/lib/tree.ts` / contracts.ts:
-/// SHA-256 of sorted `${path}\0${hash}` lines joined by `\n`.
-/// Empty tree => SHA-256 of the empty string.
+/// sort paths lex; join `${path}\0${hash}` with `\n` (NO trailing newline);
+/// sha256 hex lowercase. Empty tree => sha256("").
 pub fn tree_hash(files: &BTreeMap<String, String>) -> String {
     if files.is_empty() {
         return hash_bytes(b"");
     }
-    let canonical = files
-        .iter()
-        .map(|(path, hash)| format!("{path}\0{hash}"))
+    let mut paths: Vec<&String> = files.keys().collect();
+    paths.sort();
+    let canonical = paths
+        .into_iter()
+        .map(|path| {
+            let hash = files.get(path).map(|h| normalize_hash(h)).unwrap_or_default();
+            format!("{path}\0{hash}")
+        })
         .collect::<Vec<_>>()
         .join("\n");
     hash_bytes(canonical.as_bytes())
@@ -174,6 +183,8 @@ mod tests {
         files.insert("b.md".into(), "bb".into());
         files.insert("a.md".into(), "aa".into());
         assert_eq!(tree_hash(&files), hash_bytes(b"a.md\0aa\nb.md\0bb"));
+        assert_ne!(tree_hash(&files), hash_bytes(b"a.md\0aa\nb.md\0bb\n"));
+        assert!(hash_bytes(b"x").chars().all(|c| !c.is_ascii_uppercase()));
     }
 
     #[test]
