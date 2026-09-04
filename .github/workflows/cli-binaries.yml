@@ -1,0 +1,96 @@
+# Portable skl CLI binary + import→sync→use smoke. Linux is required;
+# Windows GNU is built via zig when the cross-compile script can.
+# brew / macOS signed artifacts are out of scope.
+name: cli-binaries
+
+on:
+  push:
+    paths:
+      - "crates/cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "scripts/cross-compile.sh"
+      - "scripts/smoke-lib.sh"
+      - "scripts/smoke-import-sync-use.sh"
+      - "scripts/smoke-clash.sh"
+      - "apps/api/**"
+      - "docker-compose.yml"
+      - ".github/workflows/cli-binaries.yml"
+  pull_request:
+    paths:
+      - "crates/cli/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "scripts/cross-compile.sh"
+      - "scripts/smoke-lib.sh"
+      - "scripts/smoke-import-sync-use.sh"
+      - "scripts/smoke-clash.sh"
+      - "apps/api/**"
+      - "docker-compose.yml"
+      - ".github/workflows/cli-binaries.yml"
+  workflow_dispatch:
+
+jobs:
+  cross-compile:
+    name: linux musl + windows gnu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.1
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - name: Cross-compile portable binaries
+        run: TARGETS=x86_64-unknown-linux-musl,x86_64-pc-windows-gnu ./scripts/cross-compile.sh
+      - name: Smoke the musl binary
+        run: |
+          ./dist/skl-x86_64-unknown-linux-musl --help
+          file ./dist/skl-x86_64-unknown-linux-musl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skl-cli
+          path: |
+            dist/skl
+            dist/skl-*
+            dist/SHA256SUMS
+
+  smoke-import-sync-use:
+    name: import → sync → use + clash
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: skl
+          POSTGRES_PASSWORD: skl
+          POSTGRES_DB: skl
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U skl -d skl"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Two-machine smoke
+        env:
+          DATABASE_URL: postgres://skl:skl@localhost:5432/skl
+          ALLOW_DEV_AUTH: "true"
+          START_API: "1"
+          SKIP_DOCKER: "1"
+        run: |
+          ./scripts/smoke-import-sync-use.sh
+          ./scripts/smoke-clash.sh
