@@ -7,6 +7,8 @@ mod hooks;
 mod local;
 mod sync;
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
 use crate::config::{resolve_api_base, Paths};
@@ -44,6 +46,25 @@ enum Command {
     Status,
     /// List local skills from state.db (and remote presence when logged in).
     List,
+    /// Diagnose agent skill paths, keyring, state.db, and GET /v1/health.
+    Doctor,
+    /// Symlink a skill into this project's agent dirs and skills.toml.
+    Use {
+        /// Skill names. With none, list skills already activated in the project.
+        #[arg(value_name = "SKILL")]
+        skills: Vec<String>,
+        /// Project directory (default: cwd).
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+    },
+    /// Remove project skill symlinks and drop them from skills.toml.
+    Unuse {
+        #[arg(value_name = "SKILL", required = true)]
+        skills: Vec<String>,
+        /// Project directory (default: cwd).
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+    },
 }
 
 #[tokio::main]
@@ -69,5 +90,8 @@ async fn run() -> Result<(), SklError> {
         Command::Sync => commands::sync::run(api_base).await,
         Command::Status => commands::status::run(api_base),
         Command::List => commands::list::run(api_base).await,
+        Command::Doctor => commands::doctor::run(api_base).await,
+        Command::Use { skills, project } => commands::use_cmd::run(&skills, project),
+        Command::Unuse { skills, project } => commands::unuse::run(&skills, project),
     }
 }
