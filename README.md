@@ -31,6 +31,8 @@ pnpm dev
 
 `skl login` opens `http://localhost:3000/device?user_code=…`. Paste the code if needed, approve, then check `/` for the new device.
 
+If `apps/api/.env` sets `ALLOW_DEV_AUTH=false`, local `dev:<user_id>` approve fails with `clerk_not_configured` even when `CLERK_SECRET_KEY` is empty. Leave that flag unset (or `true`).
+
 ## CLI
 
 `API_BASE` / `--api-base` defaults to `http://localhost:8787`. Contracts stay `/v1`.
@@ -40,6 +42,10 @@ cargo check -p skl
 cargo test -p skl
 cargo run -p skl -- --help
 ```
+
+### login
+
+After `skl login`, the device `access_token` is stored in the OS keyring (`service=skl`, `account=device_token`). In headless/CI environments the keyring may not persist across processes — follow-on commands then say `not logged in`. Export `SKL_TOKEN=<access_token>` (overrides the keyring), or use `skl login --dev-user <id>` / `Bearer dev:<id>` when `ALLOW_DEV_AUTH` is on. `skl doctor` already reports keyring + `SKL_TOKEN` presence.
 
 ### doctor
 

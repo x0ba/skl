@@ -27,7 +27,9 @@ pnpm dev
 ```
 
 Leave `CLERK_SECRET_KEY` empty in `apps/api/.env` so the API accepts
-`Authorization: Bearer dev:<clerk_user_id>`.
+`Authorization: Bearer dev:<clerk_user_id>`. Do **not** set
+`ALLOW_DEV_AUTH=false` — that disables the local bypass even with an empty
+Clerk secret (the page then gets `clerk_not_configured`).
 
 Then the web app:
 
@@ -79,7 +81,9 @@ the local `dev:<user_id>` token.
    Invalid codes return 404; expired codes are shown as expired (API
    `expired_token` / 410).
 5. The CLI poll of `POST /v1/auth/device/token` should then receive
-   `{ access_token, expires_in: null }`.
+   `{ access_token, expires_in: null }`. After success the CLI stores that
+   token in the OS keyring; if later CLI commands say not logged in in
+   headless environments, export `SKL_TOKEN`.
 6. `/` lists the new device via `GET /v1/devices` and the skill count via
    `GET /v1/skills`. **Revoke** calls `DELETE /v1/devices/:id`.
 
