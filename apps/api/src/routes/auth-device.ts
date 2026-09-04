@@ -152,7 +152,7 @@ authDeviceRoutes.post(
       .set({ tokenIssuedAt: now })
       .where(eq(deviceAuthorizations.id, authz.id));
 
-    const body: DeviceTokenSuccess = { access_token: rawToken };
+    const body: DeviceTokenSuccess = { access_token: rawToken, expires_in: null };
     return c.json(body, 200);
   },
 );

@@ -1,24 +1,24 @@
 /**
  * skl API contracts — furnace (CLI + device-approve page) mirrors this file.
  *
- * Unversioned paths only (no /v1):
+ * ALL routes are under /v1 (no unversioned aliases):
  *
- *   POST   /auth/device/code
- *   POST   /auth/device/token
- *   POST   /auth/device/approve
- *   GET    /devices
- *   DELETE /devices/:id
- *   POST   /sync
- *   PUT    /blobs/:hash
- *   GET    /blobs/:hash
- *   PUT    /skills/:name/tree
- *   GET    /skills
- *   GET    /skills/:name
- *   GET    /health
+ *   POST   /v1/auth/device/code
+ *   POST   /v1/auth/device/token
+ *   POST   /v1/auth/device/approve
+ *   GET    /v1/devices
+ *   DELETE /v1/devices/:id
+ *   POST   /v1/sync
+ *   PUT    /v1/blobs/:hash
+ *   GET    /v1/blobs/:hash
+ *   PUT    /v1/skills/:name/tree
+ *   GET    /v1/skills
+ *   GET    /v1/skills/:name
+ *   GET    /v1/health
  *
  * Auth: `Authorization: Bearer` Clerk JWT (web) or device token (CLI).
  * Local only (no CLERK_SECRET_KEY): `Authorization: Bearer dev:<clerk_user_id>`.
- * Store only hashed device tokens. No refresh_token.
+ * Store only hashed device tokens. No refresh_token. Long-lived: expires_in is null.
  *
  * Content addressing (E2EE-ready):
  *   - Blob hash = lowercase hex SHA-256 of the raw bytes.
@@ -32,34 +32,36 @@ export const HASH_ALG = "sha256" as const;
 export const DEVICE_GRANT_TYPE =
   "urn:ietf:params:oauth:grant-type:device_code" as const;
 
+export const API_PREFIX = "/v1" as const;
+
 export const API_ROUTES = {
-  health: "/health",
-  deviceCode: "/auth/device/code",
-  deviceToken: "/auth/device/token",
-  deviceApprove: "/auth/device/approve",
-  devices: "/devices",
-  device: "/devices/:id",
-  sync: "/sync",
-  blob: "/blobs/:hash",
-  skills: "/skills",
-  skill: "/skills/:name",
-  skillTree: "/skills/:name/tree",
+  health: "/v1/health",
+  deviceCode: "/v1/auth/device/code",
+  deviceToken: "/v1/auth/device/token",
+  deviceApprove: "/v1/auth/device/approve",
+  devices: "/v1/devices",
+  device: "/v1/devices/:id",
+  sync: "/v1/sync",
+  blob: "/v1/blobs/:hash",
+  skills: "/v1/skills",
+  skill: "/v1/skills/:name",
+  skillTree: "/v1/skills/:name/tree",
 } as const;
 
 export function devicePath(id: string): string {
-  return `/devices/${id}`;
+  return `/v1/devices/${id}`;
 }
 
 export function blobPath(hash: string): string {
-  return `/blobs/${hash}`;
+  return `/v1/blobs/${hash}`;
 }
 
 export function skillPath(name: string): string {
-  return `/skills/${encodeURIComponent(name)}`;
+  return `/v1/skills/${encodeURIComponent(name)}`;
 }
 
 export function skillTreePath(name: string): string {
-  return `/skills/${encodeURIComponent(name)}/tree`;
+  return `/v1/skills/${encodeURIComponent(name)}/tree`;
 }
 
 export type ErrorBody = {
@@ -100,9 +102,10 @@ export type DeviceTokenError = {
   error_description?: string;
 };
 
-/** Issued once. Server stores only a hash of access_token. */
+/** Issued once. Server stores only a hash of access_token. Long-lived. */
 export type DeviceTokenSuccess = {
   access_token: string;
+  expires_in: null;
 };
 
 export type DeviceTokenResponse = DeviceTokenSuccess | DeviceTokenError;

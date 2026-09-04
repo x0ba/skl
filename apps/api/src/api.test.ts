@@ -38,11 +38,11 @@ describe("device auth + sync demo path", () => {
       return;
     }
 
-    const health = await app.request("/health");
+    const health = await app.request("/v1/health");
     expect(health.status).toBe(200);
     expect(await json(health)).toEqual({ ok: true });
 
-    const start = await app.request("/auth/device/code", {
+    const start = await app.request("/v1/auth/device/code", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ client_name: "laptop" }),
@@ -55,7 +55,7 @@ describe("device auth + sync demo path", () => {
     expect(started.verification_uri_complete).toContain("user_code=");
     expect(started.interval).toBe(5);
 
-    const pending = await app.request("/auth/device/token", {
+    const pending = await app.request("/v1/auth/device/token", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -66,7 +66,7 @@ describe("device auth + sync demo path", () => {
     expect(pending.status).toBe(400);
     expect(await json(pending)).toMatchObject({ error: "authorization_pending" });
 
-    const approve = await app.request("/auth/device/approve", {
+    const approve = await app.request("/v1/auth/device/approve", {
       method: "POST",
       headers: { "content-type": "application/json", ...clerkAuth },
       body: JSON.stringify({ user_code: userCode }),
@@ -77,7 +77,7 @@ describe("device auth + sync demo path", () => {
     const deviceId = String(approved.device_id);
     expect(deviceId).toBeTruthy();
 
-    const tokenRes = await app.request("/auth/device/token", {
+    const tokenRes = await app.request("/v1/auth/device/token", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -88,7 +88,7 @@ describe("device auth + sync demo path", () => {
     expect(tokenRes.status).toBe(200);
     const issued = await json(tokenRes);
     expect(issued.refresh_token).toBeUndefined();
-    expect(issued.token_type).toBeUndefined();
+    expect(issued.expires_in).toBeNull();
     const accessToken = String(issued.access_token);
     expect(accessToken.startsWith(DEVICE_TOKEN_PREFIX)).toBe(true);
     const deviceAuth = { Authorization: `Bearer ${accessToken}` };
@@ -97,7 +97,7 @@ describe("device auth + sync demo path", () => {
     const blobHash = sha256Hex(content);
     const treeHash = computeTreeHash({ "SKILL.md": blobHash });
 
-    const emptySync = await app.request("/sync", {
+    const emptySync = await app.request("/v1/sync", {
       method: "POST",
       headers: { "content-type": "application/json", ...deviceAuth },
       body: JSON.stringify({
@@ -112,14 +112,14 @@ describe("device auth + sync demo path", () => {
       missing_skills: [],
     });
 
-    const putBlob = await app.request(`/blobs/${blobHash}`, {
+    const putBlob = await app.request(`/v1/blobs/${blobHash}`, {
       method: "PUT",
       headers: { ...deviceAuth, "content-type": "application/json" },
       body: JSON.stringify({ content_base64: Buffer.from(content).toString("base64") }),
     });
     expect(putBlob.status).toBe(201);
 
-    const putTree = await app.request("/skills/greeter/tree", {
+    const putTree = await app.request("/v1/skills/greeter/tree", {
       method: "PUT",
       headers: { "content-type": "application/json", ...deviceAuth },
       body: JSON.stringify({
@@ -130,21 +130,21 @@ describe("device auth + sync demo path", () => {
     expect(putTree.status).toBe(200);
     expect((await json(putTree)).tree_hash).toBe(treeHash);
 
-    const listed = await app.request("/skills", { headers: deviceAuth });
+    const listed = await app.request("/v1/skills", { headers: deviceAuth });
     expect(listed.status).toBe(200);
     const listBody = await json(listed);
     const skills = listBody.skills as Array<{ name: string; updated_at: string }>;
     expect(skills[0]).toMatchObject({ name: "greeter", tree_hash: treeHash });
     expect(skills[0]?.updated_at).toBeTruthy();
 
-    const detail = await app.request("/skills/greeter", { headers: deviceAuth });
+    const detail = await app.request("/v1/skills/greeter", { headers: deviceAuth });
     expect(await json(detail)).toMatchObject({
       name: "greeter",
       tree_hash: treeHash,
       files: { "SKILL.md": blobHash },
     });
 
-    const machineB = await app.request("/sync", {
+    const machineB = await app.request("/v1/sync", {
       method: "POST",
       headers: { "content-type": "application/json", ...clerkAuth },
       body: JSON.stringify({ skills: {} }),
@@ -157,7 +157,7 @@ describe("device auth + sync demo path", () => {
     ]);
 
     const otherHash = sha256Hex("other");
-    const conflictRes = await app.request("/sync", {
+    const conflictRes = await app.request("/v1/sync", {
       method: "POST",
       headers: { "content-type": "application/json", ...deviceAuth },
       body: JSON.stringify({
@@ -174,7 +174,7 @@ describe("device auth + sync demo path", () => {
       },
     ]);
 
-    const devicesRes = await app.request("/devices", { headers: deviceAuth });
+    const devicesRes = await app.request("/v1/devices", { headers: deviceAuth });
     expect(devicesRes.status).toBe(200);
     const devices = (await json(devicesRes)).devices as Array<{
       id: string;
@@ -183,13 +183,13 @@ describe("device auth + sync demo path", () => {
     expect(devices[0]?.id).toBe(deviceId);
     expect(devices[0]?.last_used_at).toBeTruthy();
 
-    const revoke = await app.request(`/devices/${deviceId}`, {
+    const revoke = await app.request(`/v1/devices/${deviceId}`, {
       method: "DELETE",
       headers: clerkAuth,
     });
     expect(revoke.status).toBe(204);
 
-    const denied = await app.request("/skills", { headers: deviceAuth });
+    const denied = await app.request("/v1/skills", { headers: deviceAuth });
     expect(denied.status).toBe(401);
   });
 });
