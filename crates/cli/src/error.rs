@@ -8,11 +8,21 @@ pub enum SklError {
     DeviceAuthDenied,
     DeviceAuthExpired,
     DeviceAuthFailed(String),
-    Api { status: u16, body: String },
-    ApiUnreachable { url: String, source: String },
+    Api {
+        status: u16,
+        body: String,
+    },
+    ApiUnreachable {
+        url: String,
+        source: String,
+    },
     Keyring(String),
     Config(String),
     LocalState(String),
+    /// Secret scrub refused the upload. Bytes are not hashed or PUT.
+    BlockedSecrets(String),
+    /// Tree-hash conflict needs keep-local / keep-remote.
+    Conflict(String),
     Io(std::io::Error),
     Http(reqwest::Error),
     Json(serde_json::Error),
@@ -26,7 +36,9 @@ impl fmt::Display for SklError {
                 write!(f, "not logged in; run `skl login`")
             }
             Self::DeviceAuthDenied => write!(f, "device authorization was denied"),
-            Self::DeviceAuthExpired => write!(f, "device authorization expired; run `skl login` again"),
+            Self::DeviceAuthExpired => {
+                write!(f, "device authorization expired; run `skl login` again")
+            }
             Self::DeviceAuthFailed(msg) => write!(f, "device authorization failed: {msg}"),
             Self::Api { status, body } => write!(f, "API error {status}: {body}"),
             Self::ApiUnreachable { url, source } => {
@@ -37,6 +49,8 @@ impl fmt::Display for SklError {
             }
             Self::Config(msg) => write!(f, "config: {msg}"),
             Self::LocalState(msg) => write!(f, "local state: {msg}"),
+            Self::BlockedSecrets(msg) => write!(f, "upload blocked: {msg}"),
+            Self::Conflict(msg) => write!(f, "conflict: {msg}"),
             Self::Io(err) => write!(f, "{err}"),
             Self::Http(err) => write!(f, "{err}"),
             Self::Json(err) => write!(f, "{err}"),
@@ -74,5 +88,11 @@ impl From<rusqlite::Error> for SklError {
 impl From<keyring::Error> for SklError {
     fn from(value: keyring::Error) -> Self {
         Self::Keyring(value.to_string())
+    }
+}
+
+impl From<crate::prompt::ResolveError> for SklError {
+    fn from(value: crate::prompt::ResolveError) -> Self {
+        Self::Conflict(value.to_string())
     }
 }

@@ -2,9 +2,15 @@ mod api;
 mod auth;
 mod commands;
 mod config;
+mod conflict;
 mod error;
 mod hooks;
 mod local;
+mod paths;
+mod prepare;
+mod prompt;
+mod scrub;
+mod skill_tree;
 mod sync;
 
 use std::path::PathBuf;
@@ -13,6 +19,7 @@ use clap::{Parser, Subcommand};
 
 use crate::config::{resolve_api_base, Paths};
 use crate::error::SklError;
+use crate::hooks::conflict::ConflictMode;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -41,7 +48,17 @@ enum Command {
     /// Import skills from ~/.claude/skills, ~/.cursor/skills, and ~/.codex/skills if present.
     Init,
     /// Hash sync: POST /v1/sync, PUT blobs, PUT trees, GET downloads.
-    Sync,
+    Sync {
+        /// Resolve every tree-hash conflict by keeping local (overwrite remote).
+        #[arg(long, group = "resolution")]
+        keep_local: bool,
+        /// Resolve every tree-hash conflict by keeping remote (overwrite local).
+        #[arg(long, group = "resolution")]
+        keep_remote: bool,
+        /// Allow warning-level secret findings; blocks still refuse upload.
+        #[arg(long)]
+        allow_warnings: bool,
+    },
     /// Show login, api_base, local skill count, last sync.
     Status,
     /// List local skills from state.db (and remote presence when logged in).
@@ -87,7 +104,27 @@ async fn run() -> Result<(), SklError> {
     match cli.command {
         Command::Login { dev_user } => commands::login::run(api_base, dev_user).await,
         Command::Init => commands::init::run(),
-        Command::Sync => commands::sync::run(api_base).await,
+        Command::Sync {
+            keep_local,
+            keep_remote,
+            allow_warnings,
+        } => {
+            let conflict = if keep_local {
+                ConflictMode::KeepLocal
+            } else if keep_remote {
+                ConflictMode::KeepRemote
+            } else {
+                ConflictMode::Prompt
+            };
+            commands::sync::run(
+                api_base,
+                sync::SyncOptions {
+                    conflict,
+                    allow_warnings,
+                },
+            )
+            .await
+        }
         Command::Status => commands::status::run(api_base),
         Command::List => commands::list::run(api_base).await,
         Command::Doctor => commands::doctor::run(api_base).await,
