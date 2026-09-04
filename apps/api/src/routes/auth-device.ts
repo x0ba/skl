@@ -116,8 +116,10 @@ authDeviceRoutes.post(
       return c.json(body, 400);
     }
 
+    const approved = Boolean(authz.approvedAt && authz.userId);
     const minIntervalMs = authz.pollIntervalSeconds * 1000;
     if (
+      !approved &&
       authz.lastPolledAt &&
       now.getTime() - authz.lastPolledAt.getTime() < minIntervalMs
     ) {
@@ -140,7 +142,7 @@ authDeviceRoutes.post(
       .set({ lastPolledAt: now })
       .where(eq(deviceAuthorizations.id, authz.id));
 
-    if (!authz.approvedAt || !authz.userId) {
+    if (!approved || !authz.userId) {
       const body: DeviceTokenError = {
         error: "authorization_pending",
         error_description: "Waiting for user approval",
