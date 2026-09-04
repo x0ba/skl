@@ -3,7 +3,7 @@
 Atuin-style personal agent skill sync.
 
 - `apps/api` — Hono + Postgres (auth, device flow, hash-based sync). All HTTP routes are under `/v1`; see `apps/api/src/contracts.ts`.
-- `apps/web` — Next.js (furnace)
+- `apps/web` — Next.js (furnace): device-approve + dashboard
 - `crates/cli` — CLI (furnace)
 
 ## API
@@ -15,6 +15,21 @@ docker compose up -d postgres
 ```
 
 Then see [`apps/api/README.md`](apps/api/README.md). Contract types: [`apps/api/src/contracts.ts`](apps/api/src/contracts.ts).
+
+## Web
+
+Device-approve (`/device`) and a bare dashboard (`/`). See [`apps/web/README.md`](apps/web/README.md).
+
+```bash
+# API on :8787 (CLERK_SECRET_KEY unset → Bearer dev:<user_id>)
+# then:
+cd apps/web
+cp .env.example .env.local
+pnpm install
+pnpm dev
+```
+
+`skl login` opens `http://localhost:3000/device?user_code=…`. Paste the code if needed, approve, then check `/` for the new device.
 
 ## CLI
 
