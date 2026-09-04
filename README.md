@@ -4,7 +4,7 @@ Atuin-style personal agent skill sync.
 
 - `apps/api` — Hono + Postgres (auth, device flow, hash-based sync). All HTTP routes are under `/v1`; see `apps/api/src/contracts.ts`.
 - `apps/web` — Next.js (furnace): device-approve + dashboard
-- `crates/cli` — CLI (furnace)
+- `crates/cli` — CLI (furnace). Package/binary name is `skl` (`cargo build -p skl` / `cargo test -p skl`).
 
 ## API
 
@@ -84,7 +84,7 @@ cargo run -p skl -- use greeter --project /path/to/proj
 
 ### Cross-compile (single binary)
 
-`scripts/cross-compile.sh` produces one portable `skl` binary under `dist/`. Host `cargo build --release` always runs. Linux musl (and Windows GNU via zig) are built when `zig` + `cargo-zigbuild` are present — no brew formula.
+`scripts/cross-compile.sh` produces one portable `skl` binary under `dist/` from `crates/cli`. Host `cargo build --release -p skl` always runs. Linux musl (and Windows GNU via zig) are built when `zig` + `cargo-zigbuild` are present — no brew formula.
 
 ```bash
 # Host binary at minimum. Add musl/windows when tools exist:
