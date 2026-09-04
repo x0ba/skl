@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: skl
+      POSTGRES_PASSWORD: skl
+      POSTGRES_DB: skl
+    ports:
+      - "5432:5432"
+    volumes:
+      - skl_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skl -d skl"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  skl_pg:
