@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 
 pub const DEVICE_GRANT_TYPE: &str = "urn:ietf:params:oauth:grant-type:device_code";
 
+// --- Device auth -----------------------------------------------------------
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceCodeRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -103,6 +105,8 @@ pub struct DeviceApproveResponse {
     pub device_id: String,
 }
 
+// --- Sync ------------------------------------------------------------------
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SkillTree {
     pub tree_hash: String,
@@ -114,7 +118,7 @@ pub struct SyncRequest {
     pub skills: BTreeMap<String, SkillTree>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyncResponse {
     pub upload: Vec<String>,
     pub download: Vec<SyncDownload>,
@@ -129,11 +133,20 @@ pub struct SyncDownload {
     pub paths: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Cipher may emit unix millis or an ISO string; typed exports win when they land.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum Timestamp {
+    Millis(i64),
+    Iso(String),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SyncConflict {
     pub skill: String,
     pub local_tree_hash: String,
     pub remote_tree_hash: String,
+    pub remote_updated_at: Timestamp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -141,6 +154,8 @@ pub struct SkillTreePut {
     pub tree_hash: String,
     pub files: BTreeMap<String, String>,
 }
+
+// --- Read models (loosely typed until cipher publishes field lists) --------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthResponse {
@@ -164,6 +179,8 @@ pub struct SkillDetail {
     pub tree_hash: Option<String>,
     #[serde(default)]
     pub files: Option<BTreeMap<String, String>>,
+    #[serde(default)]
+    pub updated_at: Option<Timestamp>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -240,5 +257,32 @@ mod tests {
         let v = serde_json::to_value(&req).unwrap();
         assert_eq!(v["grant_type"], DEVICE_GRANT_TYPE);
         assert_eq!(v["device_code"], "dc");
+    }
+
+    #[test]
+    fn conflict_includes_remote_updated_at() {
+        let millis: SyncConflict = serde_json::from_str(
+            r#"{"skill":"demo","local_tree_hash":"aaa","remote_tree_hash":"bbb","remote_updated_at":1710000000}"#,
+        )
+        .unwrap();
+        assert_eq!(millis.remote_updated_at, Timestamp::Millis(1_710_000_000));
+
+        let iso: SyncConflict = serde_json::from_str(
+            r#"{"skill":"demo","local_tree_hash":"aaa","remote_tree_hash":"bbb","remote_updated_at":"2026-09-04T08:00:00Z"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            iso.remote_updated_at,
+            Timestamp::Iso("2026-09-04T08:00:00Z".into())
+        );
+    }
+
+    #[test]
+    fn skill_detail_includes_updated_at() {
+        let detail: SkillDetail = serde_json::from_str(
+            r#"{"name":"demo","updated_at":1710000000}"#,
+        )
+        .unwrap();
+        assert_eq!(detail.updated_at, Some(Timestamp::Millis(1_710_000_000)));
     }
 }
