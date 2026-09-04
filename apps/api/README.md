@@ -13,7 +13,7 @@ Furnace (CLI + device-approve page) should import `apps/api/src/contracts.ts` (o
 | `POST` | `/v1/auth/device/approve` | Clerk JWT | `{ user_code, device_name? }` | `{ ok, device_id }` |
 | `GET` | `/v1/devices` | Clerk or device | — | `{ devices: [{ id, name, created_at, last_used_at, revoked_at }] }` |
 | `DELETE` | `/v1/devices/:id` | Clerk or device | — | `204` |
-| `POST` | `/v1/sync` | Clerk or device | `{ skills: { [name]: { tree_hash, files: { [path]: hash } } } }` | `{ upload: hash[], download: [{ hash, skills, paths }], conflicts: [{ skill, local_tree_hash, remote_tree_hash }], missing_skills: string[] }` |
+| `POST` | `/v1/sync` | Clerk or device | `{ skills: { [name]: { tree_hash, files: { [path]: hash } } } }` | `{ upload: hash[], download: [{ hash, skills, paths }], conflicts: [{ skill, local_tree_hash, remote_tree_hash, remote_updated_at }], missing_skills: string[] }` |
 | `PUT` | `/v1/blobs/:hash` | Clerk or device | raw bytes or `{ content_base64 }` | `{ hash, size }` |
 | `GET` | `/v1/blobs/:hash` | Clerk or device | — | `application/octet-stream` |
 | `PUT` | `/v1/skills/:name/tree` | Clerk or device | `{ tree_hash, files }` | `{ name, tree_hash, updated_at }` |

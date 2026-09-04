@@ -153,6 +153,8 @@ export type SyncConflict = {
   skill: string;
   local_tree_hash: string;
   remote_tree_hash: string;
+  /** ISO-8601 from the remote skill row's updated_at. */
+  remote_updated_at: string;
 };
 
 export type SyncResponse = {

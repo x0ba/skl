@@ -7,7 +7,7 @@ import { db } from "../db";
 import { skills } from "../db/schema";
 import type { AuthVariables } from "../lib/auth";
 import { getAuth, requireAuth } from "../lib/auth";
-import { jsonError } from "../lib/http";
+import { iso, jsonError } from "../lib/http";
 import {
   listSkillFiles,
   missingBlobHashes,
@@ -100,6 +100,7 @@ syncRoutes.post("/sync", requireAuth, zValidator("json", syncBody), async (c) =>
         skill: name,
         local_tree_hash: state.tree_hash,
         remote_tree_hash: remote.currentTreeHash,
+        remote_updated_at: iso(remote.updatedAt),
       });
     }
 

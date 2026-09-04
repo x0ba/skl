@@ -166,13 +166,16 @@ describe("device auth + sync demo path", () => {
     });
     expect(conflictRes.status).toBe(200);
     const conflictBody = await json(conflictRes);
-    expect(conflictBody.conflicts).toEqual([
-      {
-        skill: "greeter",
-        local_tree_hash: otherHash,
-        remote_tree_hash: treeHash,
-      },
-    ]);
+    const conflicts = conflictBody.conflicts as Array<Record<string, string>>;
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toMatchObject({
+      skill: "greeter",
+      local_tree_hash: otherHash,
+      remote_tree_hash: treeHash,
+    });
+    expect(conflicts[0]?.remote_updated_at).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+    );
 
     const devicesRes = await app.request("/v1/devices", { headers: deviceAuth });
     expect(devicesRes.status).toBe(200);
