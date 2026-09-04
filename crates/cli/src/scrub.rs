@@ -157,9 +157,7 @@ pub fn scan_skill_file(file: &SkillFile) -> Vec<Finding> {
 }
 
 pub fn scan_bytes(skill_name: &str, path: &Path, bytes: &[u8]) -> Vec<Finding> {
-    if looks_binary(bytes) {
-        return scan_binary(skill_name, path, bytes);
-    }
+    // Always scan as text (lossy). A NUL byte must not drop token/key patterns.
     let text = String::from_utf8_lossy(bytes);
     let mut findings = Vec::new();
 
@@ -285,21 +283,6 @@ pub fn scan_bytes(skill_name: &str, path: &Path, bytes: &[u8]) -> Vec<Finding> {
     findings
 }
 
-fn scan_binary(skill_name: &str, path: &Path, bytes: &[u8]) -> Vec<Finding> {
-    let text = String::from_utf8_lossy(bytes);
-    let mut findings = Vec::new();
-    if PRIVATE_KEY.is_match(&text) {
-        findings.push(Finding {
-            skill_name: skill_name.to_string(),
-            path: path.to_path_buf(),
-            kind: SecretKind::PrivateKey,
-            severity: Severity::Block,
-            line: None,
-        });
-    }
-    findings
-}
-
 fn push_matches(
     out: &mut Vec<Finding>,
     skill_name: &str,
@@ -348,15 +331,6 @@ fn looks_like_placeholder(value: &str) -> bool {
         || lower.starts_with("${")
         || lower == "todo"
         || lower.chars().all(|c| c == 'x' || c == 'X')
-}
-
-fn looks_binary(bytes: &[u8]) -> bool {
-    if bytes.contains(&0) {
-        return true;
-    }
-    let sample = &bytes[..bytes.len().min(1024)];
-    let odd = sample.iter().filter(|b| **b < 9 && **b != b'\t').count();
-    odd > sample.len() / 10
 }
 
 /// Result of the pre-hash / pre-upload secret scan.
@@ -493,5 +467,18 @@ mod tests {
     #[test]
     fn clean_markdown_is_quiet() {
         assert!(kinds("# My skill\n\nUse an API key from the dashboard.\n").is_empty());
+    }
+
+    #[test]
+    fn nul_prefixed_github_token_is_still_blocked() {
+        let token = format!("{}{}", "ghp_", "a".repeat(36));
+        let mut bytes = vec![0];
+        bytes.extend_from_slice(token.as_bytes());
+        let findings = scan_bytes("demo", Path::new("notes.md"), &bytes);
+        assert!(findings.iter().any(|f| f.kind == SecretKind::GitHubToken));
+        assert!(matches!(
+            guard_bytes("demo", Path::new("notes.md"), &bytes),
+            UploadDecision::Block { .. }
+        ));
     }
 }

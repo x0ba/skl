@@ -93,8 +93,16 @@ impl<R: BufRead, W: Write> ConflictResolver for InteractiveResolver<R, W> {
     }
 }
 
+/// Strip C0/C1 controls so a remote skill name cannot drive the terminal.
+pub fn display_label(label: &str) -> String {
+    label
+        .chars()
+        .map(|c| if c.is_control() { '\u{FFFD}' } else { c })
+        .collect()
+}
+
 pub fn write_conflict_prompt(out: &mut impl Write, conflict: &SyncConflict) -> io::Result<()> {
-    writeln!(out, "hash mismatch: {}", conflict.skill)?;
+    writeln!(out, "hash mismatch: {}", display_label(&conflict.skill))?;
     write!(out, "  local   {}", short_hash(&conflict.local_tree_hash))?;
     if conflict.local_mtime.is_some() {
         write!(out, "  {}", format_mtime(conflict.local_mtime))?;
@@ -143,7 +151,11 @@ pub fn write_resolution(out: &mut impl Write, resolved: &ResolvedConflict) -> io
             "keep-remote (take remote; rename or skip local, then re-POST /v1/sync)"
         }
     };
-    writeln!(out, "resolved: {} → {side}", resolved.conflict.skill)
+    writeln!(
+        out,
+        "resolved: {} → {side}",
+        display_label(&resolved.conflict.skill)
+    )
 }
 
 #[cfg(test)]
@@ -213,5 +225,17 @@ mod tests {
         let resolved = resolve_conflicts(&items, &mut PreferLocal).unwrap();
         assert_eq!(resolved[0].resolution, Resolution::KeepLocal);
         assert_eq!(resolved[0].action, SyncAction::OverwriteRemote);
+    }
+
+    #[test]
+    fn prompt_strips_terminal_controls_from_skill_name() {
+        let c = SyncConflict::from_wire("bad\u{1b}]0;x\u{07}name\r\n", "aa", "bb", "");
+        let mut buf = Vec::new();
+        write_conflict_prompt(&mut buf, &c).unwrap();
+        let text = String::from_utf8(buf).unwrap();
+        assert!(!text.contains('\u{1b}'));
+        assert!(!text.contains('\u{07}'));
+        assert!(!text.contains('\r'));
+        assert!(text.contains("hash mismatch:"));
     }
 }

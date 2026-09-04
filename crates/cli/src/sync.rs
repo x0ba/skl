@@ -87,8 +87,15 @@ pub async fn run_with_opts(
     let resolutions = conflict::resolve_conflicts(&plan.conflicts, opts.conflict, &mtimes)?;
     for resolution in &resolutions {
         match resolution.choice {
-            ConflictChoice::KeepLocal => eprintln!("keep-local: {}", resolution.skill),
-            ConflictChoice::KeepRemote => eprintln!("keep-remote: {}", resolution.skill),
+            ConflictChoice::KeepLocal => {
+                eprintln!("keep-local: {}", crate::prompt::display_label(&resolution.skill))
+            }
+            ConflictChoice::KeepRemote => {
+                eprintln!(
+                    "keep-remote: {}",
+                    crate::prompt::display_label(&resolution.skill)
+                )
+            }
             ConflictChoice::Unresolved => {}
         }
     }

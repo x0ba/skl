@@ -105,7 +105,7 @@ fn print_placeholders(conflicts: &[SyncConflict]) -> Vec<ConflictResolution> {
     for conflict in conflicts {
         eprintln!(
             "  skill {}  local={}  remote={}  remote_updated_at={}",
-            conflict.skill,
+            crate::prompt::display_label(&conflict.skill),
             conflict.local_tree_hash,
             conflict.remote_tree_hash,
             conflict.remote_updated_at
