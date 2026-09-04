@@ -27,7 +27,9 @@ pnpm dev
 ```
 
 Leave `CLERK_SECRET_KEY` empty in `apps/api/.env` so the API accepts
-`Authorization: Bearer dev:<clerk_user_id>`.
+`Authorization: Bearer dev:<clerk_user_id>`. Do **not** set
+`ALLOW_DEV_AUTH=false` — that disables the local bypass even with an empty
+Clerk secret (the page then gets `clerk_not_configured`).
 
 Then the web app:
 
