@@ -76,4 +76,35 @@ cargo run -p skl -- unuse greeter
 cargo run -p skl -- use greeter --project /path/to/proj
 ```
 
-`skl use` refuses to overwrite a real directory that is not a symlink. Hammer conflict/scrub stay TODO hooks in `crates/cli/src/hooks/`.
+`skl use` refuses to overwrite a real directory that is not a symlink. Conflict/scrub hooks live in `crates/cli/src/hooks/` (`skl sync --keep-local` / `--keep-remote`).
+
+### Cross-compile (single binary)
+
+`scripts/cross-compile.sh` produces one portable `skl` binary under `dist/`. Host `cargo build --release` always runs. Linux musl (and Windows GNU via zig) are built when `zig` + `cargo-zigbuild` are present — no brew formula.
+
+```bash
+# Host binary at minimum. Add musl/windows when tools exist:
+./scripts/cross-compile.sh
+
+# Fetch zig + cargo-zigbuild into $HOME/.local, then musl + windows-gnu:
+INSTALL_TOOLS=1 ./scripts/cross-compile.sh
+
+# Explicit triples (fails if a requested target cannot be built):
+TARGETS=x86_64-unknown-linux-musl ./scripts/cross-compile.sh
+```
+
+CI workflow: [`.github/workflows/cli-binaries.yml`](.github/workflows/cli-binaries.yml).
+
+### Two-machine smoke
+
+Same `ALLOW_DEV_AUTH` user, two `HOME`s, API on `:8787`. Shared helpers live in `scripts/smoke-lib.sh`.
+
+```bash
+# API already up (ALLOW_DEV_AUTH=true)
+cargo build -p skl
+./scripts/smoke-import-sync-use.sh   # init → sync → skl use
+./scripts/smoke-clash.sh             # keep-local / keep-remote + scrub
+
+# Boot postgres + apps/api here
+START_API=1 ./scripts/smoke-import-sync-use.sh
+```
