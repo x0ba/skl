@@ -10,6 +10,7 @@
 
 use std::collections::HashSet;
 use std::ffi::OsStr;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -139,15 +140,17 @@ pub fn expand_template(template: &str, home: &Path) -> PathBuf {
 /// XDG config home for catalog `{xdg_config}` templates.
 ///
 /// Honors `XDG_CONFIG_HOME` when it is an absolute path and either lives
-/// under `home` or `home` is the process `HOME` / `USERPROFILE`. Otherwise
-/// falls back to `{home}/.config` so unit tests that pass a fake home stay
-/// isolated from the host XDG directory.
+/// under `home` or `home` is the process home (`HOME` / `USERPROFILE` /
+/// `dirs::home_dir()`, which still works when those env vars are unset).
+/// Otherwise falls back to `{home}/.config` so unit tests that pass a fake
+/// home stay isolated from the host XDG directory.
 pub fn xdg_config_dir(home: &Path) -> PathBuf {
     resolve_xdg_config_dir(
         home,
         std::env::var_os("XDG_CONFIG_HOME").as_deref(),
         std::env::var_os("HOME").as_deref(),
         std::env::var_os("USERPROFILE").as_deref(),
+        dirs::home_dir().as_deref().map(Path::as_os_str),
     )
 }
 
@@ -156,6 +159,7 @@ fn resolve_xdg_config_dir(
     xdg_config_home: Option<&OsStr>,
     process_home: Option<&OsStr>,
     userprofile: Option<&OsStr>,
+    dirs_home: Option<&OsStr>,
 ) -> PathBuf {
     let Some(xdg) = xdg_config_home.filter(|value| !value.is_empty()) else {
         return home.join(".config");
@@ -165,7 +169,8 @@ fn resolve_xdg_config_dir(
         return home.join(".config");
     }
     let home_is_process = process_home.is_some_and(|value| Path::new(value) == home)
-        || userprofile.is_some_and(|value| Path::new(value) == home);
+        || userprofile.is_some_and(|value| Path::new(value) == home)
+        || dirs_home.is_some_and(|value| Path::new(value) == home);
     if xdg.starts_with(home) || home_is_process {
         xdg
     } else {
@@ -186,12 +191,45 @@ pub fn is_safe_project_rel(rel: &str) -> bool {
 }
 
 /// Join `rel` onto `project` only when the dest stays inside the project.
+///
+/// Rejects lexical escapes and existing intermediate symlinks/junctions
+/// that resolve outside `project` (activation would otherwise follow them).
 pub fn join_project_skills_dir(project: &Path, rel: &str) -> Option<PathBuf> {
     if !is_safe_project_rel(rel) {
         return None;
     }
     let dest = project.join(rel);
-    dest.starts_with(project).then_some(dest)
+    if !dest.starts_with(project) || prefix_escapes_project(project, &dest) {
+        return None;
+    }
+    Some(dest)
+}
+
+fn prefix_escapes_project(project: &Path, dest: &Path) -> bool {
+    let Ok(rel) = dest.strip_prefix(project) else {
+        return true;
+    };
+    let mut cur = project.to_path_buf();
+    for component in rel.components() {
+        cur.push(component);
+        let meta = match fs::symlink_metadata(&cur) {
+            Ok(meta) => meta,
+            Err(_) => return false,
+        };
+        if !meta.file_type().is_symlink() {
+            continue;
+        }
+        let Ok(resolved) = fs::canonicalize(&cur) else {
+            return true;
+        };
+        let Ok(root) = fs::canonicalize(project) else {
+            return true;
+        };
+        if !resolved.starts_with(&root) {
+            return true;
+        }
+    }
+    false
 }
 
 pub fn agents_home_path(home: &Path) -> PathBuf {
@@ -418,7 +456,7 @@ mod tests {
         let home = Path::new("/tmp/skl-home");
         let xdg = Path::new("/tmp/xdg-config");
         assert_eq!(
-            resolve_xdg_config_dir(home, None, Some(home.as_os_str()), None),
+            resolve_xdg_config_dir(home, None, Some(home.as_os_str()), None, None),
             home.join(".config")
         );
         assert_eq!(
@@ -426,6 +464,7 @@ mod tests {
                 home,
                 Some(xdg.as_os_str()),
                 Some(home.as_os_str()),
+                None,
                 None
             ),
             xdg
@@ -434,7 +473,18 @@ mod tests {
             resolve_xdg_config_dir(
                 home,
                 Some(xdg.as_os_str()),
+                None,
+                None,
+                Some(home.as_os_str())
+            ),
+            xdg
+        );
+        assert_eq!(
+            resolve_xdg_config_dir(
+                home,
+                Some(xdg.as_os_str()),
                 Some(Path::new("/other-home").as_os_str()),
+                None,
                 None
             ),
             home.join(".config")
@@ -445,6 +495,7 @@ mod tests {
                 home,
                 Some(nested.as_os_str()),
                 Some(Path::new("/other-home").as_os_str()),
+                None,
                 None
             ),
             nested
@@ -454,6 +505,7 @@ mod tests {
                 home,
                 Some(OsStr::new("relative-xdg")),
                 Some(home.as_os_str()),
+                None,
                 None
             ),
             home.join(".config")
@@ -485,5 +537,36 @@ mod tests {
         assert!(join_project_skills_dir(project, "/tmp/out").is_none());
         assert!(join_project_skills_dir(project, "../out").is_none());
         assert!(join_project_skills_dir(project, "C:/Windows").is_none());
+    }
+
+    #[test]
+    fn join_project_skills_dir_rejects_escaping_intermediate_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, project.join(".claude")).unwrap();
+            assert!(
+                join_project_skills_dir(&project, ".claude/skills").is_none(),
+                "must not follow .claude symlink out of the project"
+            );
+        }
+        assert_eq!(
+            join_project_skills_dir(&project, ".agents/skills").unwrap(),
+            project.join(".agents/skills")
+        );
+        let inside = project.join("nested");
+        std::fs::create_dir_all(&inside).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&inside, project.join(".windsurf")).unwrap();
+            assert_eq!(
+                join_project_skills_dir(&project, ".windsurf/skills").unwrap(),
+                project.join(".windsurf/skills")
+            );
+        }
     }
 }

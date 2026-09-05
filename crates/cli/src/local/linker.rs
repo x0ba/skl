@@ -283,11 +283,16 @@ pub fn validate_skill_name(name: &str) -> Result<()> {
 /// Canonical `.agents/skills` first, then optional extras. `home` is unused
 /// (kept so existing call sites stay stable).
 pub fn project_link_targets(project: &Path, _home: &Path) -> Vec<LinkTarget> {
-    let mut out = vec![LinkTarget {
-        id: CANONICAL_TARGET_ID.to_string(),
-        path: project.join(".agents").join("skills"),
-        kind: LinkTargetKind::Canonical,
-    }];
+    let mut out = Vec::new();
+    if let Some(path) =
+        crate::catalog::join_project_skills_dir(project, crate::catalog::UNIVERSAL_PROJECT_DIR)
+    {
+        out.push(LinkTarget {
+            id: CANONICAL_TARGET_ID.to_string(),
+            path,
+            kind: LinkTargetKind::Canonical,
+        });
+    }
     for entry in crate::catalog::agents() {
         if entry.project_skills_dir == crate::catalog::UNIVERSAL_PROJECT_DIR {
             continue;
@@ -305,7 +310,9 @@ pub fn project_link_targets(project: &Path, _home: &Path) -> Vec<LinkTarget> {
     }
     // M0 litter: old universal project dirs. Prune/scan only — never extras.
     for (id, rel) in [("cursor", ".cursor/skills"), ("codex", ".codex/skills")] {
-        let path = project.join(rel);
+        let Some(path) = crate::catalog::join_project_skills_dir(project, rel) else {
+            continue;
+        };
         if out.iter().any(|target| target.path == path) {
             continue;
         }
@@ -347,13 +354,16 @@ pub fn destinations_for(project: &Path, home: &Path, targets: &ManifestTargets) 
     let mut out = Vec::new();
     let mut seen = HashSet::new();
 
-    let canonical = project.join(".agents").join("skills");
-    seen.insert(norm_dest_key(&canonical));
-    out.push(LinkTarget {
-        id: CANONICAL_TARGET_ID.to_string(),
-        path: canonical,
-        kind: LinkTargetKind::Canonical,
-    });
+    if let Some(canonical) =
+        crate::catalog::join_project_skills_dir(project, crate::catalog::UNIVERSAL_PROJECT_DIR)
+    {
+        seen.insert(norm_dest_key(&canonical));
+        out.push(LinkTarget {
+            id: CANONICAL_TARGET_ID.to_string(),
+            path: canonical,
+            kind: LinkTargetKind::Canonical,
+        });
+    }
 
     for id in extras {
         let Some(entry) = crate::catalog::get(&id) else {
@@ -484,6 +494,14 @@ pub fn activate_with_extras(
         .any(|s| s.name == skill.name && s.mode == COPY_MODE);
 
     let targets = destinations_for(project, home, &manifest.targets);
+    if !targets
+        .iter()
+        .any(|target| target.kind == LinkTargetKind::Canonical)
+    {
+        return Err(SklError::LocalState(
+            "refusing to write .agents/skills: destination escapes the project".into(),
+        ));
+    }
     preflight_dests(&targets, &skill.name, prior_copy)?;
 
     let mut links = Vec::new();
@@ -1303,6 +1321,24 @@ mode = "symlink"
         assert!(warns.iter().any(|w| w.contains("claude-code")));
         assert!(warns.iter().any(|w| w.contains("cursor")));
         assert!(warns.iter().any(|w| w.contains("codex")));
+    }
+
+    #[test]
+    fn activate_refuses_escaping_agents_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        let outside = tmp.path().join("outside");
+        fs::create_dir_all(&project).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, project.join(".agents")).unwrap();
+            let skill = demo_skill(&home, "greeter");
+            let err = activate(&project, &home, &skill).unwrap_err().to_string();
+            assert!(err.contains("escapes the project"), "{err}");
+            assert!(!outside.join("skills").exists());
+        }
     }
 
     #[test]
