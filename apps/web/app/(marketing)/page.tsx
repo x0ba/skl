@@ -28,16 +28,13 @@ export default function LandingPage() {
   return (
     <>
       <section className="mx-auto w-full max-w-content px-6 pb-20 pt-16 sm:pt-24">
-        <div className="grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
+        <div className="grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center lg:gap-16">
           <div>
-            <Label className="mb-6">Personal agent skill sync</Label>
             <h1 className="max-w-xl text-balance font-sans text-display font-bold text-foreground">
               Your skills, on every machine.
             </h1>
             <p className="mt-6 max-w-md text-[17px] leading-relaxed text-muted-foreground">
-              You wrote those skills once. skl keeps them identical across
-              every harness — on your laptop, your desktop, and the box you
-              only ssh into.
+              Sync your agent skills across machines and projects.
             </p>
             <div className="mt-9 max-w-md">
               <CopyCommand command="cargo install skl" />
@@ -47,7 +44,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="space-y-6 lg:pt-14">
+          <div className="space-y-6">
             <Transcript
               caption="First run on a new machine"
               lines={[

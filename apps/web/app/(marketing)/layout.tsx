@@ -34,7 +34,7 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex w-full max-w-content flex-wrap items-center justify-between gap-4 px-6 py-6 font-mono text-[12px] text-faint">
-          <span>skl — personal agent skill sync</span>
+          <span>skl</span>
           <div className="flex items-center gap-6">
             <a href={REPO} className="hover:text-foreground">
               GitHub
