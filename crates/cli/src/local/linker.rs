@@ -1,7 +1,9 @@
 //! Project multi-agent linker: symlink skills into agent dirs + `skills.toml`.
 //!
+//! Canonical dest is **`.agents/skills`**. Legacy `.claude` / `.cursor` (and
+//! optional `.codex`) are still linked by default until `skl migrate targets`.
 //! Default is **symlink**. On EPERM / ENOTSUP / Windows privilege errors,
-//! fall back to a copy. Codex is optional if present.
+//! fall back to a copy on every dest. Codex is optional if present.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -32,8 +34,50 @@ thread_local! {
     static FORCE_SYMLINK_FAIL: Cell<bool> = const { Cell::new(false) };
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LinkTargetKind {
+    Canonical,
+    Legacy,
+    OptIn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkTarget {
+    pub id: String,
+    pub path: PathBuf,
+    pub kind: LinkTargetKind,
+}
+
+fn default_canonical_ids() -> Vec<String> {
+    vec!["agents".to_string()]
+}
+
+fn default_extra_ids() -> Vec<String> {
+    vec!["claude".to_string(), "cursor".to_string()]
+}
+
+/// `[targets]` in `skills.toml` — ids only (`agents` / `claude` / `cursor` / `codex`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ManifestTargets {
+    #[serde(default = "default_canonical_ids")]
+    pub canonical: Vec<String>,
+    #[serde(default = "default_extra_ids")]
+    pub extra: Vec<String>,
+}
+
+impl Default for ManifestTargets {
+    fn default() -> Self {
+        Self {
+            canonical: default_canonical_ids(),
+            extra: default_extra_ids(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct SkillsManifest {
+    #[serde(default)]
+    pub targets: ManifestTargets,
     #[serde(default)]
     pub skills: Vec<ActivatedSkill>,
 }
@@ -107,30 +151,120 @@ pub fn validate_skill_name(name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Project agent dirs that receive links (symlink, or copy on fallback).
+/// Project dests that receive links (symlink, or copy on fallback).
 ///
-/// Claude and Cursor always. Codex only if home `~/.codex/skills` exists
-/// or the project already has `.codex`.
-pub fn project_link_roots(project: &Path, home: &Path) -> Vec<SkillRoot> {
-    let mut roots = vec![
-        SkillRoot {
-            source: "claude",
-            path: project.join(".claude").join("skills"),
+/// Canonical `.agents/skills` first, then legacy Claude/Cursor. Codex only if
+/// home `~/.codex/skills` exists or the project already has `.codex`.
+pub fn project_link_targets(project: &Path, home: &Path) -> Vec<LinkTarget> {
+    let mut targets = vec![
+        LinkTarget {
+            id: "agents".to_string(),
+            path: project.join(".agents").join("skills"),
+            kind: LinkTargetKind::Canonical,
         },
-        SkillRoot {
-            source: "cursor",
+        LinkTarget {
+            id: "claude".to_string(),
+            path: project.join(".claude").join("skills"),
+            kind: LinkTargetKind::Legacy,
+        },
+        LinkTarget {
+            id: "cursor".to_string(),
             path: project.join(".cursor").join("skills"),
+            kind: LinkTargetKind::Legacy,
         },
     ];
-    let home_codex = home.join(".codex").join("skills");
-    let project_codex = project.join(".codex");
-    if home_codex.is_dir() || project_codex.exists() {
-        roots.push(SkillRoot {
-            source: "codex",
+    if include_codex(project, home) {
+        targets.push(LinkTarget {
+            id: "codex".to_string(),
             path: project.join(".codex").join("skills"),
+            kind: LinkTargetKind::OptIn,
         });
     }
-    roots
+    targets
+}
+
+fn include_codex(project: &Path, home: &Path) -> bool {
+    home.join(".codex").join("skills").is_dir() || project.join(".codex").exists()
+}
+
+fn intern_target_id(id: &str) -> &'static str {
+    match id {
+        "agents" => "agents",
+        "claude" => "claude",
+        "cursor" => "cursor",
+        "codex" => "codex",
+        _ => "agents",
+    }
+}
+
+/// Thin wrapper over [`project_link_targets`] for callers that still want
+/// [`SkillRoot`]. Prefer `project_link_targets`.
+pub fn project_link_roots(project: &Path, home: &Path) -> Vec<SkillRoot> {
+    project_link_targets(project, home)
+        .into_iter()
+        .map(|target| SkillRoot {
+            source: intern_target_id(&target.id),
+            path: target.path,
+        })
+        .collect()
+}
+
+/// Destinations written by `skl use` / removed by `skl unuse`.
+///
+/// Always includes canonical `.agents`. Also includes configured extras
+/// (default `claude` + `cursor`) and opt-in `codex` when present.
+pub fn destinations_for(project: &Path, home: &Path, targets: &ManifestTargets) -> Vec<LinkTarget> {
+    let extras_default = targets.extra == default_extra_ids();
+    project_link_targets(project, home)
+        .into_iter()
+        .filter(|target| match target.kind {
+            LinkTargetKind::Canonical => true,
+            LinkTargetKind::Legacy => targets.extra.iter().any(|id| id == &target.id),
+            LinkTargetKind::OptIn => {
+                extras_default || targets.extra.iter().any(|id| id == &target.id)
+            }
+        })
+        .collect()
+}
+
+/// M0 layout: `skills.toml` / activated skills under `.claude`/`.cursor`, but
+/// `.agents/skills` is missing. Doctor warns; does not mutate.
+pub fn m0_targets_warning(project: &Path) -> Option<String> {
+    if !is_m0_layout(project) {
+        return None;
+    }
+    Some(
+        "M0 layout (.claude/.cursor links, no .agents/skills); run `skl migrate targets`"
+            .to_string(),
+    )
+}
+
+fn is_m0_layout(project: &Path) -> bool {
+    if project.join(".agents").join("skills").exists() {
+        return false;
+    }
+    if !manifest_path(project).is_file() {
+        return false;
+    }
+    let Ok(manifest) = load_manifest(project) else {
+        return false;
+    };
+    if !manifest.skills.is_empty() {
+        return true;
+    }
+    has_skill_dirs(&project.join(".claude").join("skills"))
+        || has_skill_dirs(&project.join(".cursor").join("skills"))
+}
+
+fn has_skill_dirs(root: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(root) else {
+        return false;
+    };
+    entries.filter_map(|entry| entry.ok()).any(|entry| {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        !name.starts_with('.') && entry.path().is_dir()
+    })
 }
 
 pub fn manifest_path(project: &Path) -> PathBuf {
@@ -177,8 +311,8 @@ pub fn activate(project: &Path, home: &Path, skill: &DiscoveredSkill) -> Result<
     let mut links = Vec::new();
     let mut used_copy = false;
     let mut fallback = None;
-    for root in project_link_roots(project, home) {
-        let dest = root.path.join(&skill.name);
+    for target in destinations_for(project, home, &manifest.targets) {
+        let dest = target.path.join(&skill.name);
         let placed = ensure_link(&source, &dest, prior_copy)?;
         if placed.mode == COPY_MODE {
             used_copy = true;
@@ -187,7 +321,7 @@ pub fn activate(project: &Path, home: &Path, skill: &DiscoveredSkill) -> Result<
             }
         }
         links.push(LinkChange {
-            agent: root.source.to_string(),
+            agent: target.id,
             path: dest,
             action: placed.action,
         });
@@ -235,11 +369,11 @@ pub fn deactivate(project: &Path, home: &Path, name: &str) -> Result<DeactivateO
     manifest.skills.retain(|s| s.name != name);
 
     let mut links = Vec::new();
-    for root in project_link_roots(project, home) {
-        let dest = root.path.join(name);
+    for target in destinations_for(project, home, &manifest.targets) {
+        let dest = target.path.join(name);
         let action = remove_managed_link(&dest, allow_copy_dir)?;
         links.push(LinkChange {
-            agent: root.source.to_string(),
+            agent: target.id,
             path: dest,
             action,
         });
@@ -464,9 +598,8 @@ fn copy_skill_tree(src: &Path, dest: &Path) -> Result<()> {
             name != ".git" && name != ".DS_Store" && name != "node_modules"
         })
     {
-        let entry = entry.map_err(|err| {
-            SklError::LocalState(format!("copy {}: {err}", src.display()))
-        })?;
+        let entry =
+            entry.map_err(|err| SklError::LocalState(format!("copy {}: {err}", src.display())))?;
         if entry.path() == src {
             continue;
         }
@@ -552,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn use_symlinks_claude_and_cursor_and_writes_manifest() {
+    fn use_symlinks_agents_then_claude_and_cursor_and_writes_manifest() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let project = tmp.path().join("proj");
@@ -561,29 +694,127 @@ mod tests {
 
         let out = activate(&project, &home, &skill).unwrap();
         assert_eq!(out.skill, "greeter");
-        assert_eq!(out.links.len(), 2);
+        assert_eq!(out.links.len(), 3);
+        assert_eq!(
+            out.links
+                .iter()
+                .map(|l| l.agent.as_str())
+                .collect::<Vec<_>>(),
+            ["agents", "claude", "cursor"]
+        );
         assert!(out.links.iter().all(|l| l.action == LinkAction::Created));
         assert_eq!(out.mode, LINK_MODE);
         assert!(out.fallback.is_none());
 
+        let agents = project.join(".agents/skills/greeter");
         let claude = project.join(".claude/skills/greeter");
         let cursor = project.join(".cursor/skills/greeter");
+        assert!(agents.symlink_metadata().unwrap().file_type().is_symlink());
         assert!(claude.symlink_metadata().unwrap().file_type().is_symlink());
         assert!(cursor.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_link(&agents).unwrap(), out.source_path);
         assert_eq!(fs::read_link(&claude).unwrap(), out.source_path);
         assert_eq!(
-            fs::read_to_string(claude.join("SKILL.md")).unwrap(),
+            fs::read_to_string(agents.join("SKILL.md")).unwrap(),
             "# greeter\n"
         );
         assert!(!project.join(".codex").exists());
 
         let manifest = load_manifest(&project).unwrap();
+        assert_eq!(manifest.targets.canonical, ["agents"]);
+        assert_eq!(manifest.targets.extra, ["claude", "cursor"]);
         assert_eq!(manifest.skills.len(), 1);
         assert_eq!(manifest.skills[0].name, "greeter");
         assert_eq!(manifest.skills[0].mode, LINK_MODE);
-        assert!(fs::read_to_string(manifest_path(&project))
+        let raw = fs::read_to_string(manifest_path(&project)).unwrap();
+        assert!(raw.contains("symlink"));
+        assert!(raw.contains("[targets]"));
+        assert!(raw.contains("agents"));
+    }
+
+    #[test]
+    fn activate_creates_agents_skills_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+
+        let out = activate(&project, &home, &skill).unwrap();
+        assert_eq!(out.links[0].agent, "agents");
+        assert_eq!(
+            out.links[0].path,
+            project.join(".agents").join("skills").join("greeter")
+        );
+        assert!(project
+            .join(".agents/skills/greeter")
+            .symlink_metadata()
             .unwrap()
-            .contains("symlink"));
+            .file_type()
+            .is_symlink());
+        assert!(project
+            .join(".claude/skills/greeter")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert!(project
+            .join(".cursor/skills/greeter")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[test]
+    fn project_link_targets_canonical_first_codex_opt_in() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+
+        let ids: Vec<_> = project_link_targets(&project, &home)
+            .into_iter()
+            .map(|t| (t.id, t.kind))
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                ("agents".into(), LinkTargetKind::Canonical),
+                ("claude".into(), LinkTargetKind::Legacy),
+                ("cursor".into(), LinkTargetKind::Legacy),
+            ]
+        );
+
+        fs::create_dir_all(home.join(".codex/skills")).unwrap();
+        let with_codex = project_link_targets(&project, &home);
+        assert_eq!(with_codex.last().unwrap().id, "codex");
+        assert_eq!(with_codex.last().unwrap().kind, LinkTargetKind::OptIn);
+        assert_eq!(
+            with_codex.last().unwrap().path,
+            project.join(".codex").join("skills")
+        );
+
+        let roots = project_link_roots(&project, &home);
+        assert_eq!(
+            roots.iter().map(|r| r.source).collect::<Vec<_>>(),
+            ["agents", "claude", "cursor", "codex"]
+        );
+    }
+
+    #[test]
+    fn missing_targets_table_defaults_to_agents_plus_legacy() {
+        let raw = r#"
+[[skills]]
+name = "greeter"
+source = "claude"
+path = "/tmp/greeter"
+mode = "symlink"
+"#;
+        let manifest: SkillsManifest = toml::from_str(raw).unwrap();
+        assert_eq!(manifest.targets.canonical, ["agents"]);
+        assert_eq!(manifest.targets.extra, ["claude", "cursor"]);
+        assert_eq!(manifest.skills.len(), 1);
     }
 
     #[test]
@@ -601,7 +832,21 @@ mod tests {
             .links
             .iter()
             .all(|l| l.action == LinkAction::Unchanged));
-        assert_eq!(again.links.len(), 3);
+        assert_eq!(again.links.len(), 4);
+        assert_eq!(
+            again
+                .links
+                .iter()
+                .map(|l| l.agent.as_str())
+                .collect::<Vec<_>>(),
+            ["agents", "claude", "cursor", "codex"]
+        );
+        assert!(project
+            .join(".agents/skills/greeter")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
         assert!(project
             .join(".codex/skills/greeter")
             .symlink_metadata()
@@ -623,6 +868,7 @@ mod tests {
         let out = deactivate(&project, &home, "greeter").unwrap();
         assert!(out.was_listed);
         assert!(out.links.iter().all(|l| l.action == LinkAction::Removed));
+        assert!(!project.join(".agents/skills/greeter").exists());
         assert!(!project.join(".claude/skills/greeter").exists());
         assert!(!project.join(".cursor/skills/greeter").exists());
         assert!(load_manifest(&project).unwrap().skills.is_empty());
@@ -679,13 +925,16 @@ mod tests {
         assert!(out.fallback.as_ref().unwrap().contains("EPERM"), "{out:?}");
         assert!(out.links.iter().all(|l| l.action == LinkAction::Copied));
 
+        let agents = project.join(".agents/skills/greeter");
         let claude = project.join(".claude/skills/greeter");
         let cursor = project.join(".cursor/skills/greeter");
+        assert!(agents.is_dir());
+        assert!(!agents.symlink_metadata().unwrap().file_type().is_symlink());
         assert!(claude.is_dir());
         assert!(!claude.symlink_metadata().unwrap().file_type().is_symlink());
         assert!(cursor.is_dir());
         assert_eq!(
-            fs::read_to_string(claude.join("SKILL.md")).unwrap(),
+            fs::read_to_string(agents.join("SKILL.md")).unwrap(),
             "# greeter\n"
         );
 
@@ -716,6 +965,7 @@ mod tests {
         let out = deactivate(&project, &home, "greeter").unwrap();
         assert!(out.was_listed);
         assert!(out.links.iter().all(|l| l.action == LinkAction::Removed));
+        assert!(!project.join(".agents/skills/greeter").exists());
         assert!(!project.join(".claude/skills/greeter").exists());
         assert!(!project.join(".cursor/skills/greeter").exists());
         assert!(load_manifest(&project).unwrap().skills.is_empty());
@@ -750,9 +1000,9 @@ mod tests {
             ErrorKind::Unsupported,
             "ENOTSUP"
         )));
-        assert!(is_symlink_fallback_error(&std::io::Error::from_raw_os_error(
-            1314
-        )));
+        assert!(is_symlink_fallback_error(
+            &std::io::Error::from_raw_os_error(1314)
+        ));
         assert!(!is_symlink_fallback_error(&std::io::Error::new(
             ErrorKind::AlreadyExists,
             "exists"
@@ -773,5 +1023,76 @@ mod tests {
         let probe = with_forced_symlink_fail(|| probe_symlink(tmp.path()));
         assert!(!probe.ok, "{probe:?}");
         assert!(probe.detail.contains("EPERM"), "{probe:?}");
+    }
+
+    #[test]
+    fn extras_can_omit_cursor_but_always_writes_agents() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        save_manifest(
+            &project,
+            &SkillsManifest {
+                targets: ManifestTargets {
+                    canonical: vec!["agents".into()],
+                    extra: vec!["claude".into()],
+                },
+                skills: Vec::new(),
+            },
+        )
+        .unwrap();
+        let skill = demo_skill(&home, "greeter");
+        let out = activate(&project, &home, &skill).unwrap();
+        assert_eq!(
+            out.links
+                .iter()
+                .map(|l| l.agent.as_str())
+                .collect::<Vec<_>>(),
+            ["agents", "claude"]
+        );
+        assert!(project.join(".agents/skills/greeter").exists());
+        assert!(project.join(".claude/skills/greeter").exists());
+        assert!(!project.join(".cursor").exists());
+    }
+
+    #[test]
+    fn doctor_warns_on_m0_layout_without_mutating() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        assert!(m0_targets_warning(&project).is_none());
+
+        let skill = demo_skill(&home, "greeter");
+        let dest = project.join(".claude/skills/greeter");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&skill.path, &dest).unwrap();
+        save_manifest(
+            &project,
+            &SkillsManifest {
+                targets: ManifestTargets::default(),
+                skills: vec![ActivatedSkill {
+                    name: "greeter".into(),
+                    source: "claude".into(),
+                    path: skill.path.to_string_lossy().into_owned(),
+                    mode: LINK_MODE.into(),
+                }],
+            },
+        )
+        .unwrap();
+
+        let warning = m0_targets_warning(&project).expect("M0 warning");
+        assert!(warning.contains("skl migrate targets"), "{warning}");
+        assert!(!project.join(".agents").exists());
+        assert!(project.join(".claude/skills/greeter").exists());
+        assert_eq!(load_manifest(&project).unwrap().skills.len(), 1);
+
+        fs::create_dir_all(project.join(".agents/skills")).unwrap();
+        assert!(
+            m0_targets_warning(&project).is_none(),
+            "presence of .agents/skills is enough"
+        );
     }
 }

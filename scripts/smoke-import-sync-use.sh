@@ -117,9 +117,11 @@ echo "$b_use"
 skl_assert_contains "$b_use" "using $SKILL_NAME"
 skl_assert_contains "$b_use" "updated"
 
+agents_link="$PROJECT_B/.agents/skills/${SKILL_NAME}"
 claude_link="$PROJECT_B/.claude/skills/${SKILL_NAME}"
 cursor_link="$PROJECT_B/.cursor/skills/${SKILL_NAME}"
 home_skill="$MACHINE_B/.claude/skills/${SKILL_NAME}"
+skl_assert_symlink_to "$agents_link" "$home_skill"
 skl_assert_symlink_to "$claude_link" "$home_skill"
 skl_assert_symlink_to "$cursor_link" "$home_skill"
 skl_assert_file_contains "$claude_link/SKILL.md" "hello from machine A"
@@ -135,6 +137,11 @@ skl_assert_contains "$b_used" "symlink"
 echo "==> machine B: skl unuse ${SKILL_NAME}"
 b_unuse="$(run_b unuse "$SKILL_NAME" --project "$PROJECT_B" 2>&1)"
 echo "$b_unuse"
+if [[ -e "$agents_link" || -L "$agents_link" ]]; then
+  echo "expected $agents_link to be removed" >&2
+  ls -la "$PROJECT_B/.agents/skills" >&2 || true
+  exit 1
+fi
 if [[ -e "$claude_link" || -L "$claude_link" ]]; then
   echo "expected $claude_link to be removed" >&2
   ls -la "$PROJECT_B/.claude/skills" >&2 || true
