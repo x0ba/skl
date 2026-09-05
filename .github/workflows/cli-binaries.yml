@@ -26,6 +26,8 @@ on:
       - "scripts/smoke-auto-sync.sh"
       - "scripts/smoke-capture.sh"
       - "scripts/smoke-portable-use-all.sh"
+      - "scripts/smoke-tui.sh"
+      - "scripts/tui-pty.py"
       - "apps/api/**"
       - "docker-compose.yml"
       - ".github/workflows/cli-binaries.yml"
@@ -46,6 +48,8 @@ on:
       - "scripts/smoke-auto-sync.sh"
       - "scripts/smoke-capture.sh"
       - "scripts/smoke-portable-use-all.sh"
+      - "scripts/smoke-tui.sh"
+      - "scripts/tui-pty.py"
       - "apps/api/**"
       - "docker-compose.yml"
       - ".github/workflows/cli-binaries.yml"
@@ -108,7 +112,7 @@ jobs:
             dist/SHA256SUMS
 
   smoke-import-sync-use:
-    name: import → sync → use + clash + auto-sync + capture + portable use --all
+    name: import → sync → use + clash + auto-sync + capture + portable use --all + tui
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -149,6 +153,7 @@ jobs:
           ./scripts/smoke-auto-sync.sh
           ./scripts/smoke-capture.sh
           ./scripts/smoke-portable-use-all.sh
+          ./scripts/smoke-tui.sh
 
   smoke-install:
     name: curl install.sh (no rust)
