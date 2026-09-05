@@ -3,12 +3,14 @@
 //! Entry: bare `skl` on a TTY, or `skl tui` / `skl ui`.
 //! Never enters raw mode unless [`LaunchDecision::Enter`] is chosen.
 
+use std::io::Write;
+
 mod app;
 mod launch;
 mod render;
 mod terminal;
 
-pub use launch::{decide_launch, env_no_tui, LaunchDecision, LaunchInput};
+pub use launch::{decide_launch, LaunchDecision, LaunchInput};
 
 use crate::error::Result;
 
@@ -19,8 +21,17 @@ pub async fn run(api_base: String) -> Result<()> {
 
 /// Print clap help (non-TTY / `--no-tui` / `SKL_NO_TUI`). Never hangs.
 pub fn print_help(cmd: &mut clap::Command) -> Result<()> {
-    cmd.print_help()?;
-    println!();
+    if let Err(err) = cmd.print_help() {
+        if err.kind() != std::io::ErrorKind::BrokenPipe {
+            return Err(err.into());
+        }
+        return Ok(());
+    }
+    if let Err(err) = writeln!(std::io::stdout()) {
+        if err.kind() != std::io::ErrorKind::BrokenPipe {
+            return Err(err.into());
+        }
+    }
     Ok(())
 }
 

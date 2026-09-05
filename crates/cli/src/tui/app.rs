@@ -6,13 +6,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use crate::commands::use_cmd::{self, resolve_activation_extras, resolve_project, resolve_skill};
+use crate::commands::use_cmd::{resolve_activation_extras, resolve_project, resolve_skill};
 use crate::config::{self, Paths};
 use crate::error::{Result, SklError};
 use crate::hooks::conflict::ConflictMode;
 use crate::local::db::LocalDb;
 use crate::local::linker::{self, LinkAction};
-use crate::local::skills::{self, DiscoveredSkill};
 use crate::sync::SyncOptions;
 
 use super::render;
@@ -480,15 +479,17 @@ pub fn load_catalog_at(project: &Path, paths: Option<&Paths>, _now: i64) -> Resu
         match scan_library(&paths.library_dir()) {
             Ok(found) => {
                 for path in found {
-                    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                    let Some(name) = path.file_name().and_then(|n| n.to_str()).map(str::to_string)
+                    else {
                         continue;
                     };
+                    let activated = activated.contains(&name);
                     push_unique(
                         &mut skills,
                         SkillRow {
-                            name: name.to_string(),
+                            name,
                             path,
-                            activated: activated.contains(name),
+                            activated,
                         },
                     );
                 }
@@ -648,16 +649,10 @@ fn open_editor(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Used by tests — discover a library skill the same way `skl use` would.
-#[allow(dead_code)]
-pub fn resolve_for_use(name: &str, home: &Path, db_file: Option<&Path>) -> Result<DiscoveredSkill> {
-    use_cmd::resolve_skill(name, home, db_file)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::local::skills::hash_skill_dir;
+    use crate::local::skills::{hash_skill_dir, DiscoveredSkill};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)

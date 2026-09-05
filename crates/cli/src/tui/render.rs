@@ -117,9 +117,9 @@ fn draw_preview(frame: &mut Frame<'_>, area: Rect, app: &App) {
 
 fn draw_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let keys = if app.overlay == Overlay::Search {
-        "type to filter   ↑↓ list   Enter done   Esc clear"
+        "type to filter  ↑↓ list  Enter done  Esc clear"
     } else {
-        "/ search   ↑↓/jk list   [] preview   e edit   u use   U unuse   s sync   r refresh   ? help   q quit"
+        "/ search  ↑↓/jk list  [] preview  e edit  u/U  s sync  r ? q"
     };
     let status = if app.status.is_empty() {
         keys.to_string()
