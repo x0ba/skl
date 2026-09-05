@@ -13,6 +13,10 @@ export function devicePath(id: string): string {
   return `/v1/devices/${id}`;
 }
 
+export function skillPath(name: string): string {
+  return `/v1/skills/${encodeURIComponent(name)}`;
+}
+
 export type ErrorBody = {
   error: string;
   error_description?: string;
@@ -48,4 +52,14 @@ export type SkillSummary = {
 
 export type SkillsListResponse = {
   skills: SkillSummary[];
+};
+
+/** Maps a skill-relative path to the lowercase hex SHA-256 of its contents. */
+export type FileHashMap = Record<string, string>;
+
+export type SkillDetailResponse = {
+  name: string;
+  tree_hash: string;
+  files: FileHashMap;
+  updated_at: string;
 };

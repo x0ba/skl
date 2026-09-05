@@ -6,7 +6,9 @@ import {
   type DeviceApproveResponse,
   type DevicesListResponse,
   type ErrorBody,
+  type SkillDetailResponse,
   type SkillsListResponse,
+  skillPath,
 } from "./contracts";
 
 export class ApiError extends Error {
@@ -87,6 +89,13 @@ export async function listSkills(token: string): Promise<SkillsListResponse> {
   return apiFetch<SkillsListResponse>(API_ROUTES.skills, token);
 }
 
+export async function getSkill(
+  token: string,
+  name: string,
+): Promise<SkillDetailResponse> {
+  return apiFetch<SkillDetailResponse>(skillPath(name), token);
+}
+
 export async function listDevices(token: string): Promise<DevicesListResponse> {
   return apiFetch<DevicesListResponse>(API_ROUTES.devices, token);
 }
@@ -111,11 +120,32 @@ export function describeApproveError(error: ApiError): string {
   return error.error_description ?? error.message;
 }
 
+/**
+ * Sentences for the API's machine-readable error codes. The API often returns
+ * a bare `error` with no `error_description`, and a raw code like
+ * `skill_not_found` is not something to put in front of a person.
+ */
+const ERROR_SENTENCES: Record<string, string> = {
+  skill_not_found: "No skill with that name in this account.",
+  device_not_found: "That device no longer exists.",
+  missing_authorization: "No credentials were sent with the request.",
+  invalid_token: "That bearer token was rejected. It may have been revoked.",
+  expired_token: "That code has expired.",
+  unknown_user_code: "No pending device matches that code.",
+  already_approved: "That code was already approved.",
+};
+
 export function describeApiError(error: unknown): string {
   if (error instanceof ApiError) {
-    return error.error_description ?? error.message;
+    return (
+      error.error_description ?? ERROR_SENTENCES[error.error] ?? error.message
+    );
   }
   if (error instanceof Error) {
+    // A failed fetch surfaces as a bare TypeError with no useful detail.
+    if (error.name === "TypeError") {
+      return `Could not reach the API at ${API_BASE}.`;
+    }
     return error.message;
   }
   return "Request failed";

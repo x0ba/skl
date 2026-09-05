@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppHeader } from "@/components/app-header";
 import { AppProviders } from "@/components/providers";
 import { isClerkEnabled } from "@/lib/config";
 import "./globals.css";
@@ -16,23 +15,26 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "skl",
-  description: "Approve CLI devices and view synced skills.",
+  title: {
+    default: "skl",
+    template: "%s · skl",
+  },
+  description: "Personal sync for your AI agent skills.",
 };
 
+/**
+ * Page chrome lives in the route-group layouts — (marketing) is full-bleed,
+ * (app) gets the sidebar, (auth) is centered — so this layout only sets up
+ * fonts and session context.
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <AppProviders clerkEnabled={isClerkEnabled()}>
-          <AppHeader />
-          <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
-            {children}
-          </main>
-        </AppProviders>
+      <body className="min-h-dvh bg-background text-foreground">
+        <AppProviders clerkEnabled={isClerkEnabled()}>{children}</AppProviders>
       </body>
     </html>
   );

@@ -155,11 +155,11 @@ export function ClerkAuthControls() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-4">
       <SignInButton>
         <button
           type="button"
-          className="h-7 border border-border px-2.5 text-xs hover:bg-muted"
+          className="font-mono text-[13px] text-muted-foreground underline decoration-from-font underline-offset-2 hover:text-foreground"
         >
           Sign in
         </button>
@@ -167,7 +167,7 @@ export function ClerkAuthControls() {
       <SignUpButton>
         <button
           type="button"
-          className="h-7 border border-transparent bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/80"
+          className="font-mono text-[13px] text-primary underline decoration-from-font underline-offset-2 hover:decoration-2"
         >
           Sign up
         </button>

@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
 import { DeviceApproveForm } from "@/components/device-approve-form";
+
+export const metadata: Metadata = {
+  title: "Approve a device",
+};
 
 function first(value: string | string[] | undefined): string {
   if (Array.isArray(value)) {
@@ -7,11 +12,7 @@ function first(value: string | string[] | undefined): string {
   return value ?? "";
 }
 
-export default async function DevicePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ user_code?: string | string[] }>;
-}) {
+export default async function DevicePage({ searchParams }: PageProps<"/device">) {
   const params = await searchParams;
   return <DeviceApproveForm initialUserCode={first(params.user_code)} />;
 }
