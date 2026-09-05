@@ -7,6 +7,10 @@ name: cli-binaries
 on:
   workflow_call:
   push:
+    # Tag publishes only via release.yml (this file reused). Avoid a second
+    # `gh release create` when the tagged commit also matches these paths.
+    tags-ignore:
+      - "**"
     paths:
       - "crates/cli/**"
       - "Cargo.toml"
@@ -15,6 +19,7 @@ on:
       - "scripts/cross-compile.sh"
       - "scripts/install.sh"
       - "scripts/smoke-lib.sh"
+      - "scripts/smoke-install.sh"
       - "scripts/smoke-import-sync-use.sh"
       - "scripts/smoke-clash.sh"
       - "scripts/smoke-auto-sync.sh"
@@ -22,6 +27,7 @@ on:
       - "apps/api/**"
       - "docker-compose.yml"
       - ".github/workflows/cli-binaries.yml"
+      - ".github/workflows/release.yml"
   pull_request:
     paths:
       - "crates/cli/**"
@@ -31,6 +37,7 @@ on:
       - "scripts/cross-compile.sh"
       - "scripts/install.sh"
       - "scripts/smoke-lib.sh"
+      - "scripts/smoke-install.sh"
       - "scripts/smoke-import-sync-use.sh"
       - "scripts/smoke-clash.sh"
       - "scripts/smoke-auto-sync.sh"
@@ -38,6 +45,7 @@ on:
       - "apps/api/**"
       - "docker-compose.yml"
       - ".github/workflows/cli-binaries.yml"
+      - ".github/workflows/release.yml"
   workflow_dispatch:
 
 jobs:
@@ -135,10 +143,37 @@ jobs:
           ./scripts/smoke-auto-sync.sh
           ./scripts/smoke-capture.sh
 
+  smoke-install:
+    name: curl install.sh (no rust)
+    needs: cross-compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: skl-cli
+          path: dist
+      - name: Confirm no Rust on PATH
+        run: |
+          if command -v rustc >/dev/null 2>&1 || command -v cargo >/dev/null 2>&1; then
+            echo "this job must not install Rust (install path is curl-only)" >&2
+            command -v rustc || true
+            command -v cargo || true
+            exit 1
+          fi
+          echo "rustc/cargo absent — clean env"
+      - name: curl install.sh → skl --help
+        env:
+          SKL_BIN: ./dist/skl-x86_64-unknown-linux-musl
+          SKL_SMOKE_ALLOW_BUILD: "0"
+        run: |
+          chmod +x "$SKL_BIN"
+          ./scripts/smoke-install.sh
+
   release:
     name: github release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [cross-compile, cross-compile-macos]
+    needs: [cross-compile, cross-compile-macos, smoke-install]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -163,6 +198,18 @@ jobs:
               sha256sum "$f"
             done
           ) | sort -k2 > dist/SHA256SUMS
+          required=(
+            skl-aarch64-apple-darwin
+            skl-x86_64-apple-darwin
+            skl-x86_64-unknown-linux-musl
+            skl-aarch64-unknown-linux-musl
+            skl-x86_64-pc-windows-gnu.exe
+            install.sh
+            SHA256SUMS
+          )
+          for f in "${required[@]}"; do
+            [ -f "dist/$f" ] || { echo "missing release asset: $f" >&2; ls -l dist >&2; exit 1; }
+          done
           echo "Release assets:"
           ls -l dist
           cat dist/SHA256SUMS

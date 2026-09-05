@@ -206,7 +206,7 @@ cargo run -p skl -- migrate targets --project /path/to/m0-proj --prune-old
 
 `scripts/cross-compile.sh` produces portable `skl` binaries under `dist/` from `crates/cli`. Host `cargo build --release -p skl` always runs. Linux musl (both arches) and Windows GNU via zig are built when `zig` + `cargo-zigbuild` are present. Apple triples need a macOS runner (`cargo --target` for both `aarch64-apple-darwin` and `x86_64-apple-darwin`). No brew formula.
 
-Release matrix on `v*` tags (same script, published by [`.github/workflows/cli-binaries.yml`](.github/workflows/cli-binaries.yml)):
+Release matrix on `v*` tags (same script, published by [`.github/workflows/release.yml`](.github/workflows/release.yml) → [`.github/workflows/cli-binaries.yml`](.github/workflows/cli-binaries.yml); tag pushes are ignored on the path-filtered workflow so only one GitHub Release is created):
 
 - `aarch64-apple-darwin` / `x86_64-apple-darwin`
 - `x86_64-unknown-linux-musl` / `aarch64-unknown-linux-musl`
@@ -237,6 +237,7 @@ cargo build -p skl
 ./scripts/smoke-init-home-agents.sh  # init from ~/.agents/skills + ~/.config/agents/skills (no API)
 ./scripts/smoke-auto-sync.sh         # dual-HOME + throttle + fail-soft (no `skl sync`)
 ./scripts/smoke-capture.sh           # project skill → capture → sync B → use; clash / --force / --as / --keep-copy / fail-soft / non-TTY
+./scripts/smoke-install.sh           # curl install.sh (fake release) → skl --help; no Rust; no prompts
 
 # Boot postgres + apps/api here
 START_API=1 ./scripts/smoke-import-sync-use.sh
