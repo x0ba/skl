@@ -15,6 +15,10 @@
 #   - ALLOW_DEV_AUTH=true (or CLERK_SECRET_KEY unset)
 #   - Postgres reachable as DATABASE_URL (see apps/api/.env.example)
 #
+# Default `skl use` writes only project/.agents/skills. Extra dests
+# (.claude/.cursor/.codex) require `-a/--agent`, sticky targets, or
+# [targets].extra — this harness asserts agents-only, then `-a claude`.
+#
 # Usage (crate path crates/cli; package name skl):
 #   cargo build -p skl
 #   ./scripts/smoke-import-sync-use.sh

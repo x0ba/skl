@@ -49,8 +49,7 @@ After `skl login`, the device `access_token` is stored in the OS keyring (`servi
 
 ### doctor
 
-Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets` when that command exists. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` soft-prompt once for extra dests (`claude` / `cursor` / `codex`); CI / non-interactive skips the prompt.
-
+Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` soft-prompt once for extra dests (`claude` / `cursor` / `codex`); CI / non-interactive skips the prompt.
 ```bash
 # API down is still a successful report (health = unreachable)
 cargo run -p skl -- doctor
@@ -104,6 +103,18 @@ cargo run -p skl -- use greeter --project /path/to/proj
 
 `skl use` refuses to overwrite a real directory it did not create. `skl unuse` removes symlinks and copy-mode dirs it created. Conflict/scrub hooks live in `crates/cli/src/hooks/` (`skl sync --keep-local` / `--keep-remote`).
 
+### migrate targets
+
+Explicit only — `skl use` / `skl doctor` never rewrite an M0 layout. Detects projects whose skills live only under `.claude`/`.cursor`, ensures `.agents/skills/<skill>` from the home library (symlink→copy fallback), and writes `[targets]` (`canonical = ["agents"]`, prior dests as `extra`). Old links stay unless `--prune-old`.
+
+```bash
+# Deliberate M0 fixture (no API):
+./scripts/smoke-migrate-targets.sh
+
+cargo run -p skl -- migrate targets --project /path/to/m0-proj
+cargo run -p skl -- migrate targets --project /path/to/m0-proj --prune-old
+```
+
 ### Cross-compile (single binary)
 
 `scripts/cross-compile.sh` produces one portable `skl` binary under `dist/` from `crates/cli`. Host `cargo build --release -p skl` always runs. Linux musl (and Windows GNU via zig) are built when `zig` + `cargo-zigbuild` are present — no brew formula.
@@ -128,8 +139,9 @@ Same `ALLOW_DEV_AUTH` user, two `HOME`s, API on `:8787`. Shared helpers live in 
 ```bash
 # API already up (ALLOW_DEV_AUTH=true)
 cargo build -p skl
-./scripts/smoke-import-sync-use.sh   # init → sync → skl use
+./scripts/smoke-import-sync-use.sh   # init → sync → skl use (.agents/skills first)
 ./scripts/smoke-clash.sh             # keep-local / keep-remote + scrub
+./scripts/smoke-migrate-targets.sh   # M0 fixture → doctor warn → migrate (no API)
 
 # Boot postgres + apps/api here
 START_API=1 ./scripts/smoke-import-sync-use.sh
