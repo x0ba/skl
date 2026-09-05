@@ -1,6 +1,7 @@
 import { API_BASE } from "./config";
 import {
   API_ROUTES,
+  blobPath,
   devicePath,
   type DeviceApproveRequest,
   type DeviceApproveResponse,
@@ -50,11 +51,11 @@ async function readError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, "request_failed", text);
 }
 
-async function apiFetch<T>(
+async function apiRequest(
   path: string,
   token: string,
   init: RequestInit = {},
-): Promise<T> {
+): Promise<Response> {
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bearer ${token}`);
   if (init.body !== undefined && !headers.has("Content-Type")) {
@@ -69,6 +70,15 @@ async function apiFetch<T>(
   if (!res.ok) {
     throw await readError(res);
   }
+  return res;
+}
+
+async function apiFetch<T>(
+  path: string,
+  token: string,
+  init: RequestInit = {},
+): Promise<T> {
+  const res = await apiRequest(path, token, init);
   if (res.status === 204) {
     return undefined as T;
   }
@@ -94,6 +104,15 @@ export async function getSkill(
   name: string,
 ): Promise<SkillDetailResponse> {
   return apiFetch<SkillDetailResponse>(skillPath(name), token);
+}
+
+/** Raw UTF-8 of a content-addressed blob. Used to preview SKILL.md. */
+export async function getBlobText(
+  token: string,
+  hash: string,
+): Promise<string> {
+  const res = await apiRequest(blobPath(hash), token);
+  return await res.text();
 }
 
 export async function listDevices(token: string): Promise<DevicesListResponse> {

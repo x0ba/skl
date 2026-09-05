@@ -1,0 +1,11 @@
+# Managed by `skl use` / `skl unuse` / `skl migrate targets`. Prefer symlink; copy if the filesystem refuses.
+
+[targets]
+canonical = ["agents"]
+extra = ["claude-code"]
+
+[[skills]]
+name = "greploop"
+source = "agents"
+path = "/Users/daniel/.agents/skills/greploop"
+mode = "symlink"

@@ -16,11 +16,10 @@ import { API_BASE } from "@/lib/config";
 import { pluralize } from "@/lib/format";
 import { useResource } from "@/lib/use-resource";
 
-/** The agent skill roots the CLI writes into. Mirrors the CLI's target list. */
+/** Project dests `skl use` writes. Canonical is always on; extras are opt-in. */
 const TARGETS = [
-  { tool: "Claude", root: "~/.claude/skills" },
-  { tool: "Cursor", root: "~/.cursor/skills" },
-  { tool: "Codex", root: "~/.codex/skills" },
+  { tool: "Universal", root: ".agents/skills" },
+  { tool: "Claude Code", root: ".claude/skills" },
 ];
 
 export function SettingsView() {
@@ -118,8 +117,12 @@ export function SettingsView() {
             ))}
           </Lane>
           <p className="mt-4 max-w-prose text-[13px] leading-relaxed text-muted-foreground">
-            Targets are resolved by the CLI on each machine, not stored on the
-            server. Change them in your local skl config.
+            Canonical dest is always{" "}
+            <code className="font-mono">.agents/skills</code>. Extra dirs like
+            Claude Code are opt-in via{" "}
+            <code className="font-mono">skl targets</code> or{" "}
+            <code className="font-mono">skl use -a</code>. Resolved on each
+            machine, not stored on the server.
           </p>
         </section>
 

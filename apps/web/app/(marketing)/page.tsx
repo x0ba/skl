@@ -3,29 +3,23 @@ import { CopyCommand } from "@/components/ui/copy-command";
 import { Label } from "@/components/ui/text";
 import { Transcript } from "@/components/ui/transcript";
 
-const ROOTS = [
-  { tool: "Claude", path: "~/.claude/skills" },
-  { tool: "Cursor", path: "~/.cursor/skills" },
-  { tool: "Codex", path: "~/.codex/skills" },
-];
-
 const STEPS = [
   {
     n: "01",
     title: "Authorize a machine",
-    body: "The CLI prints a short code. You approve it in the browser once, and that machine holds a long-lived device token.",
+    body: "Sign in to your account and authorize a machine to access your skills.",
     command: "skl login",
   },
   {
     n: "02",
     title: "Sync by content hash",
-    body: "Every file is addressed by its SHA-256, and every skill by a hash of its tree. Only the blobs you are actually missing move over the wire.",
+    body: "Pull the latest skills into your project. Only the files you are actually missing will be transferred.",
     command: "skl sync",
   },
   {
     n: "03",
-    title: "Land in every agent's directory",
-    body: "One store, written out to each tool's skills root. Edit a skill in Cursor, and Claude picks up the same version on the next sync.",
+    title: "Activate in the project",
+    body: "skl use writes into .agents/skills — the directory Cursor, Codex, and other agents already read. Opt in to extras like Claude's .claude/skills when you need them.",
     command: "skl use writing-tests",
   },
 ];
@@ -42,8 +36,8 @@ export default function LandingPage() {
             </h1>
             <p className="mt-6 max-w-md text-[17px] leading-relaxed text-muted-foreground">
               You wrote those skills once. skl keeps them identical across
-              Claude, Cursor, and Codex — on your laptop, your desktop, and the
-              box you only ssh into.
+              every harness — on your laptop, your desktop, and the box you
+              only ssh into.
             </p>
             <div className="mt-9 max-w-md">
               <CopyCommand command="cargo install skl" />
@@ -71,34 +65,10 @@ export default function LandingPage() {
                 { kind: "output", text: "↓ 3 skills   ↑ 1 skill   0 conflicts" },
                 { kind: "note", text: "" },
                 { kind: "command", text: "skl use writing-tests" },
-                { kind: "output", text: "→ ~/.claude/skills/writing-tests" },
-                { kind: "output", text: "→ ~/.cursor/skills/writing-tests" },
+                { kind: "output", text: "→ .agents/skills/writing-tests" },
               ]}
             />
           </div>
-        </div>
-      </section>
-
-      <section className="border-t border-border">
-        <div className="mx-auto w-full max-w-content px-6 py-16">
-          <Label className="mb-8">What it touches</Label>
-          <dl className="grid gap-px border-t border-border sm:grid-cols-3">
-            {ROOTS.map((root) => (
-              <div key={root.tool} className="border-b border-border py-6 sm:pr-8">
-                <dt className="font-sans text-[17px] font-semibold text-foreground">
-                  {root.tool}
-                </dt>
-                <dd className="mt-2 font-mono text-[13px] text-muted-foreground">
-                  {root.path}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <p className="mt-6 max-w-lg text-[14px] leading-relaxed text-muted-foreground">
-            One canonical store, three directories. skl writes each skill where
-            the agent already looks for it, so nothing in your tooling has to
-            change.
-          </p>
         </div>
       </section>
 

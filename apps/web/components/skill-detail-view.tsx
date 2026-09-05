@@ -4,26 +4,32 @@ import { useCallback, useMemo } from "react";
 import { AuthGate } from "@/components/auth-gate";
 import { ActionButton, ActionLink } from "@/components/ui/action-link";
 import { Banner } from "@/components/ui/banner";
-import { CopyCommand } from "@/components/ui/copy-command";
 import { Meta } from "@/components/ui/field";
 import { Lane, LaneEnd, LaneHead, LaneRow } from "@/components/ui/lane";
 import { PageHeader } from "@/components/ui/page-header";
 import { Label } from "@/components/ui/text";
-import { getSkill } from "@/lib/api";
+import { getBlobText, getSkill } from "@/lib/api";
+import type { SkillDetailResponse } from "@/lib/contracts";
 import { exactTime, pluralize, relativeTime, shortHash, splitPath } from "@/lib/format";
 import { useResource } from "@/lib/use-resource";
 
 const COLS = "minmax(0,1fr) 8rem";
+const SKILL_FILE = "SKILL.md";
 
-/** The agent skill roots the CLI writes into. Mirrors the CLI's target list. */
-const TARGETS = [
-  { tool: "Claude", root: "~/.claude/skills" },
-  { tool: "Cursor", root: "~/.cursor/skills" },
-  { tool: "Codex", root: "~/.codex/skills" },
-];
+type SkillDetail = SkillDetailResponse & {
+  skillFile: { path: string; content: string } | null;
+};
 
 export function SkillDetailView({ name }: { name: string }) {
-  const fetcher = useCallback((token: string) => getSkill(token, name), [name]);
+  const fetcher = useCallback(async (token: string): Promise<SkillDetail> => {
+    const skill = await getSkill(token, name);
+    const hash = skill.files[SKILL_FILE];
+    if (!hash) return { ...skill, skillFile: null };
+    return {
+      ...skill,
+      skillFile: { path: SKILL_FILE, content: await getBlobText(token, hash) },
+    };
+  }, [name]);
   const { data, error, loading, refreshing, unauthenticated, refresh } =
     useResource(fetcher);
 
@@ -81,6 +87,23 @@ export function SkillDetailView({ name }: { name: string }) {
           </dl>
 
           <section>
+            <Label className="mb-4">{data.skillFile?.path ?? SKILL_FILE}</Label>
+            {data.skillFile ? (
+              <figure className="min-w-0 border border-border bg-secondary">
+                <pre className="max-h-[32rem] min-w-0 overflow-y-auto overflow-x-hidden px-4 py-3.5 font-mono text-[13px] leading-[1.7] whitespace-pre-wrap break-words text-foreground">
+                  <code className="whitespace-pre-wrap break-words">
+                    {data.skillFile.content || "\u00A0"}
+                  </code>
+                </pre>
+              </figure>
+            ) : (
+              <p className="border-t border-border py-10 font-mono text-[13px] text-faint">
+                This tree has no {SKILL_FILE}.
+              </p>
+            )}
+          </section>
+
+          <section>
             <Label className="mb-4">Files</Label>
             {files.length === 0 ? (
               <p className="border-t border-border py-10 font-mono text-[13px] text-faint">
@@ -111,31 +134,6 @@ export function SkillDetailView({ name }: { name: string }) {
                 })}
               </Lane>
             )}
-          </section>
-
-          <section>
-            <Label className="mb-4">Targets</Label>
-            <Lane cols="7rem minmax(0,1fr)">
-              <LaneHead>
-                <div>Agent</div>
-                <div>Path on disk</div>
-              </LaneHead>
-              {TARGETS.map((target) => (
-                <LaneRow key={target.tool}>
-                  <div className="text-[14px] text-foreground">{target.tool}</div>
-                  <div className="truncate font-mono text-[13px] text-muted-foreground">
-                    {`${target.root}/${data.name}`}
-                  </div>
-                </LaneRow>
-              ))}
-            </Lane>
-            <p className="mt-4 max-w-prose text-[13px] leading-relaxed text-muted-foreground">
-              Where this skill lands once you pull it down.
-            </p>
-            <CopyCommand
-              command={`skl use ${data.name}`}
-              className="mt-4 max-w-md"
-            />
           </section>
         </div>
       ) : null}

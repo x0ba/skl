@@ -13,6 +13,10 @@ export function devicePath(id: string): string {
   return `/v1/devices/${id}`;
 }
 
+export function blobPath(hash: string): string {
+  return `/v1/blobs/${hash}`;
+}
+
 export function skillPath(name: string): string {
   return `/v1/skills/${encodeURIComponent(name)}`;
 }
