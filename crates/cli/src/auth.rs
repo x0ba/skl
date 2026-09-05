@@ -23,8 +23,21 @@ pub fn store_device_token(token: &str) -> Result<()> {
     if token.is_empty() {
         return Err(SklError::DeviceAuthFailed("empty access_token".into()));
     }
-    entry()?.set_password(token)?;
-    Ok(())
+    match entry()?.set_password(token) {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            // README / smoke: SKL_TOKEN already overrides reads. Headless CI
+            // has no Secret Service — don't fail login when the env token is set.
+            if std::env::var(TOKEN_ENV)
+                .ok()
+                .is_some_and(|value| !value.trim().is_empty())
+            {
+                eprintln!("warning: OS keyring unavailable ({err}); using {TOKEN_ENV}");
+                return Ok(());
+            }
+            Err(SklError::from(err))
+        }
+    }
 }
 
 pub fn load_device_token() -> Result<String> {
