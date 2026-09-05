@@ -16,6 +16,9 @@ mod scrub;
 mod skill_tree;
 mod sync;
 
+#[cfg(test)]
+mod harness_catalog_contract;
+
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
