@@ -135,6 +135,22 @@ cargo run -p skl -- use greeter --project /path/to/proj
 
 `skl use` refuses to overwrite a real directory it did not create. `skl unuse` removes symlinks and copy-mode dirs it created. Conflict/scrub hooks live in `crates/cli/src/hooks/` (`skl sync --keep-local` / `--keep-remote`).
 
+### capture
+
+Promote a project-local skill directory into the **personal library** at `{SKL_DATA_DIR}/skills/<name>/` (default `~/.local/share/skl/skills/`). `.agents/skills` is the project link destination (and a home discovery root for `init`) — it is not the library. SQLite index stays in `state.db` under the data dir.
+
+```bash
+# From a project that already has .agents/skills/greeter (real copy, with SKILL.md)
+cargo run -p skl -- capture .agents/skills/greeter
+# copies into ~/.local/share/skl/skills/greeter and replaces the project path with a symlink
+
+cargo run -p skl -- capture .agents/skills/greeter --keep-copy   # leave project as a real copy
+cargo run -p skl -- capture .agents/skills/greeter --as notes    # library name `notes`
+cargo run -p skl -- capture .agents/skills/greeter --force       # overwrite existing library skill
+```
+
+Name clash without `--force` / `--as` errors (non-TTY: no prompt). A project symlink that already points at the library skill is a no-op. After a successful local capture, piggyback `maybe_run` is fail-soft (API down does not fail capture).
+
 ### migrate targets
 
 Explicit only — `skl use` / `skl doctor` never rewrite an M0 layout. Detects projects whose skills live only under `.claude`/`.cursor`, ensures `.agents/skills/<skill>` from the home library (symlink→copy fallback), and writes `[targets]` (`canonical = ["agents"]`, prior dests as `extra`). Old links stay unless `--prune-old`.

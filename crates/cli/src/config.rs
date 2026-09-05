@@ -120,6 +120,20 @@ impl Paths {
         fs::create_dir_all(&self.data_dir)?;
         Ok(())
     }
+
+    /// Canonical personal skill library: `{data_dir}/skills`.
+    ///
+    /// Default `data_dir` is `~/.local/share/skl` (XDG), so the library is
+    /// `~/.local/share/skl/skills/`. `SKL_DATA_DIR` overrides the data dir.
+    /// This is **not** `~/.agents/skills` (project link dest / init discovery).
+    pub fn library_dir(&self) -> PathBuf {
+        self.data_dir.join("skills")
+    }
+
+    /// `{data_dir}/skills/<name>`.
+    pub fn library_skill(&self, name: &str) -> PathBuf {
+        self.library_dir().join(name)
+    }
 }
 
 pub fn load(paths: &Paths) -> Result<Config> {
@@ -326,6 +340,30 @@ mod tests {
             "non-trio catalog global missing: {pairs:?}"
         );
         assert!(roots.len() > 5);
+    }
+
+    #[test]
+    fn library_dir_is_under_data_dir_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data_dir = tmp.path().join("data");
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: data_dir.clone(),
+            db_file: data_dir.join("state.db"),
+        };
+        assert_eq!(paths.library_dir(), data_dir.join("skills"));
+        assert_eq!(
+            paths.library_skill("greeter"),
+            data_dir.join("skills").join("greeter")
+        );
+        assert!(
+            !paths
+                .library_dir()
+                .to_string_lossy()
+                .contains(".agents/skills"),
+            "personal library must not be ~/.agents/skills"
+        );
     }
 
     #[test]
