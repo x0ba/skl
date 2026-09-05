@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
-# Hammer smoke for furnace #20 harness catalog.
-#
-# Always: consume vendored `crates/cli/data/agents-catalog.json` (no invented
-# product catalog). Asserts universal/custom partition, sample custom paths,
-# unique globals, and that cursor/codex are never extras.
-#
-# CLI half (`skl use` / `-a claude-code` / sticky migrate / init from a
-# non-trio global) runs only after #20 wires catalog.rs + use/targets.
-# Until then this script exits 0 after the JSON contract and prints GAPS.
+# Hammer smoke stacked on furnace #20 harness catalog.
+# Consumes vendored `crates/cli/data/agents-catalog.json` only.
 #
 # Usage:
 #   cargo build -p skl
@@ -81,39 +74,32 @@ print("    samples: claude-code .claude/skills, continue .continue/skills, openc
 PY
 
 skl_require_bin
-mkdir -p "$HOME_DIR/.agents/skills/${SKILL_NAME}" "$PROJECT"
+mkdir -p "$HOME_DIR/.agents/skills/${SKILL_NAME}" \
+  "$HOME_DIR/.openclaw/skills/clawed" \
+  "$PROJECT"
 printf '# %s\n\nhello from ~/.agents/skills\n' "$SKILL_NAME" \
   >"$HOME_DIR/.agents/skills/${SKILL_NAME}/SKILL.md"
+printf '# clawed\n\nfrom openclaw global\n' \
+  >"$HOME_DIR/.openclaw/skills/clawed/SKILL.md"
 skl_write_sync_prefs "$HOME_DIR" false 900
 
 run_home() {
   skl_run "$HOME_DIR" "$@"
 }
 
-cli_ready=0
-if run_home use --help 2>&1 | grep -q -- "claude-code"; then
-  cli_ready=1
-fi
-
-if [[ "$cli_ready" -eq 0 ]]; then
-  echo "GAP: #20 has not wired catalog.rs / use -a claude-code yet"
-  echo "     JSON contract is green. Re-run this smoke after furnace lands:"
-  echo "     - use greeter alone → only .agents/skills"
-  echo "     - -a claude-code → also .claude/skills"
-  echo "     - init imports ~/.openclaw/skills (non-trio catalog global)"
-  echo "     - sticky claude→claude-code; cursor/codex extras dropped with warn"
-  echo "     - soft-prompt: non-TTY skip; cursor/codex never toggles; Universal locked"
-  echo "OK: catalog JSON contract (CLI half waiting on #20)"
-  exit 0
+help_out="$(run_home use --help 2>&1)"
+if [[ "$help_out" != *"claude-code"* ]]; then
+  echo "expected skl use --help to mention claude-code" >&2
+  echo "$help_out" >&2
+  exit 1
 fi
 
 echo "==> init imports non-trio catalog global (~/.openclaw/skills)"
-mkdir -p "$HOME_DIR/.openclaw/skills/clawed"
-printf '# clawed\n\nfrom openclaw global\n' >"$HOME_DIR/.openclaw/skills/clawed/SKILL.md"
 init_out="$(run_home init 2>&1)"
 echo "$init_out"
 skl_assert_contains "$init_out" "clawed"
 skl_assert_contains "$init_out" "openclaw"
+skl_assert_contains "$init_out" "$SKILL_NAME"
 
 echo "==> sticky claude migrates to claude-code; cursor/codex dropped"
 mkdir -p "$HOME_DIR/.config/skl"
@@ -125,19 +111,14 @@ frequency_secs = 900
 [targets]
 extra = ["claude", "cursor", "codex"]
 EOF
-mig_out="$(run_home doctor 2>&1 || true)"
+mig_out="$(run_home targets 2>&1)"
 echo "$mig_out"
 cfg="$HOME_DIR/.config/skl/config.toml"
 skl_assert_file_contains "$cfg" "claude-code"
-if grep -Eq 'cursor|codex|"claude"' "$cfg" && grep -q 'claude-code' "$cfg"; then
-  :
-fi
-if grep -Eq '(^|[[:space:]",[])claude($|[[:space:]",\]])' "$cfg"; then
-  if grep -q 'claude-code' "$cfg"; then
-    echo "sticky still lists bare claude after migrate" >&2
-    cat "$cfg" >&2
-    exit 1
-  fi
+if grep -qE '(^|[[:space:]",\[])claude($|[[:space:]",\]])' "$cfg"; then
+  echo "sticky still lists bare claude after migrate" >&2
+  cat "$cfg" >&2
+  exit 1
 fi
 if grep -q 'cursor' "$cfg"; then
   echo "sticky still lists cursor" >&2
@@ -149,13 +130,11 @@ if grep -q 'codex' "$cfg"; then
   cat "$cfg" >&2
   exit 1
 fi
-if [[ "$mig_out" != *"cursor"* || "$mig_out" != *"codex"* ]]; then
-  echo "expected doctor/targets to warn about dropping cursor/codex" >&2
-  echo "$mig_out" >&2
-  exit 1
-fi
+skl_assert_contains "$mig_out" "cursor"
+skl_assert_contains "$mig_out" "codex"
+skl_assert_contains "$mig_out" "claude-code"
 
-echo "==> soft-prompt never offers cursor/codex (targets listing)"
+echo "==> soft-prompt / targets never offer cursor/codex extras"
 tgt="$(run_home targets 2>&1)"
 echo "$tgt"
 if [[ "$tgt" == *"cursor"* || "$tgt" == *"codex"* ]]; then
