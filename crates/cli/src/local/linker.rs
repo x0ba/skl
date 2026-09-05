@@ -963,6 +963,11 @@ mod tests {
             !raw.contains("path ="),
             "portable manifest must not write absolute path: {raw}"
         );
+        assert!(!raw.contains("$HOME"), "{raw}");
+        assert!(
+            !raw.contains(home.to_string_lossy().as_ref()),
+            "skl use must not write this HOME into skills.toml: {raw}"
+        );
         assert!(raw.contains("library"), "{raw}");
     }
 

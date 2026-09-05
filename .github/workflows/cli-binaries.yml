@@ -25,6 +25,7 @@ on:
       - "scripts/smoke-clash.sh"
       - "scripts/smoke-auto-sync.sh"
       - "scripts/smoke-capture.sh"
+      - "scripts/smoke-portable-use-all.sh"
       - "apps/api/**"
       - "docker-compose.yml"
       - ".github/workflows/cli-binaries.yml"
@@ -44,6 +45,7 @@ on:
       - "scripts/smoke-clash.sh"
       - "scripts/smoke-auto-sync.sh"
       - "scripts/smoke-capture.sh"
+      - "scripts/smoke-portable-use-all.sh"
       - "apps/api/**"
       - "docker-compose.yml"
       - ".github/workflows/cli-binaries.yml"
@@ -106,7 +108,7 @@ jobs:
             dist/SHA256SUMS
 
   smoke-import-sync-use:
-    name: import → sync → use + clash + auto-sync + capture
+    name: import → sync → use + clash + auto-sync + capture + portable use --all
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -146,6 +148,7 @@ jobs:
           ./scripts/smoke-clash.sh
           ./scripts/smoke-auto-sync.sh
           ./scripts/smoke-capture.sh
+          ./scripts/smoke-portable-use-all.sh
 
   smoke-install:
     name: curl install.sh (no rust)
