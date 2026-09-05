@@ -65,6 +65,11 @@ enum Command {
     List,
     /// Diagnose agent skill paths, keyring, state.db, and GET /v1/health.
     Doctor,
+    /// Show or edit sticky extra dests (`~/.config/skl/config.toml`).
+    Targets {
+        #[command(subcommand)]
+        action: Option<TargetsCommand>,
+    },
     /// Symlink a skill into this project's agent dirs and skills.toml.
     Use {
         /// Skill names. With none, list skills already activated in the project.
@@ -73,6 +78,9 @@ enum Command {
         /// Project directory (default: cwd).
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
+        /// Extra dest for this activation (`claude`, `cursor`, or `codex`). Repeatable.
+        #[arg(short = 'a', long = "agent", value_name = "ID")]
+        agents: Vec<String>,
     },
     /// Remove project skill symlinks and drop them from skills.toml.
     Unuse {
@@ -81,6 +89,20 @@ enum Command {
         /// Project directory (default: cwd).
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum TargetsCommand {
+    /// Add extra dests (`claude`, `cursor`, or `codex`).
+    Add {
+        #[arg(value_name = "ID", required = true)]
+        ids: Vec<String>,
+    },
+    /// Remove extra dests.
+    Remove {
+        #[arg(value_name = "ID", required = true)]
+        ids: Vec<String>,
     },
 }
 
@@ -128,7 +150,21 @@ async fn run() -> Result<(), SklError> {
         Command::Status => commands::status::run(api_base),
         Command::List => commands::list::run(api_base).await,
         Command::Doctor => commands::doctor::run(api_base).await,
-        Command::Use { skills, project } => commands::use_cmd::run(&skills, project),
+        Command::Targets { action } => {
+            let action = match action {
+                None => commands::targets::TargetsAction::List,
+                Some(TargetsCommand::Add { ids }) => commands::targets::TargetsAction::Add(ids),
+                Some(TargetsCommand::Remove { ids }) => {
+                    commands::targets::TargetsAction::Remove(ids)
+                }
+            };
+            commands::targets::run(action)
+        }
+        Command::Use {
+            skills,
+            project,
+            agents,
+        } => commands::use_cmd::run(&skills, project, &agents),
         Command::Unuse { skills, project } => commands::unuse::run(&skills, project),
     }
 }

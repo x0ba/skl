@@ -8,11 +8,12 @@ use crate::local::db::LocalDb;
 use crate::local::linker::{self, LinkAction};
 use crate::local::skills::{self, DiscoveredSkill};
 
-pub fn run(names: &[String], project: Option<PathBuf>) -> Result<()> {
+pub fn run(names: &[String], project: Option<PathBuf>, agents: &[String]) -> Result<()> {
     let project = resolve_project(project)?;
     let home = config::home_dir()?;
     let paths = Paths::resolve().ok();
     let db_file = paths.as_ref().map(|p| p.db_file.as_path());
+    let extras = resolve_activation_extras(paths.as_ref(), agents)?;
 
     if names.is_empty() {
         return list_activated(&project);
@@ -20,7 +21,7 @@ pub fn run(names: &[String], project: Option<PathBuf>) -> Result<()> {
 
     for name in names {
         let skill = resolve_skill(name, &home, db_file)?;
-        let out = linker::activate(&project, &home, &skill)?;
+        let out = linker::activate_with_extras(&project, &home, &skill, &extras)?;
         eprintln!(
             "using {}  ({}  {})",
             out.skill,
@@ -38,6 +39,19 @@ pub fn run(names: &[String], project: Option<PathBuf>) -> Result<()> {
         eprintln!("  updated  {}", out.manifest.display());
     }
     Ok(())
+}
+
+/// Sticky extras ∪ `-a/--agent` extras for this activation.
+pub fn resolve_activation_extras(
+    paths: Option<&Paths>,
+    cli_agents: &[String],
+) -> Result<Vec<String>> {
+    let cli = linker::normalize_extra_ids(cli_agents)?;
+    let sticky = paths
+        .and_then(|p| crate::config::load(p).ok())
+        .map(|cfg| cfg.sticky_extras())
+        .unwrap_or_default();
+    Ok(linker::merge_extra_ids(&[&sticky, &cli]))
 }
 
 fn list_activated(project: &Path) -> Result<()> {
@@ -179,5 +193,21 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("not found"), "{err}");
+    }
+
+    #[test]
+    fn activation_extras_merge_sticky_and_cli() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: tmp.path().join("data"),
+            db_file: tmp.path().join("data/state.db"),
+        };
+        crate::config::add_sticky_extras(&paths, &["cursor".into()]).unwrap();
+        let extras = resolve_activation_extras(Some(&paths), &["claude".into()]).unwrap();
+        assert_eq!(extras, ["claude", "cursor"]);
+        assert!(resolve_activation_extras(None, &[]).unwrap().is_empty());
+        assert!(resolve_activation_extras(None, &["agents".into()]).is_err());
     }
 }

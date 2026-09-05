@@ -111,7 +111,7 @@ echo "$b_list"
 skl_assert_contains "$b_list" "$SKILL_NAME"
 skl_assert_contains "$b_list" "yes"
 
-echo "==> machine B: skl use ${SKILL_NAME} → project symlinks"
+echo "==> machine B: skl use ${SKILL_NAME} → .agents/skills only"
 b_use="$(run_b use "$SKILL_NAME" --project "$PROJECT_B" 2>&1)"
 echo "$b_use"
 skl_assert_contains "$b_use" "using $SKILL_NAME"
@@ -122,11 +122,29 @@ claude_link="$PROJECT_B/.claude/skills/${SKILL_NAME}"
 cursor_link="$PROJECT_B/.cursor/skills/${SKILL_NAME}"
 home_skill="$MACHINE_B/.claude/skills/${SKILL_NAME}"
 skl_assert_symlink_to "$agents_link" "$home_skill"
-skl_assert_symlink_to "$claude_link" "$home_skill"
-skl_assert_symlink_to "$cursor_link" "$home_skill"
-skl_assert_file_contains "$claude_link/SKILL.md" "hello from machine A"
+if [[ -e "$claude_link" || -L "$claude_link" || -d "$PROJECT_B/.claude" ]]; then
+  echo "default use must not create .claude" >&2
+  ls -la "$PROJECT_B" >&2 || true
+  exit 1
+fi
+if [[ -e "$cursor_link" || -L "$cursor_link" || -d "$PROJECT_B/.cursor" ]]; then
+  echo "default use must not create .cursor" >&2
+  ls -la "$PROJECT_B" >&2 || true
+  exit 1
+fi
 skl_assert_file_contains "$PROJECT_B/skills.toml" "$SKILL_NAME"
 skl_assert_file_contains "$PROJECT_B/skills.toml" "symlink"
+
+echo "==> machine B: skl use -a claude also writes .claude/skills"
+b_use_a="$(run_b use "$SKILL_NAME" -a claude --project "$PROJECT_B" 2>&1)"
+echo "$b_use_a"
+skl_assert_symlink_to "$agents_link" "$home_skill"
+skl_assert_symlink_to "$claude_link" "$home_skill"
+if [[ -e "$cursor_link" || -L "$cursor_link" || -d "$PROJECT_B/.cursor" ]]; then
+  echo "-a claude must not create .cursor" >&2
+  exit 1
+fi
+skl_assert_file_contains "$claude_link/SKILL.md" "hello from machine A"
 
 echo "==> machine B: skl use (list activated)"
 b_used="$(run_b use --project "$PROJECT_B" 2>&1)"

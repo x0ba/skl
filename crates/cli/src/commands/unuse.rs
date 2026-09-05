@@ -2,11 +2,11 @@
 
 use std::path::PathBuf;
 
-use crate::config;
+use crate::config::{self, Paths};
 use crate::error::{Result, SklError};
 use crate::local::linker::{self, LinkAction};
 
-use super::use_cmd::resolve_project;
+use super::use_cmd::{resolve_activation_extras, resolve_project};
 
 pub fn run(names: &[String], project: Option<PathBuf>) -> Result<()> {
     if names.is_empty() {
@@ -17,9 +17,10 @@ pub fn run(names: &[String], project: Option<PathBuf>) -> Result<()> {
 
     let project = resolve_project(project)?;
     let home = config::home_dir()?;
+    let extras = resolve_activation_extras(Paths::resolve().ok().as_ref(), &[])?;
 
     for name in names {
-        let out = linker::deactivate(&project, &home, name)?;
+        let out = linker::deactivate_with_extras(&project, &home, name, &extras)?;
         eprintln!("unused {}", out.skill);
         for link in &out.links {
             eprintln!(

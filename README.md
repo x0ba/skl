@@ -49,7 +49,7 @@ After `skl login`, the device `access_token` is stored in the OS keyring (`servi
 
 ### doctor
 
-Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets` when that command exists.
+Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets` when that command exists. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` soft-prompt once for extra dests (`claude` / `cursor` / `codex`); CI / non-interactive skips the prompt.
 
 ```bash
 # API down is still a successful report (health = unreachable)
@@ -59,19 +59,41 @@ cargo run -p skl -- doctor
 API_BASE=http://localhost:8787 cargo run -p skl -- doctor
 ```
 
+### targets
+
+Sticky extra dests live in `~/.config/skl/config.toml` (`SKL_CONFIG_DIR` overrides the XDG config dir). Canonical dest is always `.agents/skills`. Ids: `agents` (always), extras `claude` | `cursor` | `codex`.
+
+```bash
+cargo run -p skl -- targets              # show canonical + sticky extras
+cargo run -p skl -- targets add claude   # also link .claude/skills on `use`
+cargo run -p skl -- targets add cursor
+cargo run -p skl -- targets remove cursor
+```
+
 ### use / unuse
 
-Default is **symlink** into the project's **`.agents/skills`** (canonical), plus legacy `.claude/skills` and `.cursor/skills` so M0 projects keep working until `skl migrate targets`. If the filesystem refuses (EPERM / ENOTSUP / Windows privilege), `skl use` copies instead and records `mode = "copy"` in `skills.toml`. Codex is linked only if `~/.codex/skills` exists or the project already has `.codex`. `--project` overrides cwd.
+Default is **symlink** into the project's **`.agents/skills` only**. Extra harness dirs (`.claude/skills`, `.cursor/skills`, `.codex/skills`) are created only when opted in via:
+
+- sticky extras (`skl targets add <id>` → `~/.config/skl/config.toml`)
+- project `skills.toml` `[targets].extra`
+- this invocation: `skl use <skill> -a claude -a cursor`
+
+If the filesystem refuses (EPERM / ENOTSUP / Windows privilege), `skl use` copies instead and records `mode = "copy"` in `skills.toml`. `--project` overrides cwd.
 
 ```bash
 # Home skill (or a path already imported by `skl init`)
 mkdir -p ~/.claude/skills/greeter
 printf '# hello\n' > ~/.claude/skills/greeter/SKILL.md
 
-# From a project directory
+# From a project directory — agents-only unless extras are opted in
 cargo run -p skl -- use greeter
-ls -l .agents/skills/greeter .claude/skills/greeter .cursor/skills/greeter
+ls -l .agents/skills/greeter
+test ! -e .claude && test ! -e .cursor
 cat skills.toml
+
+# This run only (also persisted on the project as [targets].extra)
+cargo run -p skl -- use greeter -a claude
+ls -l .agents/skills/greeter .claude/skills/greeter
 
 cargo run -p skl -- use                 # list activated
 cargo run -p skl -- unuse greeter

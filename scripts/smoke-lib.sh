@@ -127,6 +127,7 @@ skl_run() {
     SKL_DATA_DIR="$home/.local/share/skl" \
     SKL_CONFIG_DIR="$home/.config/skl" \
     SKL_TOKEN="$token" \
+    SKL_NO_PROMPT=1 \
     API_BASE="$API" \
     "$BIN" "$@"
 }

@@ -63,6 +63,9 @@ pub async fn run(api_base: String) -> Result<()> {
     let paths = Paths::resolve().ok();
     let report = collect(&api_base, &home, paths.as_ref()).await;
     print_report(&report);
+    if let Some(paths) = paths.as_ref() {
+        config::maybe_prompt_sticky_extras(paths)?;
+    }
     Ok(())
 }
 
