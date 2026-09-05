@@ -437,4 +437,133 @@ mode = "symlink"
         assert!(err.contains("skl use --all"), "{err}");
         assert!(!project.join(".agents").exists());
     }
+
+    /// Same committed names-only `skills.toml` on two HOMEs: B restores from B's library.
+    #[test]
+    fn same_portable_manifest_restores_on_second_home() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home_a = tmp.path().join("home-a");
+        let home_b = tmp.path().join("home-b");
+        let project_a = tmp.path().join("proj-a");
+        let project_b = tmp.path().join("proj-b");
+        std::fs::create_dir_all(&project_a).unwrap();
+        std::fs::create_dir_all(&project_b).unwrap();
+
+        let skill_a = home_a.join(".claude/skills/greeter");
+        std::fs::create_dir_all(&skill_a).unwrap();
+        std::fs::write(skill_a.join("SKILL.md"), "from A").unwrap();
+        let discovered_a = resolve_skill("greeter", &home_a, None).unwrap();
+        linker::activate(&project_a, &home_a, &discovered_a).unwrap();
+
+        let raw_a = std::fs::read_to_string(linker::manifest_path(&project_a)).unwrap();
+        assert!(!raw_a.contains("path ="), "{raw_a}");
+        assert!(!raw_a.contains("$HOME"), "{raw_a}");
+        assert!(
+            !raw_a.contains(home_a.to_string_lossy().as_ref()),
+            "committed manifest must not embed HOME A: {raw_a}"
+        );
+        std::fs::copy(
+            linker::manifest_path(&project_a),
+            linker::manifest_path(&project_b),
+        )
+        .unwrap();
+
+        let skill_b = home_b.join(".agents/skills/greeter");
+        std::fs::create_dir_all(&skill_b).unwrap();
+        std::fs::write(skill_b.join("SKILL.md"), "from B after sync").unwrap();
+
+        let outs = restore_all(&project_b, &home_b, None, &[]).unwrap();
+        assert_eq!(outs.len(), 1);
+        assert_eq!(outs[0].skill, "greeter");
+        let dest = project_b.join(".agents/skills/greeter");
+        assert!(dest.exists());
+        assert_eq!(
+            std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "from B after sync"
+        );
+        let raw_b = std::fs::read_to_string(linker::manifest_path(&project_b)).unwrap();
+        assert!(!raw_b.contains("path ="), "{raw_b}");
+        assert!(!raw_b.contains("$HOME"), "{raw_b}");
+        assert!(
+            !raw_b.contains(home_a.to_string_lossy().as_ref()),
+            "{raw_b}"
+        );
+        assert!(
+            !raw_b.contains(home_b.to_string_lossy().as_ref()),
+            "{raw_b}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(project_a.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            "from A"
+        );
+    }
+
+    /// Legacy absolute `path` is ignored even when that directory still exists.
+    #[test]
+    fn restore_all_ignores_legacy_path_when_it_still_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home_a = tmp.path().join("home-a");
+        let home_b = tmp.path().join("home-b");
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+
+        let foreign = home_a.join(".claude/skills/greeter");
+        std::fs::create_dir_all(&foreign).unwrap();
+        std::fs::write(foreign.join("SKILL.md"), "foreign machine").unwrap();
+
+        let local = home_b.join(".claude/skills/greeter");
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::write(local.join("SKILL.md"), "this machine").unwrap();
+
+        std::fs::write(
+            linker::manifest_path(&project),
+            format!(
+                r#"
+[[skills]]
+name = "greeter"
+source = "claude"
+path = "{}"
+mode = "symlink"
+"#,
+                foreign.display()
+            ),
+        )
+        .unwrap();
+
+        let outs = restore_all(&project, &home_b, None, &[]).unwrap();
+        assert_eq!(outs.len(), 1);
+        assert_eq!(
+            std::fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            "this machine"
+        );
+        let raw = std::fs::read_to_string(linker::manifest_path(&project)).unwrap();
+        assert!(!raw.contains("path ="), "{raw}");
+        assert!(
+            !raw.contains(&foreign.to_string_lossy().to_string()),
+            "{raw}"
+        );
+    }
+
+    #[test]
+    fn committed_repo_skills_toml_has_no_home_or_absolute_paths() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let raw = std::fs::read_to_string(repo.join("skills.toml")).expect("repo skills.toml");
+        assert!(!raw.contains("$HOME"), "{raw}");
+        assert!(!raw.contains("path ="), "{raw}");
+        assert!(!raw.contains("/Users/"), "{raw}");
+        assert!(!raw.contains("/home/"), "{raw}");
+        let loaded = linker::load_manifest(&repo).unwrap();
+        for skill in &loaded.skills {
+            assert!(
+                !skill.has_absolute_path(),
+                "{} still lists an absolute path",
+                skill.name
+            );
+            assert!(
+                skill.path.is_none(),
+                "{} must not serialize a path field",
+                skill.name
+            );
+        }
+    }
 }

@@ -501,6 +501,7 @@ mod tests {
         assert_eq!(report.symlink_detail, "ok");
         assert!(report.windows_note.is_none());
         assert!(report.m0_targets_warning.is_none());
+        assert!(report.absolute_paths_warning.is_none());
     }
 
     #[tokio::test]

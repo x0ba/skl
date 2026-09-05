@@ -2,7 +2,8 @@
 # Shared helpers for two-HOME CLI smokes against cipher's API on :8787.
 # CLI crate path is crates/cli; package/binary name is skl (`cargo build -p skl`).
 #
-# Used by scripts/smoke-import-sync-use.sh. The clash + scrub harness
+# Used by scripts/smoke-import-sync-use.sh and
+# scripts/smoke-portable-use-all.sh. The clash + scrub harness
 # (scripts/smoke-clash.sh on the conflict/scrub PR) uses the same HOME /
 # SKL_TOKEN / ALLOW_DEV_AUTH=true pattern.
 #
@@ -226,6 +227,53 @@ skl_assert_contains() {
     echo "$haystack" >&2
     exit 1
   fi
+}
+
+skl_assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "expected output not to contain: $needle" >&2
+    echo "got:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
+# Furnace portable manifest: names + mode, never host paths.
+# Usage: skl_assert_portable_manifest <skills.toml> [forbidden-substring...]
+skl_assert_portable_manifest() {
+  local path="$1"
+  shift
+  if [[ ! -f "$path" ]]; then
+    echo "missing manifest: $path" >&2
+    exit 1
+  fi
+  local body
+  body="$(cat "$path")"
+  if grep -qE '^[[:space:]]*path[[:space:]]*=' "$path"; then
+    echo "portable manifest must not write path=: $path" >&2
+    echo "$body" >&2
+    exit 1
+  fi
+  if [[ "$body" == *'$HOME'* ]]; then
+    echo "portable manifest must not contain \$HOME: $path" >&2
+    echo "$body" >&2
+    exit 1
+  fi
+  if grep -qE '/Users/|/home/[A-Za-z0-9._-]+|[A-Za-z]:[\\/]' "$path"; then
+    echo "portable manifest must not contain an absolute home path: $path" >&2
+    echo "$body" >&2
+    exit 1
+  fi
+  local needle
+  for needle in "$@"; do
+    if [[ -n "$needle" && "$body" == *"$needle"* ]]; then
+      echo "portable manifest must not contain host path: $needle" >&2
+      echo "$body" >&2
+      exit 1
+    fi
+  done
 }
 
 skl_assert_file_contains() {

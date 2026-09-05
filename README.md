@@ -158,6 +158,8 @@ skl use --all     # rematerialize every listed skill into project dests
 `skl use` with no args still **lists** activated skills. Restore is only `skl use --all` — sync never auto-restores.
 
 ```bash
+./scripts/smoke-portable-use-all.sh  # two-HOME: clone portable toml → sync B → use --all
+
 # Home skill (or a path already imported by `skl init`)
 mkdir -p ~/.claude/skills/greeter
 printf '# hello\n' > ~/.claude/skills/greeter/SKILL.md
@@ -249,10 +251,12 @@ cargo build -p skl
 ./scripts/smoke-init-home-agents.sh  # init from ~/.agents/skills + ~/.config/agents/skills (no API)
 ./scripts/smoke-auto-sync.sh         # dual-HOME + throttle + fail-soft (no `skl sync`)
 ./scripts/smoke-capture.sh           # project skill → capture → sync B → use; clash / --force / --as / --keep-copy / fail-soft / non-TTY
+./scripts/smoke-portable-use-all.sh  # two-HOME portable skills.toml → sync B → skl use --all
 ./scripts/smoke-install.sh           # curl install.sh (fake release) → skl --help; no Rust; no prompts
 
 # Boot postgres + apps/api here
 START_API=1 ./scripts/smoke-import-sync-use.sh
 START_API=1 ./scripts/smoke-auto-sync.sh
 START_API=1 ./scripts/smoke-capture.sh
+START_API=1 ./scripts/smoke-portable-use-all.sh
 ```
