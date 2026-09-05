@@ -148,7 +148,7 @@ build_target() {
     if [[ "$target" == *apple-darwin* && "$(host_os)" != darwin ]]; then
       :
     else
-      (cd "$ROOT" && cargo zigbuild --release -p skl --target "$target")
+      (cd "$ROOT" && PKG_CONFIG_ALLOW_CROSS=1 cargo zigbuild --release -p skl --target "$target")
       src="$ROOT/target/${target}/release/${crate_bin}"
       [[ -f "$src" ]] || die "zigbuild produced no $src"
       cp "$src" "$OUT_DIR/$artifact"

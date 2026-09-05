@@ -17,11 +17,6 @@ dialoguer = "0.11"
 dirs = "5"
 hex = "0.4"
 humantime = "2"
-keyring = { version = "3", features = [
-    "apple-native",
-    "windows-native",
-    "sync-secret-service",
-] }
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -33,6 +28,20 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "fs"] 
 toml = "0.8"
 walkdir = "2"
 whoami = "1.5"
+
+# GNU/mac/Windows: furnace Secret Service (libdbus) + native backends.
+# musl release triples cannot pkg-config-cross libdbus; kernel keyutils only.
+[target.'cfg(not(target_env = "musl"))'.dependencies]
+keyring = { version = "3", features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+] }
+
+[target.'cfg(target_env = "musl")'.dependencies]
+keyring = { version = "3", default-features = false, features = [
+    "linux-native",
+] }
 
 [dev-dependencies]
 tempfile = "3"
