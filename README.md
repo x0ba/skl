@@ -2,6 +2,22 @@
 
 Atuin-style personal agent skill sync.
 
+## Install
+
+```bash
+curl -fsSL https://github.com/x0ba/skl/releases/latest/download/install.sh | bash
+```
+
+Installs `skl` to `~/.local/bin/skl` (no sudo). On a TTY the script offers login + init (harness checklist). Non-TTY or `--non-interactive` installs the binary only.
+
+```bash
+curl -fsSL https://github.com/x0ba/skl/releases/latest/download/install.sh | bash -s -- --non-interactive
+```
+
+Windows: download `skl-x86_64-pc-windows-gnu.exe` from [Releases](https://github.com/x0ba/skl/releases/latest). No PowerShell installer this milestone.
+
+From source (footnote): `cargo install --path crates/cli` or `cargo build --release -p skl`.
+
 - `apps/api` — Hono + Postgres (auth, device flow, hash-based sync). All HTTP routes are under `/v1`; see `apps/api/src/contracts.ts`.
 - `apps/web` — Next.js (furnace): device-approve + dashboard
 - `crates/cli` — CLI (furnace). Package/binary name is `skl` (`cargo build -p skl` / `cargo test -p skl`).
