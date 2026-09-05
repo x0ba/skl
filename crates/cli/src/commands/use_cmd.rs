@@ -8,7 +8,12 @@ use crate::local::db::LocalDb;
 use crate::local::linker::{self, LinkAction};
 use crate::local::skills::{self, DiscoveredSkill};
 
-pub fn run(names: &[String], project: Option<PathBuf>, agents: &[String]) -> Result<()> {
+pub async fn run(
+    names: &[String],
+    project: Option<PathBuf>,
+    agents: &[String],
+    api_base: &str,
+) -> Result<()> {
     let project = resolve_project(project)?;
     let home = config::home_dir()?;
     let paths = Paths::resolve().ok();
@@ -16,7 +21,11 @@ pub fn run(names: &[String], project: Option<PathBuf>, agents: &[String]) -> Res
     let extras = resolve_activation_extras(paths.as_ref(), agents)?;
 
     if names.is_empty() {
-        return list_activated(&project);
+        list_activated(&project)?;
+        if let Some(paths) = paths.as_ref() {
+            let _ = crate::auto_sync::maybe_run(api_base, paths, "use").await;
+        }
+        return Ok(());
     }
 
     for name in names {
@@ -37,6 +46,10 @@ pub fn run(names: &[String], project: Option<PathBuf>, agents: &[String]) -> Res
             );
         }
         eprintln!("  updated  {}", out.manifest.display());
+    }
+    // Fail-soft: never fail `skl use` because auto-sync failed.
+    if let Some(paths) = paths.as_ref() {
+        let _ = crate::auto_sync::maybe_run(api_base, paths, "use").await;
     }
     Ok(())
 }

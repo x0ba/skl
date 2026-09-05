@@ -1,5 +1,6 @@
 mod api;
 mod auth;
+mod auto_sync;
 mod commands;
 mod config;
 mod conflict;
@@ -143,7 +144,7 @@ async fn run() -> Result<(), SklError> {
 
     match cli.command {
         Command::Login { dev_user } => commands::login::run(api_base, dev_user).await,
-        Command::Init => commands::init::run(),
+        Command::Init => commands::init::run(api_base).await,
         Command::Sync {
             keep_local,
             keep_remote,
@@ -165,7 +166,7 @@ async fn run() -> Result<(), SklError> {
             )
             .await
         }
-        Command::Status => commands::status::run(api_base),
+        Command::Status => commands::status::run(api_base).await,
         Command::List => commands::list::run(api_base).await,
         Command::Doctor => commands::doctor::run(api_base).await,
         Command::Targets { action } => {
@@ -182,8 +183,10 @@ async fn run() -> Result<(), SklError> {
             skills,
             project,
             agents,
-        } => commands::use_cmd::run(&skills, project, &agents),
-        Command::Unuse { skills, project } => commands::unuse::run(&skills, project),
+        } => commands::use_cmd::run(&skills, project, &agents, &api_base).await,
+        Command::Unuse { skills, project } => {
+            commands::unuse::run(&skills, project, &api_base).await
+        }
         Command::Migrate {
             action: MigrateAction::Targets { project, prune_old },
         } => commands::migrate::run(project, prune_old),

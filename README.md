@@ -47,6 +47,20 @@ cargo run -p skl -- --help
 
 After `skl login`, the device `access_token` is stored in the OS keyring (`service=skl`, `account=device_token`). In headless/CI environments the keyring may not persist across processes — follow-on commands then say `not logged in`. Export `SKL_TOKEN=<access_token>` (overrides the keyring), or use `skl login --dev-user <id>` / `Bearer dev:<id>` when `ALLOW_DEV_AUTH` is on. `skl doctor` already reports keyring + `SKL_TOKEN` presence.
 
+### auto-sync
+
+Piggyback hash-sync when due. Defaults (override in `~/.config/skl/config.toml`):
+
+```toml
+[sync]
+auto = true
+frequency_secs = 900   # 15 minutes; also throttles failed attempts
+```
+
+Hooks: `login` (after the device token is stored), `init` (after import), `use` / `unuse` (**fail-soft** — the parent verb still succeeds), `status` (best-effort; still prints status, plus a one-liner if a sync ran). `doctor` prints `last_sync` from `state.db` only — **no** `maybe_run`, no sync network. `list` may piggyback fail-soft but is not the only trigger.
+
+Background conflicts use keep-remote (no TTY prompt). Failed attempts still write `last_auto_sync_attempt_at` so a down API cannot retry every command. Explicit `skl sync` is unchanged.
+
 ### doctor
 
 Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` soft-prompt once for extra dests (`claude` / `cursor` / `codex`); CI / non-interactive skips the prompt.

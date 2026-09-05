@@ -8,7 +8,7 @@ use crate::local::linker::{self, LinkAction};
 
 use super::use_cmd::{resolve_activation_extras, resolve_project};
 
-pub fn run(names: &[String], project: Option<PathBuf>) -> Result<()> {
+pub async fn run(names: &[String], project: Option<PathBuf>, api_base: &str) -> Result<()> {
     if names.is_empty() {
         return Err(SklError::LocalState(
             "specify at least one skill: `skl unuse <skill>`".into(),
@@ -17,7 +17,8 @@ pub fn run(names: &[String], project: Option<PathBuf>) -> Result<()> {
 
     let project = resolve_project(project)?;
     let home = config::home_dir()?;
-    let extras = resolve_activation_extras(Paths::resolve().ok().as_ref(), &[])?;
+    let paths = Paths::resolve().ok();
+    let extras = resolve_activation_extras(paths.as_ref(), &[])?;
 
     for name in names {
         let out = linker::deactivate_with_extras(&project, &home, name, &extras)?;
@@ -31,6 +32,10 @@ pub fn run(names: &[String], project: Option<PathBuf>) -> Result<()> {
             );
         }
         eprintln!("  updated  {}", out.manifest.display());
+    }
+    // Fail-soft: never fail `skl unuse` because auto-sync failed.
+    if let Some(paths) = paths.as_ref() {
+        let _ = crate::auto_sync::maybe_run(api_base, paths, "unuse").await;
     }
     Ok(())
 }
