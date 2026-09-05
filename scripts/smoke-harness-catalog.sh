@@ -15,7 +15,6 @@ source "$ROOT/scripts/smoke-lib.sh"
 skl_smoke_defaults
 CATALOG="$ROOT/crates/cli/data/agents-catalog.json"
 HOME_DIR="$WORKDIR/home"
-PROJECT="$WORKDIR/proj"
 SKILL_NAME="${SKL_SMOKE_SKILL:-greeter}"
 
 trap skl_smoke_cleanup EXIT
@@ -75,8 +74,7 @@ PY
 
 skl_require_bin
 mkdir -p "$HOME_DIR/.agents/skills/${SKILL_NAME}" \
-  "$HOME_DIR/.openclaw/skills/clawed" \
-  "$PROJECT"
+  "$HOME_DIR/.openclaw/skills/clawed"
 printf '# %s\n\nhello from ~/.agents/skills\n' "$SKILL_NAME" \
   >"$HOME_DIR/.agents/skills/${SKILL_NAME}/SKILL.md"
 printf '# clawed\n\nfrom openclaw global\n' \
@@ -143,29 +141,44 @@ if [[ "$tgt" == *"cursor"* || "$tgt" == *"codex"* ]]; then
 fi
 skl_assert_contains "$tgt" "claude-code"
 
+# Migrate leaves sticky `claude-code`. Clear extras so default `use` is
+# agents-only; `-a` is a separate project so sticky cannot leak dests.
+cat >"$cfg" <<EOF
+[sync]
+auto = false
+frequency_secs = 900
+
+[targets]
+extra = []
+EOF
+
+PROJ_ALONE="$WORKDIR/proj-alone"
+PROJ_CLAUDE="$WORKDIR/proj-claude"
+mkdir -p "$PROJ_ALONE" "$PROJ_CLAUDE"
+home_skill="$HOME_DIR/.agents/skills/${SKILL_NAME}"
+
 echo "==> use ${SKILL_NAME} alone → .agents/skills only"
-use_out="$(run_home use "$SKILL_NAME" --project "$PROJECT" 2>&1)"
+use_out="$(run_home use "$SKILL_NAME" --project "$PROJ_ALONE" 2>&1)"
 echo "$use_out"
 skl_assert_contains "$use_out" "using $SKILL_NAME"
-agents_link="$PROJECT/.agents/skills/${SKILL_NAME}"
-home_skill="$HOME_DIR/.agents/skills/${SKILL_NAME}"
+agents_link="$PROJ_ALONE/.agents/skills/${SKILL_NAME}"
 skl_assert_symlink_to "$agents_link" "$home_skill"
-if [[ -e "$PROJECT/.claude" || -d "$PROJECT/.claude" ]]; then
+if [[ -e "$PROJ_ALONE/.claude" || -d "$PROJ_ALONE/.claude" ]]; then
   echo "default use must not create .claude" >&2
-  ls -la "$PROJECT" >&2 || true
+  ls -la "$PROJ_ALONE" >&2 || true
   exit 1
 fi
-if [[ -e "$PROJECT/.cursor" || -e "$PROJECT/.codex" ]]; then
+if [[ -e "$PROJ_ALONE/.cursor" || -e "$PROJ_ALONE/.codex" ]]; then
   echo "default use must not create .cursor/.codex" >&2
   exit 1
 fi
 
 echo "==> use -a claude-code also writes .claude/skills"
-use_a="$(run_home use "$SKILL_NAME" -a claude-code --project "$PROJECT" 2>&1)"
+use_a="$(run_home use "$SKILL_NAME" -a claude-code --project "$PROJ_CLAUDE" 2>&1)"
 echo "$use_a"
-skl_assert_symlink_to "$agents_link" "$home_skill"
-skl_assert_symlink_to "$PROJECT/.claude/skills/${SKILL_NAME}" "$home_skill"
-if [[ -e "$PROJECT/.cursor" || -e "$PROJECT/.codex" ]]; then
+skl_assert_symlink_to "$PROJ_CLAUDE/.agents/skills/${SKILL_NAME}" "$home_skill"
+skl_assert_symlink_to "$PROJ_CLAUDE/.claude/skills/${SKILL_NAME}" "$home_skill"
+if [[ -e "$PROJ_CLAUDE/.cursor" || -e "$PROJ_CLAUDE/.codex" ]]; then
   echo "-a claude-code must not create .cursor/.codex" >&2
   exit 1
 fi
