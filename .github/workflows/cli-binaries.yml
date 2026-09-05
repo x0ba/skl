@@ -155,15 +155,9 @@ jobs:
         with:
           name: skl-cli
           path: dist
-      - name: Confirm no Rust on PATH
-        run: |
-          if command -v rustc >/dev/null 2>&1 || command -v cargo >/dev/null 2>&1; then
-            echo "this job must not install Rust (install path is curl-only)" >&2
-            command -v rustc || true
-            command -v cargo || true
-            exit 1
-          fi
-          echo "rustc/cargo absent — clean env"
+      # ubuntu-latest ships rustc/cargo; this job must not *use* them.
+      # smoke-install.sh strips rustc/cargo from PATH and
+      # SKL_SMOKE_ALLOW_BUILD=0 refuses a cargo fallback.
       - name: curl install.sh → skl --help
         env:
           SKL_BIN: ./dist/skl-x86_64-unknown-linux-musl
