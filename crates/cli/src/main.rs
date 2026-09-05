@@ -82,11 +82,14 @@ enum Command {
         #[command(subcommand)]
         action: Option<TargetsCommand>,
     },
-    /// Symlink a skill into this project's agent dirs and skills.toml.
+    /// Activate a skill, list activated skills, or restore all (`--all`).
     Use {
         /// Skill names. With none, list skills already activated in the project.
         #[arg(value_name = "SKILL")]
         skills: Vec<String>,
+        /// Rematerialize every skill listed in skills.toml from this machine's library.
+        #[arg(long)]
+        all: bool,
         /// Project directory (default: cwd).
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
@@ -211,9 +214,10 @@ async fn run() -> Result<(), SklError> {
         }
         Command::Use {
             skills,
+            all,
             project,
             agents,
-        } => commands::use_cmd::run(&skills, project, &agents, &api_base).await,
+        } => commands::use_cmd::run(&skills, project, &agents, all, &api_base).await,
         Command::Capture {
             path,
             force,

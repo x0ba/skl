@@ -27,7 +27,10 @@ pub const WINDOWS_SYMLINK_NOTE: &str =
     "directory symlinks need Developer Mode or SeCreateSymbolicLink; use copies on EPERM";
 
 const MANIFEST_HEADER: &str =
-    "# Managed by `skl use` / `skl unuse` / `skl migrate targets`. Prefer symlink; copy if the filesystem refuses.\n\n";
+    "# Managed by `skl use` / `skl unuse` / `skl use --all`. Names only — resolve from this machine's library.\n\n";
+
+/// Portable `source` token written to `skills.toml`. Never a host path.
+pub const PORTABLE_SOURCE: &str = "library";
 
 #[cfg(test)]
 use std::cell::Cell;
@@ -210,10 +213,48 @@ pub struct SkillsManifest {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ActivatedSkill {
     pub name: String,
-    pub source: String,
-    pub path: String,
+    /// Portable token (`library`). Never a host path. Absent on legacy files is ok.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Legacy host path. Ignored on read; never written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
     #[serde(default = "default_mode")]
     pub mode: String,
+}
+
+impl ActivatedSkill {
+    pub fn portable(name: impl Into<String>, mode: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            source: Some(PORTABLE_SOURCE.to_string()),
+            path: None,
+            mode: mode.into(),
+        }
+    }
+
+    pub fn has_absolute_path(&self) -> bool {
+        self.path.as_deref().is_some_and(path_looks_absolute)
+    }
+}
+
+/// Host-absolute path (Unix, Windows, or a Windows path parsed on Unix).
+pub fn path_looks_absolute(path: &str) -> bool {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let p = Path::new(trimmed);
+    if p.is_absolute() {
+        return true;
+    }
+    trimmed.starts_with('/')
+        || trimmed.starts_with('\\')
+        || trimmed.contains(":\\")
+        || (trimmed.len() >= 3
+            && trimmed.as_bytes()[0].is_ascii_alphabetic()
+            && trimmed.as_bytes()[1] == b':'
+            && (trimmed.as_bytes()[2] == b'/' || trimmed.as_bytes()[2] == b'\\'))
 }
 
 fn default_mode() -> String {
@@ -415,9 +456,32 @@ pub fn load_manifest(project: &Path) -> Result<SkillsManifest> {
 pub fn save_manifest(project: &Path, manifest: &SkillsManifest) -> Result<()> {
     let mut sorted = manifest.clone();
     sorted.skills.sort_by(|a, b| a.name.cmp(&b.name));
+    for skill in &mut sorted.skills {
+        *skill = ActivatedSkill::portable(&skill.name, &skill.mode);
+    }
     let body = toml::to_string_pretty(&sorted).map_err(|err| SklError::Config(err.to_string()))?;
     fs::write(manifest_path(project), format!("{MANIFEST_HEADER}{body}"))?;
     Ok(())
+}
+
+/// Doctor warn-only: committed `skills.toml` still lists host-absolute `path`s.
+pub fn absolute_paths_warning(project: &Path) -> Option<String> {
+    let Ok(manifest) = load_manifest(project) else {
+        return None;
+    };
+    let abs: Vec<String> = manifest
+        .skills
+        .iter()
+        .filter(|skill| skill.has_absolute_path())
+        .map(|skill| skill.name.clone())
+        .collect();
+    if abs.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "skills.toml lists absolute paths for {} (not portable across machines); run `skl use --all` to rewrite",
+        abs.join(", ")
+    ))
 }
 
 pub fn activate(project: &Path, home: &Path, skill: &DiscoveredSkill) -> Result<ActivateOutcome> {
@@ -478,12 +542,7 @@ pub fn activate_with_extras(
     } else {
         LINK_MODE.to_string()
     };
-    let entry = ActivatedSkill {
-        name: skill.name.clone(),
-        source: skill.source.clone(),
-        path: source.to_string_lossy().into_owned(),
-        mode: mode.clone(),
-    };
+    let entry = ActivatedSkill::portable(&skill.name, &mode);
     if let Some(existing) = manifest.skills.iter_mut().find(|s| s.name == skill.name) {
         *existing = entry;
     } else {
@@ -894,10 +953,20 @@ mod tests {
         assert_eq!(manifest.skills.len(), 1);
         assert_eq!(manifest.skills[0].name, "greeter");
         assert_eq!(manifest.skills[0].mode, LINK_MODE);
+        assert_eq!(
+            manifest.skills[0].source.as_deref(),
+            Some(PORTABLE_SOURCE)
+        );
+        assert!(manifest.skills[0].path.is_none());
         let raw = fs::read_to_string(manifest_path(&project)).unwrap();
         assert!(raw.contains("symlink"));
         assert!(raw.contains("[targets]"));
         assert!(raw.contains("agents"));
+        assert!(
+            !raw.contains("path ="),
+            "portable manifest must not write absolute path: {raw}"
+        );
+        assert!(raw.contains("library"), "{raw}");
     }
 
     #[test]
@@ -1323,8 +1392,8 @@ mode = "symlink"
                 targets: ManifestTargets::default(),
                 skills: vec![ActivatedSkill {
                     name: "greeter".into(),
-                    source: "claude".into(),
-                    path: skill.path.to_string_lossy().into_owned(),
+                    source: Some("claude".into()),
+                    path: Some(skill.path.to_string_lossy().into_owned()),
                     mode: LINK_MODE.into(),
                 }],
             },
@@ -1342,5 +1411,95 @@ mode = "symlink"
             m0_targets_warning(&project).is_none(),
             "presence of .agents/skills is enough"
         );
+    }
+
+    #[test]
+    fn save_manifest_rewrites_legacy_absolute_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        save_manifest(
+            &project,
+            &SkillsManifest {
+                targets: ManifestTargets::default(),
+                skills: vec![ActivatedSkill {
+                    name: "greeter".into(),
+                    source: Some("claude".into()),
+                    path: Some("/Users/other/.claude/skills/greeter".into()),
+                    mode: LINK_MODE.into(),
+                }],
+            },
+        )
+        .unwrap();
+        let raw = fs::read_to_string(manifest_path(&project)).unwrap();
+        assert!(!raw.contains("path ="), "{raw}");
+        assert!(!raw.contains("/Users/other"), "{raw}");
+        assert!(raw.contains("library"), "{raw}");
+        let loaded = load_manifest(&project).unwrap();
+        assert!(loaded.skills[0].path.is_none());
+        assert_eq!(loaded.skills[0].source.as_deref(), Some(PORTABLE_SOURCE));
+    }
+
+    #[test]
+    fn load_manifest_keeps_legacy_path_for_doctor() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(
+            manifest_path(&project),
+            r#"
+[[skills]]
+name = "greeter"
+source = "claude"
+path = "/Users/other/.claude/skills/greeter"
+mode = "symlink"
+"#,
+        )
+        .unwrap();
+        let loaded = load_manifest(&project).unwrap();
+        assert_eq!(
+            loaded.skills[0].path.as_deref(),
+            Some("/Users/other/.claude/skills/greeter")
+        );
+        assert!(loaded.skills[0].has_absolute_path());
+        let warning = absolute_paths_warning(&project).expect("warn");
+        assert!(warning.contains("greeter"), "{warning}");
+        assert!(warning.contains("skl use --all"), "{warning}");
+    }
+
+    #[test]
+    fn activate_ignores_stale_absolute_path_and_uses_local_skill() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(
+            manifest_path(&project),
+            r#"
+[[skills]]
+name = "greeter"
+source = "claude"
+path = "/Users/other/.claude/skills/greeter"
+mode = "symlink"
+"#,
+        )
+        .unwrap();
+        let skill = demo_skill(&home, "greeter");
+        let out = activate(&project, &home, &skill).unwrap();
+        assert_eq!(out.source_path, fs::canonicalize(&skill.path).unwrap());
+        let raw = fs::read_to_string(manifest_path(&project)).unwrap();
+        assert!(!raw.contains("path ="), "{raw}");
+        assert!(!raw.contains("/Users/other"), "{raw}");
+        assert!(absolute_paths_warning(&project).is_none());
+    }
+
+    #[test]
+    fn path_looks_absolute_covers_unix_and_windows() {
+        assert!(path_looks_absolute("/Users/daniel/.agents/skills/x"));
+        assert!(path_looks_absolute("C:\\Users\\daniel\\.agents\\skills\\x"));
+        assert!(path_looks_absolute("C:/Users/daniel/.agents/skills/x"));
+        assert!(!path_looks_absolute("library"));
+        assert!(!path_looks_absolute(""));
+        assert!(!path_looks_absolute("greeter"));
     }
 }

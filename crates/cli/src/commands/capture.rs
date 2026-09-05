@@ -121,6 +121,7 @@ pub fn capture(input: &Path, opts: &CaptureOpts, paths: &Paths) -> Result<Captur
     if is_symlink(&source_path) && points_at(&source_path, &library_path) {
         if library_path.is_dir() && library_path.join("SKILL.md").is_file() {
             index_library(&name, &library_path, paths)?;
+            record_portable_manifest(&project, &name, linker::LINK_MODE)?;
             return Ok(CaptureOutcome {
                 name,
                 source_path,
@@ -156,6 +157,11 @@ pub fn capture(input: &Path, opts: &CaptureOpts, paths: &Paths) -> Result<Captur
     }
 
     index_library(&name, &library_path, paths)?;
+    record_portable_manifest(&project, &name, if opts.keep_copy {
+        linker::COPY_MODE
+    } else {
+        linker::LINK_MODE
+    })?;
 
     let action = if opts.keep_copy {
         CaptureAction::KeepCopy
@@ -170,6 +176,18 @@ pub fn capture(input: &Path, opts: &CaptureOpts, paths: &Paths) -> Result<Captur
         library_path,
         action,
     })
+}
+
+/// Keep `skills.toml` names-only after capture (never write a host path).
+fn record_portable_manifest(project: &Path, name: &str, mode: &str) -> Result<()> {
+    let mut manifest = linker::load_manifest(project)?;
+    let entry = linker::ActivatedSkill::portable(name, mode);
+    if let Some(existing) = manifest.skills.iter_mut().find(|skill| skill.name == name) {
+        *existing = entry;
+    } else {
+        manifest.skills.push(entry);
+    }
+    linker::save_manifest(project, &manifest)
 }
 
 fn resolve_source(input: &Path, project: &Path, paths: &Paths) -> Result<PathBuf> {
@@ -378,6 +396,11 @@ mod tests {
         assert_eq!(listed[0].name, "greeter");
         assert_eq!(listed[0].source, LIBRARY_SOURCE);
         assert_eq!(listed[0].path, out.library_path);
+
+        let raw = fs::read_to_string(linker::manifest_path(&project)).unwrap();
+        assert!(raw.contains("greeter"), "{raw}");
+        assert!(!raw.contains("path ="), "{raw}");
+        assert!(raw.contains("library"), "{raw}");
     }
 
     #[test]

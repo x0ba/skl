@@ -12,6 +12,7 @@ pub async fn run(
     names: &[String],
     project: Option<PathBuf>,
     agents: &[String],
+    all: bool,
     api_base: &str,
 ) -> Result<()> {
     let project = resolve_project(project)?;
@@ -19,6 +20,44 @@ pub async fn run(
     let paths = Paths::resolve().ok();
     let db_file = paths.as_ref().map(|p| p.db_file.as_path());
     let extras = resolve_activation_extras(paths.as_ref(), agents)?;
+
+    if all && !names.is_empty() {
+        return Err(SklError::LocalState(
+            "use either `skl use --all` or `skl use <skill>`".into(),
+        ));
+    }
+
+    if all {
+        let outs = restore_all(&project, &home, db_file, &extras)?;
+        if outs.is_empty() {
+            eprintln!(
+                "(no skills listed in {}; nothing to restore)",
+                linker::manifest_path(&project).display()
+            );
+        } else {
+            for out in &outs {
+                eprintln!(
+                    "using {}  ({}  {})",
+                    out.skill,
+                    out.source,
+                    out.source_path.display()
+                );
+                for link in &out.links {
+                    eprintln!(
+                        "  {:<8} {:<8} {}",
+                        action_label(link.action),
+                        link.agent,
+                        link.path.display()
+                    );
+                }
+            }
+            eprintln!("  updated  {}", linker::manifest_path(&project).display());
+        }
+        if let Some(paths) = paths.as_ref() {
+            let _ = crate::auto_sync::maybe_run(api_base, paths, "use").await;
+        }
+        return Ok(());
+    }
 
     if names.is_empty() {
         list_activated(&project)?;
@@ -54,6 +93,56 @@ pub async fn run(
     Ok(())
 }
 
+/// Rematerialize every skill listed in `skills.toml` from this machine's library.
+/// Does not run on sync.
+pub fn restore_all(
+    project: &Path,
+    home: &Path,
+    db_file: Option<&Path>,
+    extras: &[String],
+) -> Result<Vec<linker::ActivateOutcome>> {
+    let manifest = linker::load_manifest(project)?;
+    if manifest.skills.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut resolved = Vec::new();
+    let mut missing = Vec::new();
+    for entry in &manifest.skills {
+        match resolve_skill(&entry.name, home, db_file) {
+            Ok(skill) => resolved.push(skill),
+            Err(_) => missing.push(entry.name.clone()),
+        }
+    }
+    if !missing.is_empty() {
+        return Err(missing_listed_skills_error(project, &missing));
+    }
+
+    let mut outs = Vec::new();
+    for skill in &resolved {
+        outs.push(linker::activate_with_extras(project, home, skill, extras)?);
+    }
+    Ok(outs)
+}
+
+fn missing_listed_skills_error(project: &Path, missing: &[String]) -> SklError {
+    let names = missing
+        .iter()
+        .map(|name| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let noun = if missing.len() == 1 {
+        "skill"
+    } else {
+        "skills"
+    };
+    let pronoun = if missing.len() == 1 { "it" } else { "them" };
+    SklError::LocalState(format!(
+        "{noun} {names} listed in {} but not found in the personal library on this machine. Run `skl sync` to pull {pronoun}, then `skl use --all`.",
+        linker::manifest_path(project).display()
+    ))
+}
+
 /// Sticky extras ∪ `-a/--agent` extras for this activation.
 pub fn resolve_activation_extras(
     paths: Option<&Paths>,
@@ -76,11 +165,13 @@ fn list_activated(project: &Path) -> Result<()> {
         );
         return Ok(());
     }
-    println!("{:<24} {:<8} {:<8} {}", "name", "source", "mode", "path");
+    println!("{:<24} {:<10} {}", "name", "source", "mode");
     for skill in &manifest.skills {
         println!(
-            "{:<24} {:<8} {:<8} {}",
-            skill.name, skill.source, skill.mode, skill.path
+            "{:<24} {:<10} {}",
+            skill.name,
+            skill.source.as_deref().unwrap_or(linker::PORTABLE_SOURCE),
+            skill.mode
         );
     }
     Ok(())
@@ -137,7 +228,7 @@ pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<
     }
 
     Err(SklError::LocalState(format!(
-        "skill `{name}` not found under catalog home roots (e.g. ~/.agents/skills, ~/.claude/skills, ~/.cursor/skills) or the personal library"
+        "skill `{name}` not found under catalog home roots (e.g. ~/.agents/skills, ~/.claude/skills, ~/.cursor/skills) or the personal library. If it is listed in skills.toml, run `skl sync` then `skl use --all`"
     )))
 }
 
@@ -288,5 +379,62 @@ mod tests {
         let extras = resolve_activation_extras(Some(&paths), &[]).unwrap();
         assert_eq!(extras, ["claude-code"]);
         assert!(!extras.iter().any(|id| id == "cursor"));
+    }
+
+    #[test]
+    fn restore_all_resolves_by_name_and_rewrites_portable() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let skill_dir = home.join(".claude/skills/greeter");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
+        std::fs::write(
+            linker::manifest_path(&project),
+            r#"
+[[skills]]
+name = "greeter"
+source = "claude"
+path = "/Users/other/.claude/skills/greeter"
+mode = "symlink"
+"#,
+        )
+        .unwrap();
+
+        let outs = restore_all(&project, &home, None, &[]).unwrap();
+        assert_eq!(outs.len(), 1);
+        assert_eq!(outs[0].skill, "greeter");
+        assert!(project.join(".agents/skills/greeter").exists());
+        let raw = std::fs::read_to_string(linker::manifest_path(&project)).unwrap();
+        assert!(!raw.contains("path ="), "{raw}");
+        assert!(!raw.contains("/Users/other"), "{raw}");
+        assert!(raw.contains("library"), "{raw}");
+    }
+
+    #[test]
+    fn restore_all_missing_skill_suggests_sync() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(
+            linker::manifest_path(&project),
+            r#"
+[[skills]]
+name = "ghost"
+mode = "symlink"
+"#,
+        )
+        .unwrap();
+
+        let err = restore_all(&project, &home, None, &[])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("ghost"), "{err}");
+        assert!(err.contains("skl sync"), "{err}");
+        assert!(err.contains("skl use --all"), "{err}");
+        assert!(!project.join(".agents").exists());
     }
 }

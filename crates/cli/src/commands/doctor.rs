@@ -58,6 +58,8 @@ pub struct DoctorReport {
     pub project_modes: Vec<(String, String)>,
     /// Warn-only: M0 layout needs `skl migrate targets` (never auto-mutates).
     pub m0_targets_warning: Option<String>,
+    /// Warn-only: `skills.toml` still lists host-absolute `path`s.
+    pub absolute_paths_warning: Option<String>,
 }
 
 pub async fn run(api_base: String) -> Result<()> {
@@ -106,7 +108,8 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
     } else {
         None
     };
-    let (project_manifest, project_modes, m0_targets_warning) = project_link_modes();
+    let (project_manifest, project_modes, m0_targets_warning, absolute_paths_warning) =
+        project_link_modes();
 
     DoctorReport {
         api_base: api_base.to_string(),
@@ -126,6 +129,7 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         project_manifest,
         project_modes,
         m0_targets_warning,
+        absolute_paths_warning,
     }
 }
 
@@ -162,24 +166,30 @@ fn inspect_root(root: SkillRoot) -> RootStatus {
     }
 }
 
-fn project_link_modes() -> (Option<PathBuf>, Vec<(String, String)>, Option<String>) {
+fn project_link_modes() -> (
+    Option<PathBuf>,
+    Vec<(String, String)>,
+    Option<String>,
+    Option<String>,
+) {
     let Ok(cwd) = std::env::current_dir() else {
-        return (None, Vec::new(), None);
+        return (None, Vec::new(), None, None);
     };
     let warning = linker::m0_targets_warning(&cwd);
+    let abs_warning = linker::absolute_paths_warning(&cwd);
     let path = linker::manifest_path(&cwd);
     if !path.exists() {
-        return (None, Vec::new(), warning);
+        return (None, Vec::new(), warning, abs_warning);
     }
     let Ok(manifest) = linker::load_manifest(&cwd) else {
-        return (Some(path), Vec::new(), warning);
+        return (Some(path), Vec::new(), warning, abs_warning);
     };
     let modes = manifest
         .skills
         .into_iter()
         .map(|skill| (skill.name, skill.mode))
         .collect();
-    (Some(path), modes, warning)
+    (Some(path), modes, warning, abs_warning)
 }
 
 fn inspect_dir(path: &Path) -> PathStatus {
@@ -394,6 +404,9 @@ fn print_report(report: &DoctorReport) {
         (None, _) => {}
     }
     if let Some(warning) = &report.m0_targets_warning {
+        println!("warn         {warning}");
+    }
+    if let Some(warning) = &report.absolute_paths_warning {
         println!("warn         {warning}");
     }
 }
