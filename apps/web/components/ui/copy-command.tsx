@@ -39,11 +39,11 @@ export function CopyCommand({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-4 border border-border bg-secondary py-2.5 pl-4 pr-3",
+        "flex items-start justify-between gap-4 border border-border bg-secondary py-2.5 pl-4 pr-3",
         className,
       )}
     >
-      <code className="overflow-x-auto font-mono text-[13px] text-foreground">
+      <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-[13px] leading-relaxed text-foreground">
         <span className="text-faint select-none">{"$ "}</span>
         {command}
       </code>

@@ -36,7 +36,7 @@ export default function LandingPage() {
             <p className="mt-6 max-w-md text-[17px] leading-relaxed text-muted-foreground">
               Sync your agent skills across machines and projects.
             </p>
-            <div className="mt-9 max-w-xl">
+            <div className="mt-9 w-full max-w-2xl">
               <CopyCommand command="curl -fsSL https://github.com/x0ba/skl/releases/latest/download/install.sh | bash" />
             </div>
             <p className="mt-4 font-mono text-[12px] text-faint">
