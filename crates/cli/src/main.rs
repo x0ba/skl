@@ -65,7 +65,7 @@ enum Command {
     List,
     /// Diagnose agent skill paths, keyring, state.db, and GET /v1/health.
     Doctor,
-    /// Symlink a skill into this project's agent dirs and skills.toml.
+    /// Symlink a skill into `.agents/skills` (plus legacy agent dirs) and skills.toml.
     Use {
         /// Skill names. With none, list skills already activated in the project.
         #[arg(value_name = "SKILL")]

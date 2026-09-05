@@ -1,4 +1,4 @@
-//! `skl use` — symlink a home skill into the project's agent dirs.
+//! `skl use` — symlink a home skill into `.agents/skills` plus legacy agent dirs.
 
 use std::path::{Path, PathBuf};
 

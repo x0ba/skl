@@ -49,7 +49,7 @@ After `skl login`, the device `access_token` is stored in the OS keyring (`servi
 
 ### doctor
 
-Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`.
+Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns (does not mutate) if the current project still has an M0 layout — skills linked under `.claude`/`.cursor` without `.agents/skills`.
 
 ```bash
 # API down is still a successful report (health = unreachable)
@@ -61,7 +61,9 @@ API_BASE=http://localhost:8787 cargo run -p skl -- doctor
 
 ### use / unuse
 
-Default is **symlink** into the project's `.claude/skills` and `.cursor/skills`. If the filesystem refuses (EPERM / ENOTSUP / Windows privilege), `skl use` copies instead and records `mode = "copy"` in `skills.toml`. Codex is linked only if `~/.codex/skills` exists or the project already has `.codex`. `--project` overrides cwd.
+Default is **symlink** into the project's **`.agents/skills`** (canonical), plus legacy `.claude/skills` and `.cursor/skills` so M0 projects keep working until `skl migrate targets`. If the filesystem refuses (EPERM / ENOTSUP / Windows privilege), `skl use` copies instead and records `mode = "copy"` in `skills.toml` (same fallback on every destination). Codex is linked only if `~/.codex/skills` exists or the project already has `.codex`. `--project` overrides cwd.
+
+`skills.toml` may list destinations under `[targets]` using ids `agents`, `claude`, `cursor`, `codex` (dotted aliases like `.claude` are accepted). Missing `[targets]` defaults to canonical=`agents` and extra=`claude`+`cursor`.
 
 ```bash
 # Home skill (or a path already imported by `skl init`)
@@ -70,7 +72,7 @@ printf '# hello\n' > ~/.claude/skills/greeter/SKILL.md
 
 # From a project directory
 cargo run -p skl -- use greeter
-ls -l .claude/skills/greeter .cursor/skills/greeter
+ls -l .agents/skills/greeter .claude/skills/greeter .cursor/skills/greeter
 cat skills.toml
 
 cargo run -p skl -- use                 # list activated

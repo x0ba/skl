@@ -54,6 +54,8 @@ pub struct DoctorReport {
     /// Activated skill modes from cwd `skills.toml` (last symlink vs copy).
     pub project_manifest: Option<PathBuf>,
     pub project_modes: Vec<(String, String)>,
+    /// M0 layout warnings (legacy agent dirs without `.agents`). Warn only.
+    pub project_layout_warnings: Vec<String>,
 }
 
 pub async fn run(api_base: String) -> Result<()> {
@@ -98,7 +100,7 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
     } else {
         None
     };
-    let (project_manifest, project_modes) = project_link_modes();
+    let (project_manifest, project_modes, project_layout_warnings) = project_link_info();
 
     DoctorReport {
         api_base: api_base.to_string(),
@@ -116,6 +118,7 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         windows_note,
         project_manifest,
         project_modes,
+        project_layout_warnings,
     }
 }
 
@@ -152,23 +155,24 @@ fn inspect_root(root: SkillRoot) -> RootStatus {
     }
 }
 
-fn project_link_modes() -> (Option<PathBuf>, Vec<(String, String)>) {
+fn project_link_info() -> (Option<PathBuf>, Vec<(String, String)>, Vec<String>) {
     let Ok(cwd) = std::env::current_dir() else {
-        return (None, Vec::new());
+        return (None, Vec::new(), Vec::new());
     };
+    let warnings = linker::m0_layout_warnings(&cwd);
     let path = linker::manifest_path(&cwd);
     if !path.exists() {
-        return (None, Vec::new());
+        return (None, Vec::new(), warnings);
     }
     let Ok(manifest) = linker::load_manifest(&cwd) else {
-        return (Some(path), Vec::new());
+        return (Some(path), Vec::new(), warnings);
     };
     let modes = manifest
         .skills
         .into_iter()
         .map(|skill| (skill.name, skill.mode))
         .collect();
-    (Some(path), modes)
+    (Some(path), modes, warnings)
 }
 
 fn inspect_dir(path: &Path) -> PathStatus {
@@ -371,6 +375,9 @@ fn print_report(report: &DoctorReport) {
         }
         (None, _) => {}
     }
+    for warning in &report.project_layout_warnings {
+        println!("warning      {warning}");
+    }
 }
 
 fn yn(value: bool) -> &'static str {
@@ -454,5 +461,20 @@ mod tests {
             HealthStatus::Ok => panic!("expected unreachable"),
         }
         assert_eq!(report.roots.len(), 3);
+    }
+
+    #[test]
+    fn m0_layout_warning_mentions_migrate_targets() {
+        let project = tempfile::tempdir().unwrap();
+        fs::write(project.path().join(linker::MANIFEST_NAME), "").unwrap();
+        let warnings = linker::m0_layout_warnings(project.path());
+        assert!(
+            warnings.iter().any(|w| w.contains("skl migrate targets")),
+            "{warnings:?}"
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("`.agents` is missing")),
+            "{warnings:?}"
+        );
     }
 }
