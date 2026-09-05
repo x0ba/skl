@@ -18,7 +18,8 @@
 #     background conflict: KeepRemote (no TTY)
 #
 # Sections:
-#   1. Dual-HOME: A mutate → due → B verb → library without `skl sync`
+#   1. Dual-HOME: A import-only → mutate → due init push → B status pull
+#      (A starts with auto=false so KeepRemote cannot discard the mutate)
 #   2. Throttle: two rapid verbs within 15m → one network sync
 #   3. Fail-soft: API down during use → link succeeds; status shows issue
 #
