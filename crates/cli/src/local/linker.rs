@@ -1,8 +1,10 @@
 //! Project multi-agent linker: symlink skills into agent dirs + `skills.toml`.
 //!
-//! Canonical dest is **`.agents/skills`**. Extra dests (`.claude` / `.cursor` /
-//! `.codex`) are created only when opted in via sticky config, project
-//! `skills.toml` `[targets].extra`, or `skl use -a`. Default is **symlink**.
+//! Canonical dest is **`.agents/skills`**. Extra dests (custom catalog project
+//! dirs such as `.claude/skills`) are created only when opted in via sticky
+//! config, project `skills.toml` `[targets].extra`, or `skl use -a`. Universal
+//! agents (cursor, codex, amp, …) already read `.agents/skills` — never extras.
+//! Default is **symlink**.
 //! On EPERM / ENOTSUP / Windows privilege errors, fall back to a copy on
 //! every dest that is active.
 
@@ -50,7 +52,8 @@ pub struct LinkTarget {
 }
 
 pub const CANONICAL_TARGET_ID: &str = "agents";
-pub const EXTRA_TARGET_IDS: &[&str] = &["claude", "cursor", "codex"];
+/// Example custom extra only — do not dump the full catalog in help text.
+pub const EXTRA_TARGET_EXAMPLES: &[&str] = &["claude-code"];
 
 fn default_canonical_ids() -> Vec<String> {
     vec![CANONICAL_TARGET_ID.to_string()]
@@ -60,7 +63,7 @@ fn default_extra_ids() -> Vec<String> {
     Vec::new()
 }
 
-/// `[targets]` in `skills.toml` — ids only (`agents` / `claude` / `cursor` / `codex`).
+/// `[targets]` in `skills.toml` — ids only (`agents` + custom catalog extras).
 /// Missing table → canonical=`[agents]`, extra=`[]`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ManifestTargets {
@@ -84,13 +87,15 @@ pub fn is_canonical_id(id: &str) -> bool {
 }
 
 pub fn intern_extra_id(id: &str) -> Option<&'static str> {
-    EXTRA_TARGET_IDS
-        .iter()
-        .copied()
-        .find(|known| id.eq_ignore_ascii_case(known))
+    let id = crate::catalog::canonicalize_id(id);
+    if crate::catalog::is_custom_project(id) {
+        crate::catalog::intern_id(id)
+    } else {
+        None
+    }
 }
 
-/// Validate extra dest ids (`claude` / `cursor` / `codex`). Rejects `agents`.
+/// Validate extra dest ids (custom catalog only). Rejects `agents` and universal ids.
 pub fn normalize_extra_ids(ids: &[String]) -> Result<Vec<String>> {
     let mut out = Vec::new();
     for raw in ids {
@@ -100,12 +105,18 @@ pub fn normalize_extra_ids(ids: &[String]) -> Result<Vec<String>> {
         }
         if is_canonical_id(trimmed) {
             return Err(SklError::LocalState(
-                "`agents` is always the canonical dest; extras are claude, cursor, or codex".into(),
+                "`agents` is always the canonical dest; extras are custom catalog ids (e.g. claude-code)".into(),
             ));
+        }
+        let canon = crate::catalog::canonicalize_id(trimmed);
+        if crate::catalog::is_universal(canon) {
+            return Err(SklError::LocalState(format!(
+                "`{trimmed}` uses project `.agents/skills` (already the canonical dest); extras are only for custom project dirs (e.g. claude-code)"
+            )));
         }
         let Some(id) = intern_extra_id(trimmed) else {
             return Err(SklError::LocalState(format!(
-                "unknown target `{trimmed}` (claude, cursor, or codex)"
+                "unknown target `{trimmed}` (custom catalog ids, e.g. claude-code)"
             )));
         };
         if !out.iter().any(|existing: &String| existing == id) {
@@ -113,6 +124,47 @@ pub fn normalize_extra_ids(ids: &[String]) -> Result<Vec<String>> {
         }
     }
     Ok(sort_extra_ids(out))
+}
+
+/// Rename `claude` → `claude-code`; drop cursor/codex/other universal extras.
+pub fn migrate_extra_ids(ids: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut out = Vec::new();
+    let mut warns = Vec::new();
+    for raw in ids {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if is_canonical_id(trimmed) {
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case(crate::catalog::CLAUDE_ALIAS) {
+            warns.push("renamed extra `claude` → `claude-code`".into());
+            if !out
+                .iter()
+                .any(|existing| existing == crate::catalog::CLAUDE_CODE_ID)
+            {
+                out.push(crate::catalog::CLAUDE_CODE_ID.to_string());
+            }
+            continue;
+        }
+        if let Some(id) = intern_extra_id(trimmed) {
+            if !out.iter().any(|existing| existing == id) {
+                out.push(id.to_string());
+            }
+            continue;
+        }
+        if crate::catalog::is_universal(trimmed)
+            || matches!(trimmed.to_ascii_lowercase().as_str(), "cursor" | "codex")
+        {
+            warns.push(format!(
+                "removed extra `{trimmed}` (project dir is already .agents/skills; no-op)"
+            ));
+            continue;
+        }
+        warns.push(format!("ignored unknown extra `{trimmed}`"));
+    }
+    (sort_extra_ids(out), warns)
 }
 
 /// Keep known extras; drop unknown ids (sticky config may be hand-edited).
@@ -137,8 +189,9 @@ pub fn merge_extra_ids(layers: &[&[String]]) -> Vec<String> {
 }
 
 fn sort_extra_ids(mut ids: Vec<String>) -> Vec<String> {
+    let order = crate::catalog::custom_project_ids();
     ids.sort_by_key(|id| {
-        EXTRA_TARGET_IDS
+        order
             .iter()
             .position(|known| *known == id.as_str())
             .unwrap_or(99)
@@ -229,38 +282,41 @@ pub fn validate_skill_name(name: &str) -> Result<()> {
 /// Canonical `.agents/skills` first, then optional extras. `home` is unused
 /// (kept so existing call sites stay stable).
 pub fn project_link_targets(project: &Path, _home: &Path) -> Vec<LinkTarget> {
-    vec![
-        LinkTarget {
-            id: CANONICAL_TARGET_ID.to_string(),
-            path: project.join(".agents").join("skills"),
-            kind: LinkTargetKind::Canonical,
-        },
-        LinkTarget {
-            id: "claude".to_string(),
-            path: project.join(".claude").join("skills"),
-            kind: LinkTargetKind::Legacy,
-        },
-        LinkTarget {
-            id: "cursor".to_string(),
-            path: project.join(".cursor").join("skills"),
-            kind: LinkTargetKind::Legacy,
-        },
-        LinkTarget {
-            id: "codex".to_string(),
-            path: project.join(".codex").join("skills"),
+    let mut out = vec![LinkTarget {
+        id: CANONICAL_TARGET_ID.to_string(),
+        path: project.join(".agents").join("skills"),
+        kind: LinkTargetKind::Canonical,
+    }];
+    for entry in crate::catalog::agents() {
+        if entry.project_skills_dir == crate::catalog::UNIVERSAL_PROJECT_DIR {
+            continue;
+        }
+        out.push(LinkTarget {
+            id: entry.id.to_string(),
+            path: project.join(entry.project_skills_dir),
             kind: LinkTargetKind::OptIn,
-        },
-    ]
+        });
+    }
+    // M0 litter: old universal project dirs. Prune/scan only — never extras.
+    for (id, rel) in [("cursor", ".cursor/skills"), ("codex", ".codex/skills")] {
+        let path = project.join(rel);
+        if out.iter().any(|target| target.path == path) {
+            continue;
+        }
+        out.push(LinkTarget {
+            id: id.to_string(),
+            path,
+            kind: LinkTargetKind::Legacy,
+        });
+    }
+    out
 }
 
 fn intern_target_id(id: &str) -> &'static str {
-    match id {
-        "agents" => "agents",
-        "claude" => "claude",
-        "cursor" => "cursor",
-        "codex" => "codex",
-        _ => "agents",
+    if is_canonical_id(id) {
+        return CANONICAL_TARGET_ID;
     }
+    crate::catalog::intern_id(id).unwrap_or(CANONICAL_TARGET_ID)
 }
 
 /// Thin wrapper over [`project_link_targets`] for callers that still want
@@ -278,16 +334,15 @@ pub fn project_link_roots(project: &Path, home: &Path) -> Vec<SkillRoot> {
 /// Destinations written by `skl use` / removed by `skl unuse`.
 ///
 /// Always includes canonical `.agents`. Extra dests only when listed in
-/// `targets.extra` (`claude` / `cursor` / `codex`).
+/// `targets.extra` (custom catalog ids). Legacy cursor/codex dirs are never written.
 pub fn destinations_for(project: &Path, home: &Path, targets: &ManifestTargets) -> Vec<LinkTarget> {
     let extras = filter_extra_ids(&targets.extra);
     project_link_targets(project, home)
         .into_iter()
         .filter(|target| match target.kind {
             LinkTargetKind::Canonical => true,
-            LinkTargetKind::Legacy | LinkTargetKind::OptIn => {
-                extras.iter().any(|id| id == &target.id)
-            }
+            LinkTargetKind::OptIn => extras.iter().any(|id| id == &target.id),
+            LinkTargetKind::Legacy => false,
         })
         .collect()
 }
@@ -345,7 +400,16 @@ pub fn load_manifest(project: &Path) -> Result<SkillsManifest> {
     if raw.trim().is_empty() {
         return Ok(SkillsManifest::default());
     }
-    toml::from_str(&raw).map_err(|err| SklError::Config(format!("{MANIFEST_NAME}: {err}")))
+    let mut manifest: SkillsManifest =
+        toml::from_str(&raw).map_err(|err| SklError::Config(format!("{MANIFEST_NAME}: {err}")))?;
+    let (extras, warns) = migrate_extra_ids(&manifest.targets.extra);
+    if extras != manifest.targets.extra {
+        for warn in &warns {
+            eprintln!("warn: {warn}");
+        }
+        manifest.targets.extra = extras;
+    }
+    Ok(manifest)
 }
 
 pub fn save_manifest(project: &Path, manifest: &SkillsManifest) -> Result<()> {
@@ -868,40 +932,63 @@ mod tests {
         fs::create_dir_all(&project).unwrap();
         let skill = demo_skill(&home, "greeter");
 
-        let out = activate_with_extras(&project, &home, &skill, &["claude".into()]).unwrap();
+        let out = activate_with_extras(&project, &home, &skill, &["claude-code".into()]).unwrap();
         assert_eq!(
             out.links
                 .iter()
                 .map(|l| l.agent.as_str())
                 .collect::<Vec<_>>(),
-            ["agents", "claude"]
+            ["agents", "claude-code"]
         );
         assert!(project.join(".agents/skills/greeter").exists());
         assert!(project.join(".claude/skills/greeter").exists());
         assert!(!project.join(".cursor").exists());
-        assert_eq!(load_manifest(&project).unwrap().targets.extra, ["claude"]);
+        assert_eq!(
+            load_manifest(&project).unwrap().targets.extra,
+            ["claude-code"]
+        );
     }
 
     #[test]
-    fn project_link_targets_canonical_first_catalog_includes_codex() {
+    fn use_alone_writes_only_agents_skills_covering_cursor_codex() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+        let out = activate(&project, &home, &skill).unwrap();
+        assert_eq!(
+            out.links
+                .iter()
+                .map(|l| l.agent.as_str())
+                .collect::<Vec<_>>(),
+            ["agents"]
+        );
+        assert!(project.join(".agents/skills/greeter").exists());
+        assert!(!project.join(".claude").exists());
+        assert!(!project.join(".cursor").exists());
+        assert!(!project.join(".codex").exists());
+    }
+
+    #[test]
+    fn project_link_targets_canonical_first_custom_not_universal_extras() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let project = tmp.path().join("proj");
         fs::create_dir_all(&project).unwrap();
 
-        let ids: Vec<_> = project_link_targets(&project, &home)
-            .into_iter()
-            .map(|t| (t.id, t.kind))
-            .collect();
-        assert_eq!(
-            ids,
-            [
-                ("agents".into(), LinkTargetKind::Canonical),
-                ("claude".into(), LinkTargetKind::Legacy),
-                ("cursor".into(), LinkTargetKind::Legacy),
-                ("codex".into(), LinkTargetKind::OptIn),
-            ]
-        );
+        let targets = project_link_targets(&project, &home);
+        assert_eq!(targets[0].id, "agents");
+        assert_eq!(targets[0].kind, LinkTargetKind::Canonical);
+        assert!(targets
+            .iter()
+            .any(|t| t.id == "claude-code" && t.kind == LinkTargetKind::OptIn));
+        assert!(targets
+            .iter()
+            .any(|t| t.id == "cursor" && t.kind == LinkTargetKind::Legacy));
+        assert!(targets
+            .iter()
+            .any(|t| t.id == "codex" && t.kind == LinkTargetKind::Legacy));
 
         let dests = destinations_for(&project, &home, &ManifestTargets::default());
         assert_eq!(
@@ -910,10 +997,9 @@ mod tests {
         );
 
         let roots = project_link_roots(&project, &home);
-        assert_eq!(
-            roots.iter().map(|r| r.source).collect::<Vec<_>>(),
-            ["agents", "claude", "cursor", "codex"]
-        );
+        let sources: Vec<_> = roots.iter().map(|r| r.source).collect();
+        assert!(sources.contains(&"agents"));
+        assert!(sources.contains(&"claude-code"));
     }
 
     #[test]
@@ -939,7 +1025,7 @@ mode = "symlink"
         fs::create_dir_all(&project).unwrap();
         let skill = demo_skill(&home, "greeter");
 
-        activate_with_extras(&project, &home, &skill, &["codex".into()]).unwrap();
+        activate_with_extras(&project, &home, &skill, &["claude-code".into()]).unwrap();
         let again = activate(&project, &home, &skill).unwrap();
         assert!(again
             .links
@@ -952,7 +1038,7 @@ mode = "symlink"
                 .iter()
                 .map(|l| l.agent.as_str())
                 .collect::<Vec<_>>(),
-            ["agents", "codex"]
+            ["agents", "claude-code"]
         );
         assert!(project
             .join(".agents/skills/greeter")
@@ -961,12 +1047,13 @@ mode = "symlink"
             .file_type()
             .is_symlink());
         assert!(project
-            .join(".codex/skills/greeter")
+            .join(".claude/skills/greeter")
             .symlink_metadata()
             .unwrap()
             .file_type()
             .is_symlink());
-        assert!(!project.join(".claude").exists());
+        assert!(!project.join(".cursor").exists());
+        assert!(!project.join(".codex").exists());
         assert_eq!(load_manifest(&project).unwrap().skills.len(), 1);
     }
 
@@ -977,7 +1064,7 @@ mode = "symlink"
         let project = tmp.path().join("proj");
         fs::create_dir_all(&project).unwrap();
         let skill = demo_skill(&home, "greeter");
-        activate_with_extras(&project, &home, &skill, &["claude".into(), "cursor".into()]).unwrap();
+        activate_with_extras(&project, &home, &skill, &["claude-code".into()]).unwrap();
 
         let out = deactivate(&project, &home, "greeter").unwrap();
         assert!(out.was_listed);
@@ -997,7 +1084,7 @@ mode = "symlink"
         fs::create_dir_all(project.join(".claude/skills/greeter")).unwrap();
         fs::write(project.join(".claude/skills/greeter/SKILL.md"), "mine").unwrap();
 
-        let err = activate_with_extras(&project, &home, &skill, &["claude".into()])
+        let err = activate_with_extras(&project, &home, &skill, &["claude-code".into()])
             .unwrap_err()
             .to_string();
         assert!(err.contains("not a symlink"), "{err}");
@@ -1040,7 +1127,7 @@ mode = "symlink"
         fs::create_dir_all(&project).unwrap();
         let skill = demo_skill(&home, "greeter");
 
-        let extras = vec!["claude".into(), "cursor".into()];
+        let extras = vec!["claude-code".into()];
         let out =
             with_forced_symlink_fail(|| activate_with_extras(&project, &home, &skill, &extras))
                 .unwrap();
@@ -1050,12 +1137,11 @@ mode = "symlink"
 
         let agents = project.join(".agents/skills/greeter");
         let claude = project.join(".claude/skills/greeter");
-        let cursor = project.join(".cursor/skills/greeter");
         assert!(agents.is_dir());
         assert!(!agents.symlink_metadata().unwrap().file_type().is_symlink());
         assert!(claude.is_dir());
         assert!(!claude.symlink_metadata().unwrap().file_type().is_symlink());
-        assert!(cursor.is_dir());
+        assert!(!project.join(".cursor").exists());
         assert_eq!(
             fs::read_to_string(agents.join("SKILL.md")).unwrap(),
             "# greeter\n"
@@ -1085,7 +1171,7 @@ mode = "symlink"
         fs::create_dir_all(&project).unwrap();
         let skill = demo_skill(&home, "greeter");
         with_forced_symlink_fail(|| {
-            activate_with_extras(&project, &home, &skill, &["claude".into()])
+            activate_with_extras(&project, &home, &skill, &["claude-code".into()])
         })
         .unwrap();
         assert!(project.join(".claude/skills/greeter").is_dir());
@@ -1108,7 +1194,7 @@ mode = "symlink"
         fs::create_dir_all(project.join(".claude/skills/greeter")).unwrap();
         fs::write(project.join(".claude/skills/greeter/SKILL.md"), "mine").unwrap();
 
-        let err = deactivate_with_extras(&project, &home, "greeter", &["claude".into()])
+        let err = deactivate_with_extras(&project, &home, "greeter", &["claude-code".into()])
             .unwrap_err()
             .to_string();
         assert!(err.contains("not a symlink"), "{err}");
@@ -1154,13 +1240,37 @@ mode = "symlink"
     }
 
     #[test]
-    fn normalize_extra_ids_rejects_agents_and_unknown() {
+    fn normalize_extra_ids_rejects_agents_and_universal() {
         assert_eq!(
-            normalize_extra_ids(&["Claude".into(), "cursor".into()]).unwrap(),
-            ["claude", "cursor"]
+            normalize_extra_ids(&["Claude".into()]).unwrap(),
+            ["claude-code"]
+        );
+        assert_eq!(
+            normalize_extra_ids(&["windsurf".into()]).unwrap(),
+            ["windsurf"]
         );
         assert!(normalize_extra_ids(&["agents".into()]).is_err());
-        assert!(normalize_extra_ids(&["windsurf".into()]).is_err());
+        let cursor_err = normalize_extra_ids(&["cursor".into()])
+            .unwrap_err()
+            .to_string();
+        assert!(cursor_err.contains(".agents/skills"), "{cursor_err}");
+        assert!(normalize_extra_ids(&["codex".into()]).is_err());
+        assert!(normalize_extra_ids(&["amp".into()]).is_err());
+        assert!(normalize_extra_ids(&["not-an-agent".into()]).is_err());
+    }
+
+    #[test]
+    fn migrate_extra_ids_renames_claude_and_drops_cursor_codex() {
+        let (ids, warns) = migrate_extra_ids(&[
+            "claude".into(),
+            "cursor".into(),
+            "codex".into(),
+            "windsurf".into(),
+        ]);
+        assert_eq!(ids, ["claude-code", "windsurf"]);
+        assert!(warns.iter().any(|w| w.contains("claude-code")));
+        assert!(warns.iter().any(|w| w.contains("cursor")));
+        assert!(warns.iter().any(|w| w.contains("codex")));
     }
 
     #[test]
@@ -1174,7 +1284,7 @@ mode = "symlink"
             &SkillsManifest {
                 targets: ManifestTargets {
                     canonical: vec!["agents".into()],
-                    extra: vec!["claude".into()],
+                    extra: vec!["claude-code".into()],
                 },
                 skills: Vec::new(),
             },
@@ -1187,7 +1297,7 @@ mode = "symlink"
                 .iter()
                 .map(|l| l.agent.as_str())
                 .collect::<Vec<_>>(),
-            ["agents", "claude"]
+            ["agents", "claude-code"]
         );
         assert!(project.join(".agents/skills/greeter").exists());
         assert!(project.join(".claude/skills/greeter").exists());

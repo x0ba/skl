@@ -1,6 +1,8 @@
 mod api;
 mod auth;
 mod auto_sync;
+mod catalog;
+mod checklist;
 mod commands;
 mod config;
 mod conflict;
@@ -46,7 +48,7 @@ enum Command {
         #[arg(long, value_name = "USER_ID")]
         dev_user: Option<String>,
     },
-    /// Import skills from ~/.claude/skills, ~/.cursor/skills, ~/.codex/skills, ~/.agents/skills, and ~/.config/agents/skills if present.
+    /// Import skills from unique catalog global roots plus ~/.agents/skills.
     Init,
     /// Hash sync: POST /v1/sync, PUT blobs, PUT trees, GET downloads.
     Sync {
@@ -79,7 +81,7 @@ enum Command {
         /// Project directory (default: cwd).
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
-        /// Extra dest for this activation (`claude`, `cursor`, or `codex`). Repeatable.
+        /// Extra dest for this activation (custom catalog id, e.g. `claude-code`). Repeatable.
         #[arg(short = 'a', long = "agent", value_name = "ID")]
         agents: Vec<String>,
     },
@@ -113,7 +115,7 @@ enum MigrateAction {
 
 #[derive(Debug, Subcommand)]
 enum TargetsCommand {
-    /// Add extra dests (`claude`, `cursor`, or `codex`).
+    /// Add extra dests (custom catalog ids, e.g. `claude-code`). Rejects universal ids.
     Add {
         #[arg(value_name = "ID", required = true)]
         ids: Vec<String>,

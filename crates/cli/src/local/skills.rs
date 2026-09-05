@@ -77,12 +77,7 @@ pub fn write_blob_file(skill_dir: &Path, rel: &str, bytes: &[u8]) -> Result<()> 
 }
 
 pub fn default_pull_root(home: &Path) -> PathBuf {
-    for root in skill_roots(home) {
-        if root.path.is_dir() {
-            return root.path;
-        }
-    }
-    home.join(".claude").join("skills")
+    crate::catalog::agents_home_path(home)
 }
 
 pub fn hash_skill_dir(dir: &Path) -> Result<SkillTree> {
@@ -214,7 +209,7 @@ mod tests {
             .iter()
             .map(|s| (s.source.as_str(), s.name.as_str()))
             .collect();
-        assert!(names.contains(&("claude", "foo")));
+        assert!(names.contains(&("claude-code", "foo")));
         assert!(names.contains(&("cursor", "bar")));
         assert!(!names.iter().any(|(src, _)| *src == "codex"));
         assert!(!names.iter().any(|(src, _)| *src == "agents"));
@@ -261,6 +256,12 @@ mod tests {
         assert_eq!(listed[0].source, "agents");
         assert_eq!(listed[0].name, "greeter");
         assert_eq!(listed[0].path, agents);
+    }
+
+    #[test]
+    fn default_pull_root_prefers_home_agents_skills() {
+        let home = Path::new("/tmp/skl-home");
+        assert_eq!(default_pull_root(home), home.join(".agents").join("skills"));
     }
 
     #[test]

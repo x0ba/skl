@@ -2,7 +2,7 @@
 
 use crate::config::{self, Paths};
 use crate::error::Result;
-use crate::local::linker::{CANONICAL_TARGET_ID, EXTRA_TARGET_IDS};
+use crate::local::linker::{CANONICAL_TARGET_ID, EXTRA_TARGET_EXAMPLES};
 
 #[derive(Debug, Clone)]
 pub enum TargetsAction {
@@ -44,8 +44,8 @@ fn print_targets(paths: &Paths, cfg: &config::Config) {
     }
     println!("config     {}", paths.config_file.display());
     println!(
-        "ids        {CANONICAL_TARGET_ID} (always)  extras: {}",
-        EXTRA_TARGET_IDS.join(", ")
+        "ids        {CANONICAL_TARGET_ID} (always)  extras: custom catalog (e.g. {})",
+        EXTRA_TARGET_EXAMPLES.join(", ")
     );
 }
 
@@ -65,5 +65,20 @@ mod tests {
         paths.ensure().unwrap();
         let cfg = config::load(&paths).unwrap_or_default();
         assert!(cfg.sticky_extras().is_empty());
+    }
+
+    #[test]
+    fn add_rejects_universal_cursor() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: tmp.path().join("data"),
+            db_file: tmp.path().join("data/state.db"),
+        };
+        let err = config::add_sticky_extras(&paths, &["cursor".into()])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(".agents/skills"), "{err}");
     }
 }
