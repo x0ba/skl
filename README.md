@@ -165,6 +165,7 @@ cargo build -p skl
 ./scripts/smoke-import-sync-use.sh   # init → sync → skl use (.agents/skills first)
 ./scripts/smoke-clash.sh             # keep-local / keep-remote + scrub
 ./scripts/smoke-migrate-targets.sh   # M0 fixture → doctor warn → migrate (no API)
+./scripts/smoke-init-home-agents.sh  # init from ~/.agents/skills + ~/.config/agents/skills (no API)
 ./scripts/smoke-auto-sync.sh         # dual-HOME + throttle + fail-soft (no `skl sync`)
 
 # Boot postgres + apps/api here
