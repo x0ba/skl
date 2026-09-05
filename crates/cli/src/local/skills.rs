@@ -39,7 +39,10 @@ pub fn tree_hash(files: &BTreeMap<String, String>) -> String {
     let canonical = paths
         .into_iter()
         .map(|path| {
-            let hash = files.get(path).map(|h| normalize_hash(h)).unwrap_or_default();
+            let hash = files
+                .get(path)
+                .map(|h| normalize_hash(h))
+                .unwrap_or_default();
             format!("{path}\0{hash}")
         })
         .collect::<Vec<_>>()
@@ -55,7 +58,8 @@ pub fn is_safe_file_path(path: &str) -> bool {
     if path.starts_with('/') || path.starts_with('\\') {
         return false;
     }
-    path.split('/').all(|part| !part.is_empty() && part != "." && part != "..")
+    path.split('/')
+        .all(|part| !part.is_empty() && part != "." && part != "..")
 }
 
 pub fn write_blob_file(skill_dir: &Path, rel: &str, bytes: &[u8]) -> Result<()> {
@@ -206,10 +210,57 @@ mod tests {
         fs::write(cursor.join("SKILL.md"), "bar").unwrap();
 
         let found = discover_from_home(home.path()).unwrap();
-        let names: Vec<_> = found.iter().map(|s| (s.source.as_str(), s.name.as_str())).collect();
+        let names: Vec<_> = found
+            .iter()
+            .map(|s| (s.source.as_str(), s.name.as_str()))
+            .collect();
         assert!(names.contains(&("claude", "foo")));
         assert!(names.contains(&("cursor", "bar")));
         assert!(!names.iter().any(|(src, _)| *src == "codex"));
+        assert!(!names.iter().any(|(src, _)| *src == "agents"));
+        assert!(!names.iter().any(|(src, _)| *src == "xdg-agents"));
+    }
+
+    #[test]
+    fn discovers_universal_home_agents_roots() {
+        let home = tempfile::tempdir().unwrap();
+        let agents = home.path().join(".agents/skills/greeter");
+        let xdg = home.path().join(".config/agents/skills/notes");
+        fs::create_dir_all(&agents).unwrap();
+        fs::create_dir_all(&xdg).unwrap();
+        fs::write(agents.join("SKILL.md"), "hi").unwrap();
+        fs::write(xdg.join("SKILL.md"), "notes").unwrap();
+
+        let found = discover_from_home(home.path()).unwrap();
+        let names: Vec<_> = found
+            .iter()
+            .map(|s| (s.source.as_str(), s.name.as_str()))
+            .collect();
+        assert!(names.contains(&("agents", "greeter")));
+        assert!(names.contains(&("xdg-agents", "notes")));
+        assert!(!names.iter().any(|(src, _)| *src == "claude"));
+    }
+
+    #[test]
+    fn imports_discovered_agents_skills() {
+        let home = tempfile::tempdir().unwrap();
+        let agents = home.path().join(".agents/skills/greeter");
+        fs::create_dir_all(&agents).unwrap();
+        fs::write(agents.join("SKILL.md"), "hi").unwrap();
+
+        let found = discover_from_home(home.path()).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].source, "agents");
+        assert_eq!(found[0].name, "greeter");
+        assert_eq!(found[0].path, agents);
+
+        let db = crate::local::db::LocalDb::open(&home.path().join("state.db")).unwrap();
+        db.replace_import(&found).unwrap();
+        let listed = db.list_skills().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].source, "agents");
+        assert_eq!(listed[0].name, "greeter");
+        assert_eq!(listed[0].path, agents);
     }
 
     #[test]

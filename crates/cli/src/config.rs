@@ -252,6 +252,12 @@ pub fn home_dir() -> Result<PathBuf> {
     dirs::home_dir().ok_or_else(|| SklError::Config("cannot resolve $HOME".into()))
 }
 
+/// Home skill libraries scanned by `skl init` and `skl doctor`.
+///
+/// Harness-specific roots stay first so existing discovery / `default_pull_root`
+/// order is unchanged. Universal home stores follow:
+/// `~/.agents/skills` (Agent Skills / Codex-style) and
+/// `~/.config/agents/skills` (skills.sh universal / XDG).
 pub fn skill_roots(home: &Path) -> Vec<SkillRoot> {
     vec![
         SkillRoot {
@@ -265,6 +271,14 @@ pub fn skill_roots(home: &Path) -> Vec<SkillRoot> {
         SkillRoot {
             source: "codex",
             path: home.join(".codex").join("skills"),
+        },
+        SkillRoot {
+            source: "agents",
+            path: home.join(".agents").join("skills"),
+        },
+        SkillRoot {
+            source: "xdg-agents",
+            path: home.join(".config").join("agents").join("skills"),
         },
     ]
 }
@@ -318,6 +332,29 @@ mod tests {
         assert!(parse_extra_prompt_line("none").unwrap().is_empty());
         assert!(parse_extra_prompt_line("").unwrap().is_empty());
         assert!(parse_extra_prompt_line("nope").is_err());
+    }
+
+    #[test]
+    fn skill_roots_include_universal_home_and_harness_paths() {
+        let home = Path::new("/tmp/skl-home");
+        let roots = skill_roots(home);
+        let pairs: Vec<(&str, PathBuf)> = roots
+            .iter()
+            .map(|root| (root.source, root.path.clone()))
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                ("claude", home.join(".claude").join("skills")),
+                ("cursor", home.join(".cursor").join("skills")),
+                ("codex", home.join(".codex").join("skills")),
+                ("agents", home.join(".agents").join("skills")),
+                (
+                    "xdg-agents",
+                    home.join(".config").join("agents").join("skills")
+                ),
+            ]
+        );
     }
 
     #[test]
