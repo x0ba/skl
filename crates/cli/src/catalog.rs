@@ -9,6 +9,7 @@
 //! (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, …) use their default `~/.name` paths.
 
 use std::collections::HashSet;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -135,9 +136,62 @@ pub fn expand_template(template: &str, home: &Path) -> PathBuf {
     )
 }
 
-/// XDG config relative to `home` (`$HOME/.config`) so tests stay isolated.
+/// XDG config home for catalog `{xdg_config}` templates.
+///
+/// Honors `XDG_CONFIG_HOME` when it is an absolute path and either lives
+/// under `home` or `home` is the process `HOME` / `USERPROFILE`. Otherwise
+/// falls back to `{home}/.config` so unit tests that pass a fake home stay
+/// isolated from the host XDG directory.
 pub fn xdg_config_dir(home: &Path) -> PathBuf {
-    home.join(".config")
+    resolve_xdg_config_dir(
+        home,
+        std::env::var_os("XDG_CONFIG_HOME").as_deref(),
+        std::env::var_os("HOME").as_deref(),
+        std::env::var_os("USERPROFILE").as_deref(),
+    )
+}
+
+fn resolve_xdg_config_dir(
+    home: &Path,
+    xdg_config_home: Option<&OsStr>,
+    process_home: Option<&OsStr>,
+    userprofile: Option<&OsStr>,
+) -> PathBuf {
+    let Some(xdg) = xdg_config_home.filter(|value| !value.is_empty()) else {
+        return home.join(".config");
+    };
+    let xdg = PathBuf::from(xdg);
+    if !xdg.is_absolute() {
+        return home.join(".config");
+    }
+    let home_is_process = process_home.is_some_and(|value| Path::new(value) == home)
+        || userprofile.is_some_and(|value| Path::new(value) == home);
+    if xdg.starts_with(home) || home_is_process {
+        xdg
+    } else {
+        home.join(".config")
+    }
+}
+
+/// Project-relative catalog dest: no absolute, `..`, `\`, or drive prefix.
+pub fn is_safe_project_rel(rel: &str) -> bool {
+    if rel.is_empty() || rel.len() > 512 {
+        return false;
+    }
+    if rel.starts_with('/') || rel.starts_with('\\') || rel.contains('\\') || rel.contains(':') {
+        return false;
+    }
+    rel.split('/')
+        .all(|part| !part.is_empty() && part != "." && part != "..")
+}
+
+/// Join `rel` onto `project` only when the dest stays inside the project.
+pub fn join_project_skills_dir(project: &Path, rel: &str) -> Option<PathBuf> {
+    if !is_safe_project_rel(rel) {
+        return None;
+    }
+    let dest = project.join(rel);
+    dest.starts_with(project).then_some(dest)
 }
 
 pub fn agents_home_path(home: &Path) -> PathBuf {
@@ -357,5 +411,79 @@ mod tests {
         let with_sticky = soft_prompt_candidates(home, &["claude-code".into()]);
         assert!(!with_sticky.contains(&CLAUDE_CODE_ID));
         assert!(!with_sticky.iter().any(|id| *id == "cursor"));
+    }
+
+    #[test]
+    fn xdg_config_honors_env_when_home_is_process_home() {
+        let home = Path::new("/tmp/skl-home");
+        let xdg = Path::new("/tmp/xdg-config");
+        assert_eq!(
+            resolve_xdg_config_dir(home, None, Some(home.as_os_str()), None),
+            home.join(".config")
+        );
+        assert_eq!(
+            resolve_xdg_config_dir(
+                home,
+                Some(xdg.as_os_str()),
+                Some(home.as_os_str()),
+                None
+            ),
+            xdg
+        );
+        assert_eq!(
+            resolve_xdg_config_dir(
+                home,
+                Some(xdg.as_os_str()),
+                Some(Path::new("/other-home").as_os_str()),
+                None
+            ),
+            home.join(".config")
+        );
+        let nested = home.join("xdg");
+        assert_eq!(
+            resolve_xdg_config_dir(
+                home,
+                Some(nested.as_os_str()),
+                Some(Path::new("/other-home").as_os_str()),
+                None
+            ),
+            nested
+        );
+        assert_eq!(
+            resolve_xdg_config_dir(
+                home,
+                Some(OsStr::new("relative-xdg")),
+                Some(home.as_os_str()),
+                None
+            ),
+            home.join(".config")
+        );
+    }
+
+    #[test]
+    fn catalog_project_dirs_are_safe_and_reject_escapes() {
+        for entry in agents() {
+            assert!(
+                is_safe_project_rel(entry.project_skills_dir),
+                "unsafe catalog dest {}: {}",
+                entry.id,
+                entry.project_skills_dir
+            );
+        }
+        assert!(is_safe_project_rel(".claude/skills"));
+        assert!(is_safe_project_rel("data/skills"));
+        assert!(!is_safe_project_rel("/tmp/out"));
+        assert!(!is_safe_project_rel("../out"));
+        assert!(!is_safe_project_rel("foo/../bar"));
+        assert!(!is_safe_project_rel("C:/Windows"));
+        assert!(!is_safe_project_rel("foo\\bar"));
+        let project = Path::new("/tmp/proj");
+        assert_eq!(
+            join_project_skills_dir(project, ".claude/skills").unwrap(),
+            project.join(".claude/skills")
+        );
+        assert!(join_project_skills_dir(project, "/tmp/out").is_none());
+        assert!(join_project_skills_dir(project, "../out").is_none());
+        assert!(join_project_skills_dir(project, "C:/Windows").is_none());
     }
 }

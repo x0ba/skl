@@ -134,7 +134,9 @@ pub fn load(paths: &Paths) -> Result<Config> {
             eprintln!("warn: {warn}");
         }
         cfg.targets.extra = extras;
-        let _ = save(paths, &cfg);
+        if let Err(err) = save(paths, &cfg) {
+            eprintln!("warn: extras migration not saved: {err}");
+        }
     }
     Ok(cfg)
 }
@@ -366,5 +368,35 @@ mod tests {
         assert!(raw.contains("claude-code"), "{raw}");
         assert!(!raw.contains("cursor"), "{raw}");
         assert!(!raw.contains("codex"), "{raw}");
+    }
+
+    #[test]
+    fn load_keeps_in_memory_migration_when_save_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: tmp.path().join("data"),
+            db_file: tmp.path().join("data/state.db"),
+        };
+        paths.ensure().unwrap();
+        std::fs::write(
+            &paths.config_file,
+            "[targets]\nextra = [\"claude\", \"cursor\"]\n",
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&paths.config_file).unwrap().permissions();
+        perms.set_readonly(true);
+        std::fs::set_permissions(&paths.config_file, perms).unwrap();
+
+        let cfg = load(&paths).unwrap();
+        assert_eq!(cfg.sticky_extras(), ["claude-code"]);
+        let raw = std::fs::read_to_string(&paths.config_file).unwrap();
+        assert!(raw.contains("cursor"), "{raw}");
+        assert!(raw.contains("claude"), "{raw}");
+
+        let mut perms = std::fs::metadata(&paths.config_file).unwrap().permissions();
+        perms.set_readonly(false);
+        std::fs::set_permissions(&paths.config_file, perms).unwrap();
     }
 }

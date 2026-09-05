@@ -8,6 +8,7 @@
 //! On EPERM / ENOTSUP / Windows privilege errors, fall back to a copy on
 //! every dest that is active.
 
+use std::collections::HashSet;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -291,9 +292,14 @@ pub fn project_link_targets(project: &Path, _home: &Path) -> Vec<LinkTarget> {
         if entry.project_skills_dir == crate::catalog::UNIVERSAL_PROJECT_DIR {
             continue;
         }
+        let Some(path) =
+            crate::catalog::join_project_skills_dir(project, entry.project_skills_dir)
+        else {
+            continue;
+        };
         out.push(LinkTarget {
             id: entry.id.to_string(),
-            path: project.join(entry.project_skills_dir),
+            path,
             kind: LinkTargetKind::OptIn,
         });
     }
@@ -336,15 +342,41 @@ pub fn project_link_roots(project: &Path, home: &Path) -> Vec<SkillRoot> {
 /// Always includes canonical `.agents`. Extra dests only when listed in
 /// `targets.extra` (custom catalog ids). Legacy cursor/codex dirs are never written.
 pub fn destinations_for(project: &Path, home: &Path, targets: &ManifestTargets) -> Vec<LinkTarget> {
+    let _ = home;
     let extras = filter_extra_ids(&targets.extra);
-    project_link_targets(project, home)
-        .into_iter()
-        .filter(|target| match target.kind {
-            LinkTargetKind::Canonical => true,
-            LinkTargetKind::OptIn => extras.iter().any(|id| id == &target.id),
-            LinkTargetKind::Legacy => false,
-        })
-        .collect()
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+
+    let canonical = project.join(".agents").join("skills");
+    seen.insert(norm_dest_key(&canonical));
+    out.push(LinkTarget {
+        id: CANONICAL_TARGET_ID.to_string(),
+        path: canonical,
+        kind: LinkTargetKind::Canonical,
+    });
+
+    for id in extras {
+        let Some(entry) = crate::catalog::get(&id) else {
+            continue;
+        };
+        let Some(path) = crate::catalog::join_project_skills_dir(project, entry.project_skills_dir)
+        else {
+            continue;
+        };
+        if !seen.insert(norm_dest_key(&path)) {
+            continue;
+        }
+        out.push(LinkTarget {
+            id,
+            path,
+            kind: LinkTargetKind::OptIn,
+        });
+    }
+    out
+}
+
+fn norm_dest_key(path: &Path) -> String {
+    path.to_string_lossy().to_string()
 }
 
 /// M0 layout: `skills.toml` / activated skills under `.claude`/`.cursor`, but
@@ -1271,6 +1303,59 @@ mode = "symlink"
         assert!(warns.iter().any(|w| w.contains("claude-code")));
         assert!(warns.iter().any(|w| w.contains("cursor")));
         assert!(warns.iter().any(|w| w.contains("codex")));
+    }
+
+    #[test]
+    fn destinations_for_dedupes_shared_catalog_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let dests = destinations_for(
+            &project,
+            &home,
+            &ManifestTargets {
+                canonical: vec!["agents".into()],
+                extra: vec!["qoder".into(), "qoder-cn".into()],
+            },
+        );
+        assert_eq!(
+            dests.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(),
+            ["agents", "qoder"]
+        );
+        assert_eq!(
+            dests.iter().map(|t| t.path.clone()).collect::<Vec<_>>(),
+            [
+                project.join(".agents/skills"),
+                project.join(".qoder/skills")
+            ]
+        );
+    }
+
+    #[test]
+    fn copy_fallback_shared_dest_pair_writes_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+        let extras = vec!["qoder".into(), "qoder-cn".into()];
+        let out =
+            with_forced_symlink_fail(|| activate_with_extras(&project, &home, &skill, &extras))
+                .unwrap();
+        assert_eq!(out.mode, COPY_MODE);
+        assert_eq!(
+            out.links
+                .iter()
+                .map(|l| l.agent.as_str())
+                .collect::<Vec<_>>(),
+            ["agents", "qoder"]
+        );
+        assert!(project.join(".agents/skills/greeter").is_dir());
+        assert!(project.join(".qoder/skills/greeter").is_dir());
+        let manifest = load_manifest(&project).unwrap();
+        assert_eq!(manifest.skills[0].mode, COPY_MODE);
+        assert_eq!(manifest.targets.extra, ["qoder", "qoder-cn"]);
     }
 
     #[test]

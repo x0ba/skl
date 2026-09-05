@@ -130,6 +130,20 @@ function extractExpr(block, key) {
   return block.slice(start).trim();
 }
 
+/** Project dests must stay inside the selected project (no abs / `..` / drive). */
+function isSafeProjectRel(rel) {
+  if (!rel || rel.length > 512) return false;
+  if (
+    rel.startsWith("/") ||
+    rel.startsWith("\\") ||
+    rel.includes("\\") ||
+    rel.includes(":")
+  ) {
+    return false;
+  }
+  return rel.split("/").every((part) => part && part !== "." && part !== "..");
+}
+
 function unquote(value) {
   const v = value.trim();
   const m = v.match(/^['"](.*)['"]$/);
@@ -160,6 +174,11 @@ function parseAgents(src) {
     const skillsDir = block.match(/skillsDir:\s*['"]([^'"]+)['"]/)?.[1];
     if (!skillsDir) {
       throw new Error(`missing skillsDir for ${id}`);
+    }
+    if (!isSafeProjectRel(skillsDir)) {
+      throw new Error(
+        `unsafe project skillsDir for ${id}: ${skillsDir} (must be a project-relative path)`
+      );
     }
     const globalRaw = extractExpr(block, "globalSkillsDir");
     if (!globalRaw) {
