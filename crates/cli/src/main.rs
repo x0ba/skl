@@ -46,7 +46,7 @@ enum Command {
         #[arg(long, value_name = "USER_ID")]
         dev_user: Option<String>,
     },
-    /// Import skills from ~/.claude/skills, ~/.cursor/skills, and ~/.codex/skills if present.
+    /// Import skills from ~/.claude/skills, ~/.cursor/skills, ~/.codex/skills, ~/.agents/skills, and ~/.config/agents/skills if present.
     Init,
     /// Hash sync: POST /v1/sync, PUT blobs, PUT trees, GET downloads.
     Sync {

@@ -72,7 +72,7 @@ cargo run -p skl -- status   # auto_sync / sync_frequency / last_sync / optional
 
 ### doctor
 
-Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` soft-prompt once for extra dests (`claude` / `cursor` / `codex`); CI / non-interactive skips the prompt.
+Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`, `~/.agents/skills`, `~/.config/agents/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` soft-prompt once for extra dests (`claude` / `cursor` / `codex`); CI / non-interactive skips the prompt.
 ```bash
 # API down is still a successful report (health = unreachable)
 cargo run -p skl -- doctor

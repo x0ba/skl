@@ -102,7 +102,7 @@ pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<
                 .into_iter()
                 .filter(|skill| skill.name == name)
                 .collect();
-            let order = ["claude", "cursor", "codex"];
+            let order = ["claude", "cursor", "codex", "agents", "xdg-agents"];
             matches.sort_by_key(|skill| {
                 order
                     .iter()
@@ -122,7 +122,7 @@ pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<
     }
 
     Err(SklError::LocalState(format!(
-        "skill `{name}` not found under ~/.claude/skills, ~/.cursor/skills, or ~/.codex/skills"
+        "skill `{name}` not found under ~/.claude/skills, ~/.cursor/skills, ~/.codex/skills, ~/.agents/skills, or ~/.config/agents/skills"
     )))
 }
 
@@ -173,6 +173,20 @@ mod tests {
         let found = resolve_skill("greeter", &home, None).unwrap();
         assert_eq!(found.source, "claude");
         assert_eq!(found.name, "greeter");
+    }
+
+    #[test]
+    fn resolves_from_home_agents_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let skill_dir = home.join(".agents/skills/greeter");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
+
+        let found = resolve_skill("greeter", &home, None).unwrap();
+        assert_eq!(found.source, "agents");
+        assert_eq!(found.name, "greeter");
+        assert_eq!(found.path, skill_dir);
     }
 
     #[test]

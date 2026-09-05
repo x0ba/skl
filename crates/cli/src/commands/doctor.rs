@@ -422,6 +422,9 @@ mod tests {
         fs::create_dir_all(&claude).unwrap();
         fs::write(claude.join("SKILL.md"), "foo").unwrap();
         fs::create_dir_all(home.path().join(".cursor/skills")).unwrap();
+        let agents = home.path().join(".agents/skills/greeter");
+        fs::create_dir_all(&agents).unwrap();
+        fs::write(agents.join("SKILL.md"), "hi").unwrap();
 
         let data = tempfile::tempdir().unwrap();
         let paths = Paths {
@@ -452,7 +455,7 @@ mod tests {
         assert_eq!(report.health, HealthStatus::Ok);
         assert_eq!(report.local_skills, Some(1));
         assert!(report.last_sync.is_none());
-        assert_eq!(report.roots.len(), 3);
+        assert_eq!(report.roots.len(), 5);
         let claude_root = report.roots.iter().find(|r| r.source == "claude").unwrap();
         assert!(claude_root.status.exists);
         assert_eq!(claude_root.skill_count, Some(1));
@@ -464,6 +467,17 @@ mod tests {
         let codex_root = report.roots.iter().find(|r| r.source == "codex").unwrap();
         assert!(!codex_root.status.exists);
         assert_eq!(codex_root.symlink, None);
+        let agents_root = report.roots.iter().find(|r| r.source == "agents").unwrap();
+        assert!(agents_root.status.exists);
+        assert_eq!(agents_root.skill_count, Some(1));
+        assert_eq!(agents_root.symlink, Some(true));
+        let xdg_root = report
+            .roots
+            .iter()
+            .find(|r| r.source == "xdg-agents")
+            .unwrap();
+        assert!(!xdg_root.status.exists);
+        assert_eq!(xdg_root.symlink, None);
         assert!(!report.config.as_ref().unwrap().exists);
         assert!(report.state_db.as_ref().unwrap().exists);
         assert!(report.symlink, "host temp dir should allow symlinks");
@@ -480,6 +494,6 @@ mod tests {
             HealthStatus::Unreachable(msg) => assert!(!msg.is_empty(), "{msg}"),
             HealthStatus::Ok => panic!("expected unreachable"),
         }
-        assert_eq!(report.roots.len(), 3);
+        assert_eq!(report.roots.len(), 5);
     }
 }
