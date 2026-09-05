@@ -173,9 +173,7 @@ async fn run() -> Result<(), SklError> {
 
     match cli.command {
         Command::Login { dev_user } => commands::login::run(api_base, dev_user).await,
-        Command::Setup { non_interactive } => {
-            commands::setup::run(api_base, non_interactive).await
-        }
+        Command::Setup { non_interactive } => commands::setup::run(api_base, non_interactive).await,
         Command::Init => commands::init::run(api_base).await,
         Command::Sync {
             keep_local,

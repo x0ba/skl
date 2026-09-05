@@ -5,9 +5,8 @@
 name: cli-binaries
 
 on:
+  workflow_call:
   push:
-    tags:
-      - "v*"
     paths:
       - "crates/cli/**"
       - "Cargo.toml"

@@ -1,0 +1,15 @@
+# Tag-only entry point so v* publishes even when the tagged commit
+# does not match cli-binaries path filters. Reuses that workflow as-is.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  binaries:
+    uses: ./.github/workflows/cli-binaries.yml

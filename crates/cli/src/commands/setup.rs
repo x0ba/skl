@@ -66,12 +66,9 @@ mod tests {
         let mut input = Cursor::new("n\nn\n");
         let mut out = Vec::new();
         let login = prompt::confirm_yes_default(&mut input, &mut out, "Log in now?").unwrap();
-        let init = prompt::confirm_yes_default(
-            &mut input,
-            &mut out,
-            "Import existing skills (skl init)?",
-        )
-        .unwrap();
+        let init =
+            prompt::confirm_yes_default(&mut input, &mut out, "Import existing skills (skl init)?")
+                .unwrap();
         assert!(!login);
         assert!(!init);
         let text = String::from_utf8(out).unwrap();
