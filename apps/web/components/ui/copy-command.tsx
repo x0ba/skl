@@ -43,7 +43,7 @@ export function CopyCommand({
         className,
       )}
     >
-      <code className="min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-[13px] leading-relaxed text-foreground">
+      <code className="min-w-0 flex-1 wrap-anywhere font-mono text-[13px] leading-relaxed text-foreground">
         <span className="text-faint select-none">{"$ "}</span>
         {command}
       </code>
