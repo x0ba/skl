@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install smoke stacked on furnace `scripts/install.sh` (do not invent a second installer).
+# Install smoke stacked on furnace `apps/web/public/install.sh` (do not invent a second installer).
 #
 # Clean env: after a binary exists, the curl | bash path never calls cargo/rustc.
 #
@@ -229,7 +229,7 @@ if [[ "$TARGET" == *-pc-windows-* ]]; then
 fi
 cp "$BIN" "$WORKDIR/release/$ASSET"
 chmod +x "$WORKDIR/release/$ASSET"
-cp "$ROOT/scripts/install.sh" "$WORKDIR/release/install.sh"
+cp "$ROOT/apps/web/public/install.sh" "$WORKDIR/release/install.sh"
 (
   cd "$WORKDIR/release"
   if command -v sha256sum >/dev/null 2>&1; then

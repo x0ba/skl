@@ -18,6 +18,7 @@ on:
       - "rust-toolchain.toml"
       - "scripts/cross-compile.sh"
       - "scripts/install.sh"
+      - "apps/web/public/install.sh"
       - "scripts/smoke-lib.sh"
       - "scripts/smoke-install.sh"
       - "scripts/smoke-import-sync-use.sh"
@@ -36,6 +37,7 @@ on:
       - "rust-toolchain.toml"
       - "scripts/cross-compile.sh"
       - "scripts/install.sh"
+      - "apps/web/public/install.sh"
       - "scripts/smoke-lib.sh"
       - "scripts/smoke-install.sh"
       - "scripts/smoke-import-sync-use.sh"
@@ -66,7 +68,7 @@ jobs:
         with:
           tool: cargo-zigbuild
       - name: Check install.sh
-        run: bash -n scripts/install.sh && ./scripts/install.sh --print-target
+        run: bash -n apps/web/public/install.sh && ./scripts/install.sh --print-target
       - name: Cross-compile portable binaries
         run: TARGETS=x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,x86_64-pc-windows-gnu ./scripts/cross-compile.sh
       - name: Smoke the musl binary
@@ -184,7 +186,7 @@ jobs:
           mkdir -p dist
           # Flatten per-job artifacts (skl-cli / skl-cli-macos).
           find artifacts -type f \( -name 'skl-*' -o -name 'skl' \) -exec cp -n {} dist/ \;
-          cp scripts/install.sh dist/install.sh
+          cp apps/web/public/install.sh dist/install.sh
           chmod +x dist/install.sh
           : > dist/SHA256SUMS
           (

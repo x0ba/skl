@@ -39,20 +39,25 @@ export function CopyCommand({
   return (
     <div
       className={cn(
-        "flex items-start justify-between gap-4 border border-border bg-secondary py-2.5 pl-4 pr-3",
+        "flex w-max items-center gap-3 border border-border bg-secondary py-2.5 pl-4 pr-3",
         className,
       )}
     >
-      <code className="min-w-0 flex-1 wrap-anywhere font-mono text-[13px] leading-relaxed text-foreground">
+      <code className="whitespace-nowrap font-mono text-[13px] leading-relaxed text-foreground">
         <span className="text-faint select-none">{"$ "}</span>
         {command}
       </code>
       <button
         type="button"
         onClick={copy}
-        className="shrink-0 font-mono text-[11px] tracking-label text-primary underline decoration-from-font underline-offset-2 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="relative shrink-0 text-right font-mono text-[11px] tracking-label text-primary underline decoration-from-font underline-offset-2 hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
-        {copied ? "COPIED" : "COPY"}
+        <span className="invisible" aria-hidden="true">
+          COPIED
+        </span>
+        <span className="absolute inset-0">
+          {copied ? "COPIED" : "COPY"}
+        </span>
       </button>
     </div>
   );

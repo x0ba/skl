@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { CopyCommand } from "@/components/ui/copy-command";
+import { headers } from "next/headers";
+import { InstallCommand } from "@/components/ui/install-command";
 import { Label } from "@/components/ui/text";
 import { Transcript } from "@/components/ui/transcript";
 
@@ -24,7 +25,18 @@ const STEPS = [
   },
 ];
 
-export default function LandingPage() {
+function requestOrigin(headerList: Headers): string {
+  const host =
+    headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "localhost:3000";
+  const proto =
+    headerList.get("x-forwarded-proto") ??
+    (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+export default async function LandingPage() {
+  const origin = requestOrigin(await headers());
+
   return (
     <>
       <section className="mx-auto w-full max-w-content px-6 pb-20 pt-16 sm:pt-24">
@@ -36,8 +48,8 @@ export default function LandingPage() {
             <p className="mt-6 max-w-md text-[17px] leading-relaxed text-muted-foreground">
               Sync your agent skills across machines and projects.
             </p>
-            <div className="mt-9 w-full max-w-2xl">
-              <CopyCommand command="curl -fsSL https://github.com/x0ba/skl/releases/latest/download/install.sh | bash" />
+            <div className="mt-9">
+              <InstallCommand initialOrigin={origin} />
             </div>
             <p className="mt-4 font-mono text-[12px] text-faint">
               or from source: cargo install --path crates/cli
