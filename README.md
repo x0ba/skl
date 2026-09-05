@@ -69,6 +69,26 @@ cargo test -p skl
 cargo run -p skl -- --help
 ```
 
+### TUI
+
+Bare `skl` on a TTY opens a local two-pane skill browser (list + `SKILL.md` preview). Same as `skl tui` / `skl ui`. Startup reads the personal library / `state.db` only — no network.
+
+Non-TTY, `SKL_NO_TUI=1`, or `--no-tui` prints help and never enters raw mode (safe in CI). `skl -h` / `skl help` still show help. `TERM=dumb` and unsupported Windows consoles print a degrade message instead of a half-broken UI.
+
+| Key | Action |
+| --- | --- |
+| `/` | search (filter names) |
+| `↑` `↓` / `j` `k` | move in the list (list owns arrows) |
+| `[` `]` or Ctrl-j / Ctrl-k | scroll preview |
+| `e` | edit `SKILL.md` (`$VISUAL` or `$EDITOR`) |
+| `u` / `U` | use / unuse in **cwd** (same as `skl use` / `skl unuse`) |
+| `s` | sync (blocking; same as `skl sync`) |
+| `r` | refresh from local library |
+| `?` | help |
+| `q` / Esc | quit (Esc also leaves search / help) |
+
+Header shows skill count, last sync age, and the cwd project name. Activated skills are marked `✓`, others `·`. Capture, init, collections, and mouse are not in this TUI.
+
 ### setup
 
 `skl setup` is the TTY first-run after `install.sh`: login `[Y/n]` (default yes), then init `[Y/n]` (default yes). Init shows the harness checklist (Universal `.agents` locked). `--non-interactive`, non-TTY, `CI`, `SKL_NO_PROMPT`, or `SKL_YES` skip prompts (binary / already-installed CLI only).
