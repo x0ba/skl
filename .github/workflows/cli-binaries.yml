@@ -1,9 +1,11 @@
 # Portable skl CLI binary + import→sync→use smoke. Linux is required;
 # Windows GNU is built via zig when the cross-compile script can.
+# Tag v* publishes GitHub Release assets from the same script (no second builder).
 # brew / macOS signed artifacts are out of scope.
 name: cli-binaries
 
 on:
+  workflow_call:
   push:
     paths:
       - "crates/cli/**"
@@ -11,6 +13,7 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - "scripts/cross-compile.sh"
+      - "scripts/install.sh"
       - "scripts/smoke-lib.sh"
       - "scripts/smoke-import-sync-use.sh"
       - "scripts/smoke-clash.sh"
@@ -26,6 +29,7 @@ on:
       - "Cargo.lock"
       - "rust-toolchain.toml"
       - "scripts/cross-compile.sh"
+      - "scripts/install.sh"
       - "scripts/smoke-lib.sh"
       - "scripts/smoke-import-sync-use.sh"
       - "scripts/smoke-clash.sh"
@@ -43,6 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,x86_64-pc-windows-gnu
       - name: Install libdbus headers
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
       - uses: mlugg/setup-zig@v2
@@ -51,17 +57,41 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-zigbuild
+      - name: Check install.sh
+        run: bash -n scripts/install.sh && ./scripts/install.sh --print-target
       - name: Cross-compile portable binaries
-        run: TARGETS=x86_64-unknown-linux-musl,x86_64-pc-windows-gnu ./scripts/cross-compile.sh
+        run: TARGETS=x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,x86_64-pc-windows-gnu ./scripts/cross-compile.sh
       - name: Smoke the musl binary
         run: |
           ./dist/skl-x86_64-unknown-linux-musl --help
-          file ./dist/skl-x86_64-unknown-linux-musl
+          file ./dist/skl-x86_64-unknown-linux-musl ./dist/skl-aarch64-unknown-linux-musl ./dist/skl-x86_64-pc-windows-gnu.exe
       - uses: actions/upload-artifact@v4
         with:
           name: skl-cli
           path: |
             dist/skl
+            dist/skl-*
+            dist/SHA256SUMS
+
+  cross-compile-macos:
+    name: apple darwin
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - name: Cross-compile apple triples
+        run: TARGETS=aarch64-apple-darwin,x86_64-apple-darwin ./scripts/cross-compile.sh
+      - name: Smoke the host apple binary
+        run: |
+          ./dist/skl-aarch64-apple-darwin --help || ./dist/skl-x86_64-apple-darwin --help
+          file ./dist/skl-aarch64-apple-darwin ./dist/skl-x86_64-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skl-cli-macos
+          path: |
             dist/skl-*
             dist/SHA256SUMS
 
@@ -104,3 +134,49 @@ jobs:
           ./scripts/smoke-clash.sh
           ./scripts/smoke-auto-sync.sh
           ./scripts/smoke-capture.sh
+
+  release:
+    name: github release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [cross-compile, cross-compile-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # Flatten per-job artifacts (skl-cli / skl-cli-macos).
+          find artifacts -type f \( -name 'skl-*' -o -name 'skl' \) -exec cp -n {} dist/ \;
+          cp scripts/install.sh dist/install.sh
+          chmod +x dist/install.sh
+          : > dist/SHA256SUMS
+          (
+            cd dist
+            for f in skl-* install.sh; do
+              [ -f "$f" ] || continue
+              sha256sum "$f"
+            done
+          ) | sort -k2 > dist/SHA256SUMS
+          echo "Release assets:"
+          ls -l dist
+          cat dist/SHA256SUMS
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          assets=()
+          for f in dist/skl-* dist/install.sh dist/SHA256SUMS; do
+            [ -f "$f" ] || continue
+            assets+=("$f")
+          done
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "${assets[@]}"
