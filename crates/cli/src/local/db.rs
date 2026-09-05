@@ -86,9 +86,9 @@ impl LocalDb {
     }
 
     pub fn list_skills(&self) -> Result<Vec<DiscoveredSkill>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT name, source, path, tree_hash FROM skills ORDER BY source, name",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT name, source, path, tree_hash FROM skills ORDER BY source, name")?;
         let rows = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0)?,
@@ -148,6 +148,43 @@ impl LocalDb {
             .list_skills()?
             .into_iter()
             .find(|skill| skill.name == name))
+    }
+
+    /// Insert or replace one indexed skill without wiping the rest of the catalog.
+    pub fn upsert_skill(&self, skill: &DiscoveredSkill) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM skill_files WHERE skill_name = ?1 AND source = ?2",
+            params![skill.name, skill.source],
+        )?;
+        tx.execute(
+            "DELETE FROM skills WHERE name = ?1 AND source = ?2",
+            params![skill.name, skill.source],
+        )?;
+        tx.execute(
+            "INSERT INTO skills (name, source, path, tree_hash, imported_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                skill.name,
+                skill.source,
+                skill.path.to_string_lossy(),
+                skill.tree.tree_hash,
+                now
+            ],
+        )?;
+        for (path, hash) in &skill.tree.files {
+            tx.execute(
+                "INSERT INTO skill_files (skill_name, source, path, hash)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![skill.name, skill.source, path, hash],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// Locate a local file whose content hash matches.
@@ -272,5 +309,47 @@ mod tests {
         assert!(at > 0);
         assert_eq!(summary.uploaded, 1);
         assert_eq!(db.skill_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn upsert_skill_replaces_one_row_without_wiping_others() {
+        let tmp = tempfile::tempdir().unwrap();
+        let alpha = tmp.path().join("alpha");
+        let beta = tmp.path().join("beta");
+        std::fs::create_dir_all(&alpha).unwrap();
+        std::fs::create_dir_all(&beta).unwrap();
+        std::fs::write(alpha.join("SKILL.md"), "a").unwrap();
+        std::fs::write(beta.join("SKILL.md"), "b").unwrap();
+        let db = LocalDb::open(&tmp.path().join("state.db")).unwrap();
+        db.upsert_skill(&DiscoveredSkill {
+            name: "alpha".into(),
+            source: "claude".into(),
+            path: alpha.clone(),
+            tree: hash_skill_dir(&alpha).unwrap(),
+        })
+        .unwrap();
+        db.upsert_skill(&DiscoveredSkill {
+            name: "beta".into(),
+            source: "agents".into(),
+            path: beta.clone(),
+            tree: hash_skill_dir(&beta).unwrap(),
+        })
+        .unwrap();
+        std::fs::write(beta.join("SKILL.md"), "b2").unwrap();
+        db.upsert_skill(&DiscoveredSkill {
+            name: "beta".into(),
+            source: "agents".into(),
+            path: beta.clone(),
+            tree: hash_skill_dir(&beta).unwrap(),
+        })
+        .unwrap();
+        let listed = db.list_skills().unwrap();
+        assert_eq!(listed.len(), 2);
+        let beta = listed.iter().find(|s| s.name == "beta").unwrap();
+        assert_eq!(beta.source, "agents");
+        assert_eq!(
+            beta.tree.files["SKILL.md"],
+            crate::local::skills::hash_bytes(b"b2")
+        );
     }
 }

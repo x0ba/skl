@@ -88,6 +88,24 @@ enum Command {
         #[arg(short = 'a', long = "agent", value_name = "ID")]
         agents: Vec<String>,
     },
+    /// Promote a project skill into the personal library (`~/.local/share/skl/skills`).
+    Capture {
+        /// Project skill path or name (resolved under `.agents/skills` + sticky extras).
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+        /// Overwrite an existing library skill of the same name.
+        #[arg(long)]
+        force: bool,
+        /// Capture under a different skill name.
+        #[arg(long = "as", value_name = "NAME")]
+        as_name: Option<String>,
+        /// Copy into the library; leave the project dir as a real copy (no symlink).
+        #[arg(long)]
+        keep_copy: bool,
+        /// Project directory (default: cwd).
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+    },
     /// Remove project skill symlinks and drop them from skills.toml.
     Unuse {
         #[arg(value_name = "SKILL", required = true)]
@@ -189,6 +207,25 @@ async fn run() -> Result<(), SklError> {
             project,
             agents,
         } => commands::use_cmd::run(&skills, project, &agents, &api_base).await,
+        Command::Capture {
+            path,
+            force,
+            as_name,
+            keep_copy,
+            project,
+        } => {
+            commands::capture::run(
+                path,
+                commands::capture::CaptureOpts {
+                    force,
+                    as_name,
+                    keep_copy,
+                    project,
+                },
+                &api_base,
+            )
+            .await
+        }
         Command::Unuse { skills, project } => {
             commands::unuse::run(&skills, project, &api_base).await
         }
