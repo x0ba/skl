@@ -95,6 +95,21 @@ pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<
     }
 
     if let Some(db_file) = db_file {
+        if let Some(data_dir) = db_file.parent() {
+            let lib = data_dir.join("skills").join(name);
+            if lib.is_dir() {
+                let tree = skills::hash_skill_dir(&lib)?;
+                return Ok(DiscoveredSkill {
+                    name: name.to_string(),
+                    source: "agents".into(),
+                    path: lib,
+                    tree,
+                });
+            }
+        }
+    }
+
+    if let Some(db_file) = db_file {
         if db_file.exists() {
             let db = LocalDb::open(db_file)?;
             let mut matches: Vec<_> = db
@@ -122,7 +137,7 @@ pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<
     }
 
     Err(SklError::LocalState(format!(
-        "skill `{name}` not found under catalog home roots (e.g. ~/.agents/skills, ~/.claude/skills, ~/.cursor/skills)"
+        "skill `{name}` not found under catalog home roots (e.g. ~/.agents/skills, ~/.claude/skills, ~/.cursor/skills) or the personal library"
     )))
 }
 
@@ -210,6 +225,22 @@ mod tests {
 
         let found = resolve_skill("greeter", &home, Some(&db_file)).unwrap();
         assert_eq!(found.source, "cursor");
+        assert_eq!(found.path, skill_dir);
+    }
+
+    #[test]
+    fn resolves_from_personal_library_under_data_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        std::fs::create_dir_all(&home).unwrap();
+        let data_dir = tmp.path().join("data");
+        let skill_dir = data_dir.join("skills/greeter");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "lib").unwrap();
+        let db_file = data_dir.join("state.db");
+
+        let found = resolve_skill("greeter", &home, Some(&db_file)).unwrap();
+        assert_eq!(found.source, "agents");
         assert_eq!(found.path, skill_dir);
     }
 

@@ -49,7 +49,7 @@ After `skl login`, the device `access_token` is stored in the OS keyring (`servi
 
 ### auto-sync
 
-Verb-triggered piggyback (no daemon). `login` / `init` / `use` / `unuse` / `status` call furnace `maybe_run` when due. `doctor` only *displays* `last_sync`.
+Verb-triggered piggyback (no daemon). `login` / `init` / `use` / `unuse` / `capture` / `status` call furnace `maybe_run` when due. `doctor` only *displays* `last_sync`.
 
 `~/.config/skl/config.toml` (`SKL_CONFIG_DIR` overrides XDG):
 

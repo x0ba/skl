@@ -357,11 +357,9 @@ mod tests {
             paths.library_skill("greeter"),
             data_dir.join("skills").join("greeter")
         );
+        let library_dir = paths.library_dir();
         assert!(
-            !paths
-                .library_dir()
-                .to_string_lossy()
-                .contains(".agents/skills"),
+            !library_dir.to_string_lossy().contains(".agents/skills"),
             "personal library must not be ~/.agents/skills"
         );
     }

@@ -758,7 +758,7 @@ fn same_skill_tree(a: &Path, b: &Path) -> bool {
     }
 }
 
-fn copy_skill_tree(src: &Path, dest: &Path) -> Result<()> {
+pub fn copy_skill_tree(src: &Path, dest: &Path) -> Result<()> {
     match dest_kind(dest) {
         Ok(DestKind::Directory) => fs::remove_dir_all(dest)?,
         Ok(DestKind::Symlink) | Ok(DestKind::Other) => {
