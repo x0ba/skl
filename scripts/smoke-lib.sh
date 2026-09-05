@@ -152,8 +152,9 @@ skl_prepare_home() {
     exit 1
   fi
   mkdir -p "$home/.claude/skills" "$home/.config/skl" "$home/.local/share/skl"
-  # File token next to XDG config so a later helper can re-read it.
-  printf '%s\n' "$token" >"$home/.config/skl/ci-token"
+  # Auth is SKL_TOKEN in the environment (`skl_run`). Do not write a
+  # token file — the CLI does not read ~/.config/skl/ci-token, and a
+  # default umask would leave the bearer readable to other local users.
 }
 
 # Write furnace `[sync]` prefs into one machine HOME.
