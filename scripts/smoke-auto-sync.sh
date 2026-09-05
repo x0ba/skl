@@ -99,7 +99,7 @@ hello from machine A
   echo "$b_init"
   skl_assert_contains "$b_init" "Imported 0 skill"
   skl_assert_contains "$b_init" "POST $API/v1/sync"
-  skl_assert_file_contains "$MACHINE_B/.claude/skills/${SKILL_NAME}/SKILL.md" \
+  skl_assert_file_contains "$MACHINE_B/.agents/skills/${SKILL_NAME}/SKILL.md" \
     "hello from machine A"
 
   echo "    A: mutate library (new skill, not a same-slug overwrite)"
@@ -125,9 +125,9 @@ second skill from machine A
   skl_assert_contains "$b_status" "auto_sync    on"
   skl_assert_contains "$b_status" "sync_frequency 900s"
   skl_assert_contains "$b_status" "last_sync"
-  skl_assert_file_contains "$MACHINE_B/.claude/skills/${SKILL_NAME}/SKILL.md" \
+  skl_assert_file_contains "$MACHINE_B/.agents/skills/${SKILL_NAME}/SKILL.md" \
     "hello from machine A"
-  skl_assert_file_contains "$MACHINE_B/.claude/skills/${skill_more}/SKILL.md" \
+  skl_assert_file_contains "$MACHINE_B/.agents/skills/${skill_more}/SKILL.md" \
     "second skill from machine A"
 
   echo "    B: use links the pulled library (agents-only)"
@@ -138,7 +138,7 @@ second skill from machine A
   skl_assert_contains "$b_use" "using $SKILL_NAME"
   skl_assert_symlink_to \
     "$PROJECT_B/.agents/skills/${SKILL_NAME}" \
-    "$MACHINE_B/.claude/skills/${SKILL_NAME}"
+    "$MACHINE_B/.agents/skills/${SKILL_NAME}"
   if [[ -e "$PROJECT_B/.claude" || -e "$PROJECT_B/.cursor" ]]; then
     echo "default use must not create .claude/.cursor" >&2
     ls -la "$PROJECT_B" >&2 || true
