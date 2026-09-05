@@ -5,13 +5,20 @@
 # Default: host triple via `cargo build --release -p skl`, plus a static-ish
 # Linux musl binary when zig + cargo-zigbuild (or musl-gcc) are available.
 #
-# macOS / Windows triples are built only when practical:
-#   - windows-gnu from Linux/mac via cargo-zigbuild
+# Release matrix (GitHub Releases on v* tags — see cli-binaries.yml):
+#   aarch64-apple-darwin  x86_64-apple-darwin
+#   x86_64-unknown-linux-musl  aarch64-unknown-linux-musl
+#   x86_64-pc-windows-gnu
+#
+# Practical constraints:
+#   - windows-gnu + linux-musl (both arches) from Linux/mac via cargo-zigbuild
 #   - apple triples only when the host is already Darwin (no osxcross)
+#   - on Darwin, `cargo build --target` can emit both apple triples
 #
 # Usage:
 #   ./scripts/cross-compile.sh
 #   TARGETS=x86_64-unknown-linux-musl ./scripts/cross-compile.sh
+#   TARGETS=aarch64-unknown-linux-musl,x86_64-unknown-linux-musl ./scripts/cross-compile.sh
 #   INSTALL_TOOLS=1 ./scripts/cross-compile.sh
 #   OUT_DIR=dist ./scripts/cross-compile.sh
 #
@@ -36,23 +43,29 @@ host_os() {
   esac
 }
 
+# Full GitHub Release matrix. CI sets TARGETS per runner; unused here unless
+# RELEASE=1 (skip-what-you-cannot, required=0).
+RELEASE_TARGETS="${RELEASE_TARGETS:-aarch64-apple-darwin,x86_64-apple-darwin,x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,x86_64-pc-windows-gnu}"
+
 default_targets() {
   local targets=("$HOST_TRIPLE")
+  if [[ "${RELEASE:-}" == "1" ]]; then
+    local IFS=','
+    # shellcheck disable=SC2206
+    targets=($RELEASE_TARGETS)
+    printf '%s\n' "${targets[@]}" | awk 'NF && !seen[$0]++'
+    return
+  fi
   case "$(host_os)" in
     linux)
-      if [[ "$HOST_TRIPLE" == x86_64-* ]]; then
-        targets+=("x86_64-unknown-linux-musl")
-      elif [[ "$HOST_TRIPLE" == aarch64-* ]]; then
-        targets+=("aarch64-unknown-linux-musl")
-      fi
+      # Both musl arches via zig when present; skip (required=0) if not.
+      targets+=("x86_64-unknown-linux-musl" "aarch64-unknown-linux-musl")
       # Practical from Linux: Windows GNU via zig. Apple needs an SDK.
       targets+=("x86_64-pc-windows-gnu")
       ;;
     darwin)
-      if [[ "$HOST_TRIPLE" == aarch64-* ]]; then
-        targets+=("x86_64-apple-darwin")
-      fi
-      targets+=("x86_64-unknown-linux-musl" "x86_64-pc-windows-gnu")
+      targets+=("aarch64-apple-darwin" "x86_64-apple-darwin")
+      targets+=("x86_64-unknown-linux-musl" "aarch64-unknown-linux-musl" "x86_64-pc-windows-gnu")
       ;;
     windows)
       targets+=("x86_64-pc-windows-gnu")
@@ -142,6 +155,16 @@ build_target() {
       log "wrote $OUT_DIR/$artifact"
       return 0
     fi
+  fi
+
+  # Darwin can emit both apple triples with the stock Apple linker (no zig).
+  if [[ "$target" == *apple-darwin* && "$(host_os)" == darwin ]]; then
+    (cd "$ROOT" && cargo build --release -p skl --target "$target")
+    src="$ROOT/target/${target}/release/${crate_bin}"
+    [[ -f "$src" ]] || die "apple build produced no $src"
+    cp "$src" "$OUT_DIR/$artifact"
+    log "wrote $OUT_DIR/$artifact (cargo --target)"
+    return 0
   fi
 
   if [[ "$target" == *-linux-musl ]]; then

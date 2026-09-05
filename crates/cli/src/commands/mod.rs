@@ -4,6 +4,7 @@ pub mod init;
 pub mod list;
 pub mod login;
 pub mod migrate;
+pub mod setup;
 pub mod status;
 pub mod sync;
 pub mod targets;

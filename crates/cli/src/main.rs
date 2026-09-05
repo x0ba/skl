@@ -51,6 +51,12 @@ enum Command {
         #[arg(long, value_name = "USER_ID")]
         dev_user: Option<String>,
     },
+    /// First-run after install: login [Y/n], init [Y/n], harness checklist.
+    Setup {
+        /// Binary-only: skip login / init / checklist prompts.
+        #[arg(long)]
+        non_interactive: bool,
+    },
     /// Import skills from unique catalog global roots plus ~/.agents/skills.
     Init,
     /// Hash sync: POST /v1/sync, PUT blobs, PUT trees, GET downloads.
@@ -167,6 +173,9 @@ async fn run() -> Result<(), SklError> {
 
     match cli.command {
         Command::Login { dev_user } => commands::login::run(api_base, dev_user).await,
+        Command::Setup { non_interactive } => {
+            commands::setup::run(api_base, non_interactive).await
+        }
         Command::Init => commands::init::run(api_base).await,
         Command::Sync {
             keep_local,

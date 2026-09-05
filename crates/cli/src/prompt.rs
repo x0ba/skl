@@ -116,6 +116,37 @@ pub fn write_conflict_prompt(out: &mut impl Write, conflict: &SyncConflict) -> i
     Ok(())
 }
 
+/// First-run / install Y/n. Empty or yes-ish → Some(true); no-ish → Some(false).
+pub fn parse_yes_no_default_yes(input: &str) -> Option<bool> {
+    match input.trim().to_ascii_lowercase().as_str() {
+        "" | "y" | "yes" => Some(true),
+        "n" | "no" => Some(false),
+        _ => None,
+    }
+}
+
+/// Prompt on stderr, read a line from `reader`. Default yes. EOF → false.
+pub fn confirm_yes_default<R: BufRead, W: Write>(
+    reader: &mut R,
+    writer: &mut W,
+    prompt: &str,
+) -> io::Result<bool> {
+    loop {
+        write!(writer, "{prompt} [Y/n] ")?;
+        writer.flush()?;
+        let mut line = String::new();
+        let n = reader.read_line(&mut line)?;
+        if n == 0 {
+            writeln!(writer)?;
+            return Ok(false);
+        }
+        match parse_yes_no_default_yes(&line) {
+            Some(value) => return Ok(value),
+            None => writeln!(writer, "enter Y or n")?,
+        }
+    }
+}
+
 pub fn parse_resolution(input: &str) -> Option<Resolution> {
     match input.trim().to_ascii_lowercase().as_str() {
         "l" | "local" | "keep-local" | "1" => Some(Resolution::KeepLocal),
@@ -225,6 +256,41 @@ mod tests {
         let resolved = resolve_conflicts(&items, &mut PreferLocal).unwrap();
         assert_eq!(resolved[0].resolution, Resolution::KeepLocal);
         assert_eq!(resolved[0].action, SyncAction::OverwriteRemote);
+    }
+
+    #[test]
+    fn yes_no_default_yes_empty_and_yes() {
+        assert_eq!(parse_yes_no_default_yes(""), Some(true));
+        assert_eq!(parse_yes_no_default_yes("Y"), Some(true));
+        assert_eq!(parse_yes_no_default_yes(" yes "), Some(true));
+        assert_eq!(parse_yes_no_default_yes("n"), Some(false));
+        assert_eq!(parse_yes_no_default_yes("No"), Some(false));
+        assert_eq!(parse_yes_no_default_yes("maybe"), None);
+    }
+
+    #[test]
+    fn confirm_yes_default_accepts_empty() {
+        let mut input = Cursor::new("\n");
+        let mut out = Vec::new();
+        assert!(confirm_yes_default(&mut input, &mut out, "Log in now?").unwrap());
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("Log in now? [Y/n]"));
+    }
+
+    #[test]
+    fn confirm_yes_default_accepts_no() {
+        let mut input = Cursor::new("n\n");
+        let mut out = Vec::new();
+        assert!(!confirm_yes_default(&mut input, &mut out, "Import skills?").unwrap());
+    }
+
+    #[test]
+    fn confirm_yes_default_reprompts_then_yes() {
+        let mut input = Cursor::new("maybe\ny\n");
+        let mut out = Vec::new();
+        assert!(confirm_yes_default(&mut input, &mut out, "Log in now?").unwrap());
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("enter Y or n"));
     }
 
     #[test]

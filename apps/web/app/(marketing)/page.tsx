@@ -40,7 +40,7 @@ export default function LandingPage() {
               <CopyCommand command="curl -fsSL https://github.com/x0ba/skl/releases/latest/download/install.sh | bash" />
             </div>
             <p className="mt-4 font-mono text-[12px] text-faint">
-              or build from source: cargo install --path crates/cli
+              or from source: cargo install --path crates/cli
             </p>
           </div>
 

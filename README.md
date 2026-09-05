@@ -8,10 +8,20 @@ Atuin-style personal agent skill sync.
 curl -fsSL https://github.com/x0ba/skl/releases/latest/download/install.sh | bash
 ```
 
-Installs `skl` to `~/.local/bin/skl` (no sudo). On a TTY the script offers login + init (harness checklist). Non-TTY or `--non-interactive` installs the binary only.
+Detects OS/arch, downloads the matching GitHub Release asset, and installs to `~/.local/bin/skl` (no sudo). The installer **never** edits `.bashrc` / `.zshrc` / fish config — if `~/.local/bin` is not on `PATH` it prints an `export` you can add yourself.
+
+On a TTY it then runs `skl setup`: login `[Y/n]` (default yes), init `[Y/n]` (default yes), then the existing harness checklist (Universal `.agents/skills` locked; extras like `claude-code` are toggleable).
+
+### Non-interactive
+
+Non-TTY (CI, `curl | bash` without a terminal) or `--non-interactive` installs the **binary only** — no login, init, or checklist.
 
 ```bash
 curl -fsSL https://github.com/x0ba/skl/releases/latest/download/install.sh | bash -s -- --non-interactive
+
+# same:
+curl -fsSL https://github.com/x0ba/skl/releases/latest/download/install.sh | SKL_NON_INTERACTIVE=1 bash
+skl setup --non-interactive
 ```
 
 Windows: download `skl-x86_64-pc-windows-gnu.exe` from [Releases](https://github.com/x0ba/skl/releases/latest). No PowerShell installer this milestone.
@@ -57,6 +67,15 @@ If `apps/api/.env` sets `ALLOW_DEV_AUTH=false`, local `dev:<user_id>` approve fa
 cargo check -p skl
 cargo test -p skl
 cargo run -p skl -- --help
+```
+
+### setup
+
+`skl setup` is the TTY first-run after `install.sh`: login `[Y/n]` (default yes), then init `[Y/n]` (default yes). Init shows the harness checklist (Universal `.agents` locked). `--non-interactive`, non-TTY, `CI`, `SKL_NO_PROMPT`, or `SKL_YES` skip prompts (binary / already-installed CLI only).
+
+```bash
+skl setup
+skl setup --non-interactive
 ```
 
 ### login
@@ -185,7 +204,14 @@ cargo run -p skl -- migrate targets --project /path/to/m0-proj --prune-old
 
 ### Cross-compile (single binary)
 
-`scripts/cross-compile.sh` produces one portable `skl` binary under `dist/` from `crates/cli`. Host `cargo build --release -p skl` always runs. Linux musl (and Windows GNU via zig) are built when `zig` + `cargo-zigbuild` are present — no brew formula.
+`scripts/cross-compile.sh` produces portable `skl` binaries under `dist/` from `crates/cli`. Host `cargo build --release -p skl` always runs. Linux musl (both arches) and Windows GNU via zig are built when `zig` + `cargo-zigbuild` are present. Apple triples need a macOS runner (`cargo --target` for both `aarch64-apple-darwin` and `x86_64-apple-darwin`). No brew formula.
+
+Release matrix on `v*` tags (same script, published by [`.github/workflows/cli-binaries.yml`](.github/workflows/cli-binaries.yml)):
+
+- `aarch64-apple-darwin` / `x86_64-apple-darwin`
+- `x86_64-unknown-linux-musl` / `aarch64-unknown-linux-musl`
+- `x86_64-pc-windows-gnu`
+- plus `SHA256SUMS` and `install.sh`
 
 ```bash
 # Host binary at minimum. Add musl/windows when tools exist:
@@ -195,10 +221,8 @@ cargo run -p skl -- migrate targets --project /path/to/m0-proj --prune-old
 INSTALL_TOOLS=1 ./scripts/cross-compile.sh
 
 # Explicit triples (fails if a requested target cannot be built):
-TARGETS=x86_64-unknown-linux-musl ./scripts/cross-compile.sh
+TARGETS=x86_64-unknown-linux-musl,aarch64-unknown-linux-musl ./scripts/cross-compile.sh
 ```
-
-CI workflow: [`.github/workflows/cli-binaries.yml`](.github/workflows/cli-binaries.yml).
 
 ### Two-machine smoke
 
