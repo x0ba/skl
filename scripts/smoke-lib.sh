@@ -258,11 +258,12 @@ conn.commit()
 PY
 }
 
-# Count engine lines: `POST {api}/v1/sync` (re-POST included).
+# Count engine lines: `POST {api}/v1/sync` / `re-POST {api}/v1/sync`.
+# Do not match init's "ready for `skl sync` (POST /v1/sync)" copy.
 skl_count_sync_posts() {
   local haystack="$1"
   local count
-  count="$(printf '%s\n' "$haystack" | grep -c 'POST .*/v1/sync' || true)"
+  count="$(printf '%s\n' "$haystack" | grep -cE 'POST https?://[^[:space:]]+/v1/sync' || true)"
   echo "$count"
 }
 
