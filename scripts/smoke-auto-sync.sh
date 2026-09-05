@@ -77,51 +77,51 @@ run_b() { run_home "$MACHINE_B" "$TOKEN_B" "$@"; }
 prepare_machine() {
   local home="$1"
   local token="$2"
+  local auto="${3:-true}"
   mkdir -p "$home/.claude/skills" "$home/.config/skl" "$home/.local/share/skl"
   run_home "$home" "$token" login --dev-user "$(dev_user "$token")" >/dev/null
-  skl_write_sync_prefs "$home" true 900
+  skl_write_sync_prefs "$home" "$auto" 900
 }
 
 # --- 1. Dual-HOME ----------------------------------------------------------
 
 smoke_dual_home() {
-  echo "==> [1] Dual-HOME: A mutate → due → B status → library (no skl sync)"
+  echo "==> [1] Dual-HOME: A mutate → due init push → B status pull (no skl sync)"
 
   seed_skill "$MACHINE_A" "$SKILL_NAME" "# ${SKILL_NAME}
 
 hello from machine A v1
 "
-  prepare_machine "$MACHINE_A" "$TOKEN_A"
+  # Import-only first: furnace piggyback uses KeepRemote, so uploading v1
+  # before the mutate would conflict and discard v2 on the due init.
+  prepare_machine "$MACHINE_A" "$TOKEN_A" false
 
-  echo "    A: init (import + due piggyback upload)"
-  local a_init
-  a_init="$(run_a init 2>&1)"
-  echo "$a_init"
-  skl_assert_contains "$a_init" "Imported 1 skill"
-  skl_require_auto_sync_hooks "$a_init"
-  skl_assert_contains "$a_init" "POST $API/v1/sync"
+  echo "    A: init with [sync] auto=false (import only, no maybe_run)"
+  local a_import
+  a_import="$(run_a init 2>&1)"
+  echo "$a_import"
+  skl_assert_contains "$a_import" "Imported 1 skill"
+  skl_assert_sync_posts "$a_import" 0
 
-  echo "    B: init empty home (import 0 + due piggyback download)"
-  prepare_machine "$MACHINE_B" "$TOKEN_B"
+  echo "    B: init empty home (index + due piggyback against empty remote)"
+  prepare_machine "$MACHINE_B" "$TOKEN_B" true
   local b_init
   b_init="$(run_b init 2>&1)"
   echo "$b_init"
   skl_assert_contains "$b_init" "Imported 0 skill"
   skl_assert_contains "$b_init" "POST $API/v1/sync"
-  skl_assert_file_contains "$MACHINE_B/.claude/skills/${SKILL_NAME}/SKILL.md" \
-    "hello from machine A v1"
 
-  echo "    A: mutate library"
+  echo "    A: mutate library, enable auto, age due, init (piggyback push)"
   printf '%s' "# ${SKILL_NAME}
 
 hello from machine A v2
 " > "$MACHINE_A/.claude/skills/${SKILL_NAME}/SKILL.md"
-
-  echo "    A: age due, then init (refresh index + piggyback push)"
+  skl_write_sync_prefs "$MACHINE_A" true 900
   skl_age_auto_sync "$MACHINE_A" "$AGE_SECS"
   local a_push
   a_push="$(run_a init 2>&1)"
   echo "$a_push"
+  skl_require_auto_sync_hooks "$a_push"
   skl_assert_contains "$a_push" "POST $API/v1/sync"
 
   echo "    B: age due, then status (best-effort sync — not display-only)"
