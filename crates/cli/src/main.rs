@@ -90,6 +90,24 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },
+    /// Explicit layout rewrites (never run from `skl use`).
+    Migrate {
+        #[command(subcommand)]
+        action: MigrateAction,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum MigrateAction {
+    /// Move M0 `.claude`/`.cursor` project links onto canonical `.agents/skills`.
+    Targets {
+        /// Project directory (default: cwd).
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+        /// Remove old .claude/.cursor (and .codex) links after the canonical dest exists.
+        #[arg(long)]
+        prune_old: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -166,5 +184,8 @@ async fn run() -> Result<(), SklError> {
             agents,
         } => commands::use_cmd::run(&skills, project, &agents),
         Command::Unuse { skills, project } => commands::unuse::run(&skills, project),
+        Command::Migrate {
+            action: MigrateAction::Targets { project, prune_old },
+        } => commands::migrate::run(project, prune_old),
     }
 }

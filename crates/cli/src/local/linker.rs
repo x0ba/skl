@@ -25,7 +25,7 @@ pub const WINDOWS_SYMLINK_NOTE: &str =
     "directory symlinks need Developer Mode or SeCreateSymbolicLink; use copies on EPERM";
 
 const MANIFEST_HEADER: &str =
-    "# Managed by `skl use` / `skl unuse`. Prefer symlink; copy if the filesystem refuses.\n\n";
+    "# Managed by `skl use` / `skl unuse` / `skl migrate targets`. Prefer symlink; copy if the filesystem refuses.\n\n";
 
 #[cfg(test)]
 use std::cell::Cell;
@@ -304,7 +304,7 @@ pub fn m0_targets_warning(project: &Path) -> Option<String> {
     )
 }
 
-fn is_m0_layout(project: &Path) -> bool {
+pub fn is_m0_layout(project: &Path) -> bool {
     if project.join(".agents").join("skills").exists() {
         return false;
     }
@@ -536,10 +536,10 @@ fn canonicalize_dir(path: &Path) -> Result<PathBuf> {
         .map_err(|err| SklError::LocalState(format!("cannot resolve {}: {err}", path.display())))
 }
 
-struct Placed {
-    action: LinkAction,
-    mode: &'static str,
-    fallback: Option<String>,
+pub struct Placed {
+    pub action: LinkAction,
+    pub mode: &'static str,
+    pub fallback: Option<String>,
 }
 
 fn preflight_dests(targets: &[LinkTarget], skill: &str, managed_copy: bool) -> Result<()> {
@@ -563,7 +563,7 @@ fn dest_would_conflict(dest: &Path, managed_copy: bool) -> Result<bool> {
     }
 }
 
-fn ensure_link(target: &Path, dest: &Path, managed_copy: bool) -> Result<Placed> {
+pub fn ensure_link(target: &Path, dest: &Path, managed_copy: bool) -> Result<Placed> {
     match dest_kind(dest)? {
         DestKind::Missing => {
             if let Some(parent) = dest.parent() {
@@ -636,7 +636,7 @@ fn refresh_copy(target: &Path, dest: &Path) -> Result<Placed> {
     })
 }
 
-fn remove_managed_link(dest: &Path, allow_copy_dir: bool) -> Result<LinkAction> {
+pub fn remove_managed_link(dest: &Path, allow_copy_dir: bool) -> Result<LinkAction> {
     match dest_kind(dest)? {
         DestKind::Missing => Ok(LinkAction::Absent),
         DestKind::Symlink => {
