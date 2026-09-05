@@ -3,7 +3,7 @@ use crate::error::Result;
 use crate::local::db::LocalDb;
 use crate::local::skills;
 
-pub fn run() -> Result<()> {
+pub async fn run(api_base: String) -> Result<()> {
     let paths = Paths::resolve()?;
     paths.ensure()?;
 
@@ -45,5 +45,6 @@ pub fn run() -> Result<()> {
     );
     eprintln!("Local state is ready for `skl sync` (POST /v1/sync).");
     config::maybe_prompt_sticky_extras(&paths)?;
+    let _ = crate::auto_sync::maybe_run(&api_base, &paths, "init").await;
     Ok(())
 }

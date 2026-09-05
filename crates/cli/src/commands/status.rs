@@ -1,11 +1,14 @@
 //! `skl status` — login, api_base, local inventory, last sync.
+//!
+//! Best-effort piggyback: may run auto-sync when due, then still prints status.
 
 use crate::auth::{self, TokenPresence};
+use crate::auto_sync::{maybe_run, AutoSyncResult};
 use crate::config::{self, Paths};
 use crate::error::Result;
 use crate::local::db::LocalDb;
 
-pub fn run(api_base: String) -> Result<()> {
+pub async fn run(api_base: String) -> Result<()> {
     let token = auth::token_presence();
     let token_line = match &token {
         TokenPresence::Present { preview } => format!("yes ({preview})"),
@@ -26,6 +29,8 @@ pub fn run(api_base: String) -> Result<()> {
     println!("config       {}", paths.config_file.display());
     println!("state.db     {}", paths.db_file.display());
 
+    let auto = maybe_run(&api_base, &paths, "status").await;
+
     if paths.db_file.exists() {
         let db = LocalDb::open(&paths.db_file)?;
         println!("local_skills {}", db.skill_count()?);
@@ -45,6 +50,16 @@ pub fn run(api_base: String) -> Result<()> {
     } else {
         println!("local_skills 0  (run `skl init`)");
         println!("last_sync    (none)");
+    }
+
+    if let AutoSyncResult::Ran(outcome) = auto {
+        println!(
+            "auto_sync    ran  uploaded={}  downloaded={}  pushed={}  conflicts={}",
+            outcome.uploaded.len(),
+            outcome.downloaded.len(),
+            outcome.pushed.len(),
+            outcome.conflicts
+        );
     }
 
     let _ = config::load(&paths);

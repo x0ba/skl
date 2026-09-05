@@ -11,13 +11,48 @@ use crate::local::linker::{self, EXTRA_TARGET_IDS};
 /// Override with `--api-base` or `API_BASE`.
 pub const DEFAULT_API_BASE: &str = "http://localhost:8787";
 
+/// Default piggyback interval (15 minutes). Also the attempt throttle.
+pub const DEFAULT_SYNC_FREQUENCY_SECS: u64 = 900;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct Config {
     #[serde(default)]
     pub api_base: Option<String>,
+    /// Piggyback auto-sync (`[sync]` in `~/.config/skl/config.toml`).
+    /// Defaults: `auto = true`, `frequency_secs = 900`.
+    #[serde(default)]
+    pub sync: SyncPrefs,
     /// Sticky extra dests for `skl use` (`~/.config/skl/config.toml`).
     #[serde(default, skip_serializing_if = "TargetPrefs::is_unset")]
     pub targets: TargetPrefs,
+}
+
+/// `[sync]` — piggyback hash-sync on login/init/use/unuse/status.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SyncPrefs {
+    /// When false, `maybe_run` always skips (explicit `skl sync` still works).
+    #[serde(default = "default_sync_auto")]
+    pub auto: bool,
+    /// Minimum seconds between a successful sync *or* a failed attempt.
+    #[serde(default = "default_sync_frequency_secs")]
+    pub frequency_secs: u64,
+}
+
+impl Default for SyncPrefs {
+    fn default() -> Self {
+        Self {
+            auto: default_sync_auto(),
+            frequency_secs: default_sync_frequency_secs(),
+        }
+    }
+}
+
+fn default_sync_auto() -> bool {
+    true
+}
+
+fn default_sync_frequency_secs() -> u64 {
+    DEFAULT_SYNC_FREQUENCY_SECS
 }
 
 /// User-level extra link targets. Canonical `agents` is never stored here.
@@ -263,6 +298,15 @@ mod tests {
         let cfg: Config = toml::from_str("api_base = \"http://x\"\n").unwrap();
         assert!(cfg.targets.extra.is_empty());
         assert!(!cfg.targets.prompted);
+        assert!(cfg.sync.auto);
+        assert_eq!(cfg.sync.frequency_secs, DEFAULT_SYNC_FREQUENCY_SECS);
+    }
+
+    #[test]
+    fn sync_table_partial_keeps_frequency_default() {
+        let cfg: Config = toml::from_str("[sync]\nauto = false\n").unwrap();
+        assert!(!cfg.sync.auto);
+        assert_eq!(cfg.sync.frequency_secs, DEFAULT_SYNC_FREQUENCY_SECS);
     }
 
     #[test]

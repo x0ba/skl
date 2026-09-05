@@ -10,7 +10,7 @@ pub async fn run(api_base: String, dev_user: Option<String>) -> Result<()> {
     paths.ensure()?;
 
     if let Some(user) = dev_user {
-        return store_dev_user(&paths, api_base, &user);
+        return store_dev_user(&paths, api_base, &user).await;
     }
 
     let client = ApiClient::new(&api_base)?;
@@ -54,13 +54,14 @@ pub async fn run(api_base: String, dev_user: Option<String>) -> Result<()> {
                     auth::KEYRING_ACCOUNT
                 );
                 eprintln!("  api_base saved to {}", paths.config_file.display());
+                let _ = crate::auto_sync::maybe_run(&api_base, &paths, "login").await;
                 return Ok(());
             }
         }
     }
 }
 
-fn store_dev_user(paths: &Paths, api_base: String, user: &str) -> Result<()> {
+async fn store_dev_user(paths: &Paths, api_base: String, user: &str) -> Result<()> {
     let token = auth::format_dev_token(user)?;
     auth::store_device_token(&token)?;
     let mut cfg = config::load(paths).unwrap_or_default();
@@ -70,6 +71,7 @@ fn store_dev_user(paths: &Paths, api_base: String, user: &str) -> Result<()> {
     eprintln!("  Authorization: Bearer {token}");
     eprintln!("  api_base {api_base} → {}", paths.config_file.display());
     eprintln!("API accepts this only when CLERK_SECRET_KEY is unset (ALLOW_DEV_AUTH).");
+    let _ = crate::auto_sync::maybe_run(&api_base, paths, "login").await;
     Ok(())
 }
 

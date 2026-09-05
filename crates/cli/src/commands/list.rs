@@ -16,6 +16,7 @@ pub async fn run(api_base: String) -> Result<()> {
     }
 
     let db = LocalDb::open(&paths.db_file)?;
+    let _ = crate::auto_sync::maybe_run(&api_base, &paths, "list").await;
     let local = db.list_skills()?;
 
     let remote_names = match auth::load_device_token() {
@@ -37,7 +38,11 @@ pub async fn run(api_base: String) -> Result<()> {
             "name", "tree_hash", "source", "path", "remote"
         );
         for skill in &local {
-            let short = skill.tree.tree_hash.get(..12).unwrap_or(&skill.tree.tree_hash);
+            let short = skill
+                .tree
+                .tree_hash
+                .get(..12)
+                .unwrap_or(&skill.tree.tree_hash);
             let remote = match &remote_names {
                 Some(names) if names.contains(&skill.name) => "yes",
                 Some(_) => "no",

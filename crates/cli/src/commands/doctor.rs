@@ -8,7 +8,7 @@ use crate::api::ApiClient;
 use crate::auth::{self, TokenPresence, KEYRING_ACCOUNT, KEYRING_SERVICE, TOKEN_ENV};
 use crate::config::{self, Paths, SkillRoot};
 use crate::error::Result;
-use crate::local::db::LocalDb;
+use crate::local::db::{LocalDb, SyncSummary};
 use crate::local::linker::{self, WINDOWS_SYMLINK_NOTE};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
@@ -47,6 +47,8 @@ pub struct DoctorReport {
     pub config: Option<PathStatus>,
     pub state_db: Option<PathStatus>,
     pub local_skills: Option<u64>,
+    /// Last successful `skl sync` / auto-sync. Display only — doctor never calls maybe_run.
+    pub last_sync: Option<(i64, SyncSummary)>,
     pub roots: Vec<RootStatus>,
     pub symlink: bool,
     pub symlink_detail: String,
@@ -76,20 +78,21 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
 
-    let (config, state_db, local_skills) = match paths {
+    let (config, state_db, local_skills, last_sync) = match paths {
         Some(paths) => {
             let config = inspect_file(&paths.config_file);
             let state_db = inspect_file(&paths.db_file);
-            let local_skills = if paths.db_file.exists() {
-                LocalDb::open(&paths.db_file)
-                    .ok()
-                    .and_then(|db| db.skill_count().ok())
+            let (local_skills, last_sync) = if paths.db_file.exists() {
+                match LocalDb::open(&paths.db_file) {
+                    Ok(db) => (db.skill_count().ok(), db.last_sync_summary().ok().flatten()),
+                    Err(_) => (None, None),
+                }
             } else {
-                None
+                (None, None)
             };
-            (Some(config), Some(state_db), local_skills)
+            (Some(config), Some(state_db), local_skills, last_sync)
         }
-        None => (None, None, None),
+        None => (None, None, None, None),
     };
 
     let roots = config::skill_roots(home)
@@ -115,6 +118,7 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         config,
         state_db,
         local_skills,
+        last_sync,
         roots,
         symlink: probe.ok,
         symlink_detail: probe.detail,
@@ -326,6 +330,17 @@ fn print_report(report: &DoctorReport) {
         }
         None => println!("state.db     (cannot resolve XDG data dir)"),
     }
+    match &report.last_sync {
+        Some((at, summary)) => println!(
+            "last_sync    at={at}  uploaded={}  downloaded={}  pushed={}  conflicts={}  missing_skills={}",
+            summary.uploaded,
+            summary.downloaded,
+            summary.pushed,
+            summary.conflicts,
+            summary.missing_skills
+        ),
+        None => println!("last_sync    (none)"),
+    }
 
     println!();
     println!("== Agent skill roots");
@@ -436,6 +451,7 @@ mod tests {
         let report = collect(&server.uri(), home.path(), Some(&paths)).await;
         assert_eq!(report.health, HealthStatus::Ok);
         assert_eq!(report.local_skills, Some(1));
+        assert!(report.last_sync.is_none());
         assert_eq!(report.roots.len(), 3);
         let claude_root = report.roots.iter().find(|r| r.source == "claude").unwrap();
         assert!(claude_root.status.exists);
