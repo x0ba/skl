@@ -159,7 +159,8 @@ smoke_throttle() {
   local home="$WORKDIR/machine-throttle"
   local project="$PROJECT_THROTTLE"
   mkdir -p "$home" "$project"
-  seed_skill "$home" "$SKILL_NAME" "# ${SKILL_NAME}
+  local skill="${SKILL_NAME}-throttle"
+  seed_skill "$home" "$skill" "# ${skill}
 
 throttle seed
 "
@@ -187,13 +188,13 @@ throttle seed
 
   echo "    use immediately → no POST (link still succeeds)"
   local third
-  third="$(run_home "$home" "$TOKEN_A" use "$SKILL_NAME" --project "$project" 2>&1)"
+  third="$(run_home "$home" "$TOKEN_A" use "$skill" --project "$project" 2>&1)"
   echo "$third"
   skl_assert_sync_posts "$third" 0
-  skl_assert_contains "$third" "using $SKILL_NAME"
+  skl_assert_contains "$third" "using $skill"
   skl_assert_symlink_to \
-    "$project/.agents/skills/${SKILL_NAME}" \
-    "$home/.claude/skills/${SKILL_NAME}"
+    "$project/.agents/skills/${skill}" \
+    "$home/.claude/skills/${skill}"
 
   echo "    doctor → no POST /v1/sync; display last_sync only"
   local doctor
@@ -213,7 +214,10 @@ smoke_fail_soft() {
   local home="$WORKDIR/machine-fail"
   local project="$PROJECT_FAIL"
   mkdir -p "$home" "$project"
-  seed_skill "$home" "$SKILL_NAME" "# ${SKILL_NAME}
+  # Unique slug so KeepRemote does not restore a skill published earlier
+  # in this run (same ALLOW_DEV_AUTH user / remote library).
+  local skill="${SKILL_NAME}-fail"
+  seed_skill "$home" "$skill" "# ${skill}
 
 fail-soft local skill
 "
@@ -228,7 +232,7 @@ fail-soft local skill
   set +e
   use_out="$(
     API="$DEAD_API" SKL_TOKEN="$TOKEN_A" skl_run "$home" \
-      --api-base "$DEAD_API" use "$SKILL_NAME" --project "$project" 2>&1
+      --api-base "$DEAD_API" use "$skill" --project "$project" 2>&1
   )"
   use_status=$?
   set -e
@@ -237,14 +241,14 @@ fail-soft local skill
     echo "use must fail-soft when auto-sync cannot reach the API (exit $use_status)" >&2
     exit 1
   fi
-  skl_assert_contains "$use_out" "using $SKILL_NAME"
+  skl_assert_contains "$use_out" "using $skill"
   skl_assert_contains "$use_out" "auto-sync (use):"
   skl_assert_contains "$use_out" "(ignored)"
   skl_assert_symlink_to \
-    "$project/.agents/skills/${SKILL_NAME}" \
-    "$home/.claude/skills/${SKILL_NAME}"
+    "$project/.agents/skills/${skill}" \
+    "$home/.claude/skills/${skill}"
   skl_assert_file_contains \
-    "$project/.agents/skills/${SKILL_NAME}/SKILL.md" \
+    "$project/.agents/skills/${skill}/SKILL.md" \
     "fail-soft local skill"
 
   echo "    status against dead API — exit 0, last_sync + sync_issue"
