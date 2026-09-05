@@ -46,11 +46,6 @@ seed_skill() {
   printf '%s' "$body" >"$home/.claude/skills/$name/SKILL.md"
 }
 
-dev_user() {
-  local token="$1"
-  printf '%s' "${token#dev:}"
-}
-
 run_home() {
   local home="$1"
   local token="$2"
@@ -64,8 +59,8 @@ run_b() { run_home "$MACHINE_B" "$TOKEN_B" "$@"; }
 prepare_machine() {
   local home="$1"
   local token="$2"
-  mkdir -p "$home/.claude/skills" "$home/.config/skl" "$home/.local/share/skl"
-  run_home "$home" "$token" login --dev-user "$(dev_user "$token")" >/dev/null
+  # SKL_TOKEN only — do not `skl login` (no Secret Service on CI runners).
+  skl_prepare_home "$home" "$token"
   skl_write_sync_prefs "$home" true 900
 }
 

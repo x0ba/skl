@@ -137,6 +137,8 @@ jobs:
           ALLOW_DEV_AUTH: "true"
           START_API: "1"
           SKIP_DOCKER: "1"
+          # Each script sets its own SKL_TOKEN. Do not start gnome-keyring /
+          # dbus-secrets — smoke-lib skips `skl login` and uses the env token.
         run: |
           ./scripts/smoke-import-sync-use.sh
           ./scripts/smoke-clash.sh

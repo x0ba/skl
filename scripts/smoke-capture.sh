@@ -40,11 +40,6 @@ trap skl_smoke_cleanup EXIT
 
 # --- helpers ---------------------------------------------------------------
 
-dev_user() {
-  local token="$1"
-  printf '%s' "${token#dev:}"
-}
-
 run_home() {
   local home="$1"
   local token="$2"
@@ -58,8 +53,8 @@ run_b() { run_home "$MACHINE_B" "$TOKEN_B" "$@"; }
 login_home() {
   local home="$1"
   local token="$2"
-  mkdir -p "$home/.config/skl" "$home/.local/share/skl"
-  run_home "$home" "$token" login --dev-user "$(dev_user "$token")" >/dev/null
+  # SKL_TOKEN only — do not `skl login` (no Secret Service on CI runners).
+  skl_prepare_home "$home" "$token"
 }
 
 library_of() {

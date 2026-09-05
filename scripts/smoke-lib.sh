@@ -6,10 +6,15 @@
 # (scripts/smoke-clash.sh on the conflict/scrub PR) uses the same HOME /
 # SKL_TOKEN / ALLOW_DEV_AUTH=true pattern.
 #
+# CI / headless: export SKL_TOKEN (or SKL_TOKEN_FILE). smokes must not call
+# `skl login` — that writes the OS keyring and needs DBus Secret Service
+# (`org.freedesktop.secrets`), which GitHub runners do not provide.
+#
 # Env:
 #   API_BASE      default http://localhost:8787
 #   SKL_BIN       default $ROOT/target/debug/skl
 #   SKL_TOKEN     default dev:alice  (ALLOW_DEV_AUTH user id)
+#   SKL_TOKEN_FILE  if set, read token from this file (overrides empty SKL_TOKEN)
 #   START_API=1   boot postgres (docker compose, unless SKIP_DOCKER=1) + apps/api
 #   SKIP_DOCKER=1 assume Postgres is already on DATABASE_URL
 
@@ -23,6 +28,10 @@ skl_smoke_defaults() {
   ROOT="${ROOT:-$(skl_smoke_root)}"
   BIN="${SKL_BIN:-$ROOT/target/debug/skl}"
   API="${API_BASE:-http://localhost:8787}"
+  if [[ -z "${SKL_TOKEN:-}" && -n "${SKL_TOKEN_FILE:-}" && -f "${SKL_TOKEN_FILE}" ]]; then
+    SKL_TOKEN="$(tr -d '[:space:]' <"$SKL_TOKEN_FILE")"
+    export SKL_TOKEN
+  fi
   TOKEN="${SKL_TOKEN:-dev:alice}"
   WORKDIR="${WORKDIR:-${TMPDIR:-/tmp}/skl-smoke-$$}"
   API_PID="${API_PID:-}"
@@ -130,6 +139,21 @@ skl_run() {
     SKL_NO_PROMPT=1 \
     API_BASE="$API" \
     "$BIN" "$@"
+}
+
+# Isolated HOME for a smoke machine. Never calls `skl login` — CI has no
+# Secret Service, and SKL_TOKEN already overrides keyring reads.
+# Usage: skl_prepare_home <home-dir> [token]
+skl_prepare_home() {
+  local home="$1"
+  local token="${2:-${SKL_TOKEN:-$TOKEN}}"
+  if [[ -z "${token// }" ]]; then
+    echo "skl_prepare_home: empty token (set SKL_TOKEN or SKL_TOKEN_FILE)" >&2
+    exit 1
+  fi
+  mkdir -p "$home/.claude/skills" "$home/.config/skl" "$home/.local/share/skl"
+  # File token next to XDG config so a later helper can re-read it.
+  printf '%s\n' "$token" >"$home/.config/skl/ci-token"
 }
 
 # Write furnace `[sync]` prefs into one machine HOME.
