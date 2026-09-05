@@ -487,6 +487,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reports_both_universal_home_roots_when_planted() {
+        let home = tempfile::tempdir().unwrap();
+        let agents = home.path().join(".agents/skills/greeter");
+        let xdg = home.path().join(".config/agents/skills/notes");
+        fs::create_dir_all(&agents).unwrap();
+        fs::create_dir_all(&xdg).unwrap();
+        fs::write(agents.join("SKILL.md"), "hi").unwrap();
+        fs::write(xdg.join("SKILL.md"), "notes").unwrap();
+
+        let report = collect("http://127.0.0.1:1", home.path(), None).await;
+        assert_eq!(report.roots.len(), 5);
+        let agents_root = report.roots.iter().find(|r| r.source == "agents").unwrap();
+        assert!(agents_root.status.exists);
+        assert_eq!(agents_root.skill_count, Some(1));
+        assert_eq!(
+            agents_root.status.path,
+            home.path().join(".agents").join("skills")
+        );
+        let xdg_root = report
+            .roots
+            .iter()
+            .find(|r| r.source == "xdg-agents")
+            .unwrap();
+        assert!(xdg_root.status.exists);
+        assert_eq!(xdg_root.skill_count, Some(1));
+        assert_eq!(
+            xdg_root.status.path,
+            home.path().join(".config").join("agents").join("skills")
+        );
+        let claude_root = report.roots.iter().find(|r| r.source == "claude").unwrap();
+        assert!(!claude_root.status.exists);
+    }
+
+    #[tokio::test]
     async fn health_unreachable_when_server_down() {
         let home = tempfile::tempdir().unwrap();
         let report = collect("http://127.0.0.1:1", home.path(), None).await;
