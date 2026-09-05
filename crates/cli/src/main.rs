@@ -15,32 +15,37 @@ mod prompt;
 mod scrub;
 mod skill_tree;
 mod sync;
+mod tui;
 
 #[cfg(test)]
 mod harness_catalog_contract;
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 use crate::config::{resolve_api_base, Paths};
 use crate::error::SklError;
 use crate::hooks::conflict::ConflictMode;
+use crate::tui::{decide_launch, LaunchDecision, LaunchInput};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "skl",
     about = "Personal agent skill sync",
-    version,
-    arg_required_else_help = true
+    version
 )]
 struct Cli {
     /// API origin (no trailing slash). Overrides config. Env: API_BASE.
     #[arg(long, env = "API_BASE", global = true)]
     api_base: Option<String>,
 
+    /// Print help instead of opening the TUI (also `SKL_NO_TUI=1`).
+    #[arg(long, global = true)]
+    no_tui: bool,
+
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Debug, Subcommand)]
@@ -128,6 +133,10 @@ enum Command {
         #[command(subcommand)]
         action: MigrateAction,
     },
+    /// Interactive two-pane skill browser (also opened by bare `skl` on a TTY).
+    Tui,
+    /// Alias for `tui`.
+    Ui,
 }
 
 #[derive(Debug, Subcommand)]
@@ -174,7 +183,12 @@ async fn run() -> Result<(), SklError> {
         .unwrap_or_default();
     let api_base = resolve_api_base(cli.api_base.as_deref(), &stored);
 
-    match cli.command {
+    let wants_tui = matches!(cli.command, None | Some(Command::Tui) | Some(Command::Ui));
+    if wants_tui {
+        return dispatch_tui(cli.no_tui, api_base).await;
+    }
+
+    match cli.command.expect("subcommand required when not launching TUI") {
         Command::Login { dev_user } => commands::login::run(api_base, dev_user).await,
         Command::Setup { non_interactive } => commands::setup::run(api_base, non_interactive).await,
         Command::Init => commands::init::run(api_base).await,
@@ -243,5 +257,68 @@ async fn run() -> Result<(), SklError> {
         Command::Migrate {
             action: MigrateAction::Targets { project, prune_old },
         } => commands::migrate::run(project, prune_old),
+        Command::Tui | Command::Ui => unreachable!("TUI dispatched before match"),
+    }
+}
+
+async fn dispatch_tui(no_tui_flag: bool, api_base: String) -> Result<(), SklError> {
+    let decision = decide_launch(&LaunchInput::from_process(true, no_tui_flag));
+    match decision {
+        LaunchDecision::Enter => tui::run(api_base).await,
+        LaunchDecision::Help => {
+            let mut cmd = Cli::command();
+            tui::print_help(&mut cmd)
+        }
+        LaunchDecision::Unsupported { reason } => {
+            eprintln!("{}", tui::unsupported_terminal_message(reason));
+            Ok(())
+        }
+    }
+}
+
+#[cfg(test)]
+mod cli_parse_tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn bare_skl_is_tui_request() {
+        let cli = Cli::try_parse_from(["skl"]).unwrap();
+        assert!(cli.command.is_none());
+        assert!(!cli.no_tui);
+    }
+
+    #[test]
+    fn tui_and_ui_subcommands() {
+        let tui = Cli::try_parse_from(["skl", "tui"]).unwrap();
+        assert!(matches!(tui.command, Some(Command::Tui)));
+        let ui = Cli::try_parse_from(["skl", "ui"]).unwrap();
+        assert!(matches!(ui.command, Some(Command::Ui)));
+    }
+
+    #[test]
+    fn no_tui_flag_parses() {
+        let cli = Cli::try_parse_from(["skl", "--no-tui"]).unwrap();
+        assert!(cli.no_tui);
+        assert!(cli.command.is_none());
+        let with_cmd = Cli::try_parse_from(["skl", "--no-tui", "status"]).unwrap();
+        assert!(with_cmd.no_tui);
+        assert!(matches!(with_cmd.command, Some(Command::Status)));
+    }
+
+    #[test]
+    fn other_subcommands_still_parse() {
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "list"]).unwrap().command,
+            Some(Command::List)
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "sync"]).unwrap().command,
+            Some(Command::Sync { .. })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "use", "greeter"]).unwrap().command,
+            Some(Command::Use { .. })
+        ));
     }
 }
