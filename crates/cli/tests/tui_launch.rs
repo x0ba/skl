@@ -27,8 +27,10 @@ fn assert_help_never_fullscreen(out: &Output) {
         stdout.contains("Usage:"),
         "expected clap help, got: {stdout}"
     );
-    for (label, bytes) in [("stdout", out.stdout.as_slice()), ("stderr", out.stderr.as_slice())]
-    {
+    for (label, bytes) in [
+        ("stdout", out.stdout.as_slice()),
+        ("stderr", out.stderr.as_slice()),
+    ] {
         assert!(
             !contains_seq(bytes, ALT_SCREEN) && !contains_seq(bytes, ALT_SCREEN_DECSET),
             "{label} entered alternate screen (fullscreen):\n{}",
@@ -52,7 +54,10 @@ fn no_tui_env_prints_help_and_exits() {
         .expect("run skl");
     assert_help_never_fullscreen(&out);
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("list") || stdout.contains("List"), "{stdout}");
+    assert!(
+        stdout.contains("list") || stdout.contains("List"),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -75,7 +80,10 @@ fn help_flag_still_works() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("Usage:"), "{stdout}");
-    assert!(stdout.contains("tui") || stdout.contains("TUI") || stdout.contains("ui"), "{stdout}");
+    assert!(
+        stdout.contains("tui") || stdout.contains("TUI") || stdout.contains("ui"),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -85,7 +93,11 @@ fn help_subcommand_still_works() {
         .stdin(Stdio::null())
         .output()
         .expect("run skl help");
-    assert!(out.status.success(), "stderr={}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("Usage:"), "{stdout}");
 }
@@ -113,7 +125,11 @@ fn list_subcommand_still_runs_without_tui() {
         .stdin(Stdio::null())
         .output()
         .expect("run skl list");
-    assert!(out.status.success(), "stderr={}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&out.stdout),

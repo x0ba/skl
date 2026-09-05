@@ -479,7 +479,10 @@ pub fn load_catalog_at(project: &Path, paths: Option<&Paths>, _now: i64) -> Resu
         match scan_library(&paths.library_dir()) {
             Ok(found) => {
                 for path in found {
-                    let Some(name) = path.file_name().and_then(|n| n.to_str()).map(str::to_string)
+                    let Some(name) = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(str::to_string)
                     else {
                         continue;
                     };
@@ -812,12 +815,16 @@ mod tests {
             tree: hash_skill_dir(&lib).unwrap(),
         }])
         .unwrap();
-        linker::activate(&project, &home, &DiscoveredSkill {
-            name: "greeter".into(),
-            source: "agents".into(),
-            path: lib.clone(),
-            tree: hash_skill_dir(&lib).unwrap(),
-        })
+        linker::activate(
+            &project,
+            &home,
+            &DiscoveredSkill {
+                name: "greeter".into(),
+                source: "agents".into(),
+                path: lib.clone(),
+                tree: hash_skill_dir(&lib).unwrap(),
+            },
+        )
         .unwrap();
 
         let paths = Paths {
@@ -880,10 +887,12 @@ mod tests {
         linker::deactivate(&project, &home, "greeter").unwrap();
         assert!(!project.join(".agents/skills/greeter").exists());
         let raw = fs::read_to_string(linker::manifest_path(&project)).unwrap();
-        assert!(!raw.contains("greeter") || !raw.contains("[[skills]]") || {
-            let m = linker::load_manifest(&project).unwrap();
-            !m.skills.iter().any(|s| s.name == "greeter")
-        });
+        assert!(
+            !raw.contains("greeter") || !raw.contains("[[skills]]") || {
+                let m = linker::load_manifest(&project).unwrap();
+                !m.skills.iter().any(|s| s.name == "greeter")
+            }
+        );
     }
 
     /// Serializes tests that mutate process `HOME` / cwd (same isolation as CLI).
@@ -994,7 +1003,10 @@ mod tests {
             "portable manifest must not write path=: {tui_toml}"
         );
         assert!(tui_toml.contains("name = \"greeter\""), "{tui_toml}");
-        assert_eq!(dest_real(&project_tui, "greeter"), dest_real(&project_cli, "greeter"));
+        assert_eq!(
+            dest_real(&project_tui, "greeter"),
+            dest_real(&project_cli, "greeter")
+        );
         let tui_dest = dest_real(&project_tui, "greeter");
         let lib_real = fs::canonicalize(&lib).unwrap();
         assert_eq!(tui_dest, lib_real, "dest should point at library skill");
@@ -1024,6 +1036,9 @@ mod tests {
         let tui_toml = fs::read_to_string(linker::manifest_path(&project_tui)).unwrap();
         let cli_toml = fs::read_to_string(linker::manifest_path(&project_cli)).unwrap();
         assert_eq!(tui_toml, cli_toml);
-        assert_eq!(dest_real(&project_tui, "greeter"), dest_real(&project_cli, "greeter"));
+        assert_eq!(
+            dest_real(&project_tui, "greeter"),
+            dest_real(&project_cli, "greeter")
+        );
     }
 }

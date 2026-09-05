@@ -30,147 +30,15 @@ export SKL_TOKEN="$TOKEN"
 
 trap skl_smoke_cleanup EXIT
 
-# Drive $BIN on a real PTY. Writes transcript + meta JSON next to $1 prefix.
-# Usage: tui_pty <prefix> <keys-or-empty> [-- extra env KEY=VAL ...] -- [skl args...]
+# Drive $BIN on a real PTY. Inherits the current env (HOME / SKL_*).
+# Usage: tui_pty <prefix> <keys-or-empty> [skl args...]
 tui_pty() {
   local prefix="$1"
   shift
   local keys="$1"
   shift
   mkdir -p "$PTY_DIR"
-  python3 - "$BIN" "$prefix" "$keys" "$@" <<'PY'
-import json, os, select, struct, sys, termios, time, errno, fcntl, pty
-
-bin_path, prefix, keys = sys.argv[1], sys.argv[2], sys.argv[3]
-rest = sys.argv[4:]
-env_extra = {}
-cmd = None
-if "--" in rest:
-    i = rest.index("--")
-    for item in rest[:i]:
-        if "=" in item:
-            k, v = item.split("=", 1)
-            env_extra[k] = v
-    cmd = rest[i + 1 :]
-else:
-    cmd = rest
-if not cmd:
-    cmd = []
-
-argv = [bin_path] + cmd
-env = os.environ.copy()
-env.update(env_extra)
-env.setdefault("TERM", "xterm-256color")
-env.setdefault("SKL_NO_PROMPT", "1")
-
-master, slave = pty.openpty()
-fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
-
-pid = os.fork()
-if pid == 0:
-    os.close(master)
-    os.setsid()
-    os.dup2(slave, 0)
-    os.dup2(slave, 1)
-    os.dup2(slave, 2)
-    if slave > 2:
-        os.close(slave)
-    os.execvpe(argv[0], argv, env)
-
-deadline = time.time() + float(env.get("SKL_TUI_PTY_TIMEOUT", "12"))
-chunks = []
-status = None
-
-
-def drain(budget):
-    end = time.time() + budget
-    got = b""
-    while time.time() < end:
-        remain = end - time.time()
-        r, _, _ = select.select([master], [], [], max(0.0, remain))
-        if not r:
-            continue
-        try:
-            data = os.read(master, 65536)
-        except OSError as exc:
-            if exc.errno == errno.EIO:
-                break
-            raise
-        if not data:
-            break
-        got += data
-        end = time.time() + 0.05
-    return got
-
-
-# Wait for first paint (alt screen) before sending keys, or settle if help-only.
-keys_b = keys.encode("utf-8") if keys else b""
-entered = False
-while time.time() < deadline:
-    chunks.append(drain(0.15))
-    blob = b"".join(chunks)
-    if b"\x1b[?1049h" in blob or b"\x1b[?1049" in blob:
-        entered = True
-        break
-    wpid, st = os.waitpid(pid, os.WNOHANG)
-    if wpid != 0:
-        status = st
-        pid = None
-        break
-
-if keys_b and pid is not None:
-    os.write(master, keys_b)
-
-status = None
-while True:
-    if pid is None:
-        break
-    chunks.append(drain(0.2))
-    wpid, status = os.waitpid(pid, os.WNOHANG)
-    if wpid != 0:
-        chunks.append(drain(0.2))
-        break
-    if time.time() >= deadline:
-        os.kill(pid, 9)
-        _, status = os.waitpid(pid, 0)
-        meta = {
-            "exit": 124,
-            "cooked": False,
-            "entered_alt": entered,
-            "timeout": True,
-        }
-        open(prefix + ".meta.json", "w").write(json.dumps(meta) + "\n")
-        open(prefix + ".out", "wb").write(b"".join(chunks))
-        sys.stderr.write("tui-pty: timeout waiting for %s\n" % argv)
-        sys.exit(124)
-
-if status is None:
-    exit_code = 0
-elif os.WIFEXITED(status):
-    exit_code = os.WEXITSTATUS(status)
-else:
-    exit_code = 1
-
-lflag = termios.tcgetattr(slave)[3]
-cooked = bool(lflag & termios.ICANON) and bool(lflag & termios.ECHO)
-blob = b"".join(chunks)
-if b"\x1b[?1049h" in blob or b"\x1b[?1049" in blob:
-    entered = True
-
-os.close(master)
-os.close(slave)
-
-open(prefix + ".out", "wb").write(blob)
-meta = {
-    "exit": exit_code,
-    "cooked": cooked,
-    "entered_alt": entered,
-    "timeout": False,
-    "bytes": len(blob),
-}
-open(prefix + ".meta.json", "w").write(json.dumps(meta) + "\n")
-sys.exit(0)
-PY
+  python3 "$ROOT/scripts/tui-pty.py" "$BIN" "$prefix" "$keys" "$@"
 }
 
 pty_meta() {
@@ -187,7 +55,7 @@ assert_help_transcript() {
     cat -v "$prefix.out" >&2 || true
     exit 1
   fi
-  if grep -a -q $'\033[?1049h' "$prefix.out" || grep -a -q $'\033[?1049' "$prefix.out"; then
+  if python3 -c 'import sys; d=open(sys.argv[1],"rb").read(); sys.exit(0 if b"\x1b[?1049" in d else 1)' "$prefix.out"; then
     echo "$label: entered alternate screen (fullscreen)" >&2
     cat -v "$prefix.out" >&2 || true
     exit 1
@@ -214,7 +82,8 @@ export SKL_DATA_DIR="$HOME_DIR/.local/share/skl"
 export SKL_CONFIG_DIR="$HOME_DIR/.config/skl"
 export SKL_NO_PROMPT=1
 export API_BASE="${API:-http://127.0.0.1:1}"
-export TERM="${TERM:-xterm-256color}"
+# This environment may export TERM=dumb; furnace degrades instead of Enter.
+export TERM=xterm-256color
 
 echo "==> 1. non-TTY / piped / CI never enters fullscreen"
 piped="$(
@@ -224,7 +93,7 @@ piped="$(
 )"
 echo "$piped"
 skl_assert_contains "$piped" "Usage:"
-if [[ "$piped" == *$'[''?1049'* ]]; then
+if [[ "$piped" == *'?1049'* ]]; then
   echo "piped bare skl entered alternate screen" >&2
   exit 1
 fi
@@ -235,14 +104,13 @@ ci_out="$(
     "$BIN" tui </dev/null 2>&1 | cat
 )"
 skl_assert_contains "$ci_out" "Usage:"
-if [[ "$ci_out" == *$'[''?1049'* ]]; then
+if [[ "$ci_out" == *'?1049'* ]]; then
   echo "CI=true skl tui entered alternate screen" >&2
   exit 1
 fi
 
 echo "==> 2. SKL_NO_TUI=1 / --no-tui force help on a TTY"
-tui_pty "$PTY_DIR/env-no-tui" "" -- "HOME=$HOME_DIR" "SKL_DATA_DIR=$SKL_DATA_DIR" \
-  "SKL_CONFIG_DIR=$SKL_CONFIG_DIR" "SKL_TOKEN=$TOKEN" "SKL_NO_TUI=1" --
+SKL_NO_TUI=1 tui_pty "$PTY_DIR/env-no-tui" ""
 assert_help_transcript "$PTY_DIR/env-no-tui" "SKL_NO_TUI=1 on TTY"
 if [[ "$(pty_meta "$PTY_DIR/env-no-tui" cooked)" != "True" ]]; then
   echo "SKL_NO_TUI=1 on TTY left raw mode" >&2
@@ -250,8 +118,7 @@ if [[ "$(pty_meta "$PTY_DIR/env-no-tui" cooked)" != "True" ]]; then
   exit 1
 fi
 
-tui_pty "$PTY_DIR/flag-no-tui" "" -- "HOME=$HOME_DIR" "SKL_DATA_DIR=$SKL_DATA_DIR" \
-  "SKL_CONFIG_DIR=$SKL_CONFIG_DIR" "SKL_TOKEN=$TOKEN" -- --no-tui
+tui_pty "$PTY_DIR/flag-no-tui" "" --no-tui
 assert_help_transcript "$PTY_DIR/flag-no-tui" "--no-tui on TTY"
 if [[ "$(pty_meta "$PTY_DIR/flag-no-tui" cooked)" != "True" ]]; then
   echo "--no-tui on TTY left raw mode" >&2
@@ -273,8 +140,7 @@ skl_assert_portable_manifest "$PROJECT_CLI/skills.toml"
 # Furnace TUI `u` activates cwd only (no --project). Drive it from project-tui.
 (
   cd "$PROJECT_TUI"
-  tui_pty "$PTY_DIR/use-q" "uq" -- "HOME=$HOME_DIR" "SKL_DATA_DIR=$SKL_DATA_DIR" \
-    "SKL_CONFIG_DIR=$SKL_CONFIG_DIR" "SKL_TOKEN=$TOKEN" -- tui
+  tui_pty "$PTY_DIR/use-q" "uq" tui
 )
 
 if [[ "$(pty_meta "$PTY_DIR/use-q" exit)" != "0" ]]; then
@@ -314,8 +180,7 @@ fi
 # Quit-only: enter TUI then q, dests already exist (idempotent).
 (
   cd "$PROJECT_TUI"
-  tui_pty "$PTY_DIR/quit" "q" -- "HOME=$HOME_DIR" "SKL_DATA_DIR=$SKL_DATA_DIR" \
-    "SKL_CONFIG_DIR=$SKL_CONFIG_DIR" "SKL_TOKEN=$TOKEN" -- tui
+  tui_pty "$PTY_DIR/quit" "q" tui
 )
 if [[ "$(pty_meta "$PTY_DIR/quit" exit)" != "0" ]]; then
   echo "skl tui q exited $(pty_meta "$PTY_DIR/quit" exit)" >&2
