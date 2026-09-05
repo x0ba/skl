@@ -360,7 +360,7 @@ fn print_report(report: &DoctorReport) {
             None => "",
         };
         println!(
-            "{:<12} {}  {}{skills}{link}",
+            "{:<18} {}  {}{skills}{link}",
             root.source,
             root.status.path.display(),
             writable
@@ -455,8 +455,12 @@ mod tests {
         assert_eq!(report.health, HealthStatus::Ok);
         assert_eq!(report.local_skills, Some(1));
         assert!(report.last_sync.is_none());
-        assert_eq!(report.roots.len(), 5);
-        let claude_root = report.roots.iter().find(|r| r.source == "claude").unwrap();
+        assert!(report.roots.len() > 5);
+        let claude_root = report
+            .roots
+            .iter()
+            .find(|r| r.source == "claude-code")
+            .unwrap();
         assert!(claude_root.status.exists);
         assert_eq!(claude_root.skill_count, Some(1));
         assert_eq!(claude_root.symlink, Some(true));
@@ -497,7 +501,7 @@ mod tests {
         fs::write(xdg.join("SKILL.md"), "notes").unwrap();
 
         let report = collect("http://127.0.0.1:1", home.path(), None).await;
-        assert_eq!(report.roots.len(), 5);
+        assert!(report.roots.len() > 5);
         let agents_root = report.roots.iter().find(|r| r.source == "agents").unwrap();
         assert!(agents_root.status.exists);
         assert_eq!(agents_root.skill_count, Some(1));
@@ -516,8 +520,13 @@ mod tests {
             xdg_root.status.path,
             home.path().join(".config").join("agents").join("skills")
         );
-        let claude_root = report.roots.iter().find(|r| r.source == "claude").unwrap();
+        let claude_root = report
+            .roots
+            .iter()
+            .find(|r| r.source == "claude-code")
+            .unwrap();
         assert!(!claude_root.status.exists);
+        assert!(report.roots.iter().any(|r| r.source == "windsurf"));
     }
 
     #[tokio::test]
@@ -528,6 +537,7 @@ mod tests {
             HealthStatus::Unreachable(msg) => assert!(!msg.is_empty(), "{msg}"),
             HealthStatus::Ok => panic!("expected unreachable"),
         }
-        assert_eq!(report.roots.len(), 5);
+        assert!(report.roots.len() > 5);
+        assert!(report.roots.iter().any(|r| r.source == "windsurf"));
     }
 }

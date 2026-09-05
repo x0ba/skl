@@ -160,10 +160,7 @@ fn names_with(resolutions: &[ConflictResolution], choice: ConflictChoice) -> BTr
         .collect()
 }
 
-fn local_mtimes(
-    db: &LocalDb,
-    plan: &SyncResponse,
-) -> Result<BTreeMap<String, Option<SystemTime>>> {
+fn local_mtimes(db: &LocalDb, plan: &SyncResponse) -> Result<BTreeMap<String, Option<SystemTime>>> {
     let mut out = BTreeMap::new();
     for conflict in &plan.conflicts {
         let ts = match db.find_skill(&conflict.skill)? {
@@ -194,9 +191,9 @@ async fn upload_blobs(
 ) -> Result<Vec<String>> {
     let mut uploaded = Vec::new();
     for hash in &plan.upload {
-        let (skill_dir, rel) = db.find_file_by_hash(hash)?.ok_or_else(|| {
-            SklError::LocalState(format!("no local file for upload hash {hash}"))
-        })?;
+        let (skill_dir, rel) = db
+            .find_file_by_hash(hash)?
+            .ok_or_else(|| SklError::LocalState(format!("no local file for upload hash {hash}")))?;
         if let Some(skill) = skill_name_for_dir(db, &skill_dir)? {
             if skip_skills.contains(&skill) {
                 continue;
@@ -429,7 +426,7 @@ mod tests {
         let server = MockServer::start().await;
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
-        std::fs::create_dir_all(home.join(".claude/skills")).unwrap();
+        std::fs::create_dir_all(home.join(".agents/skills")).unwrap();
 
         let bytes = b"# remote\n".to_vec();
         let blob_hash = hash_bytes(&bytes);
@@ -439,7 +436,10 @@ mod tests {
 
         let paths = paths_for(tmp.path());
         std::fs::create_dir_all(&paths.data_dir).unwrap();
-        LocalDb::open(&paths.db_file).unwrap().replace_import(&[]).unwrap();
+        LocalDb::open(&paths.db_file)
+            .unwrap()
+            .replace_import(&[])
+            .unwrap();
 
         Mock::given(method("POST"))
             .and(path("/v1/sync"))
@@ -482,7 +482,7 @@ mod tests {
             .unwrap();
         assert_eq!(outcome.downloaded, vec![blob_hash]);
         assert_eq!(outcome.missing_skills, vec!["greeter".to_string()]);
-        let written = home.join(".claude/skills/greeter/SKILL.md");
+        let written = home.join(".agents/skills/greeter/SKILL.md");
         assert_eq!(std::fs::read(written).unwrap(), b"# remote\n");
     }
 

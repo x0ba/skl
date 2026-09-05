@@ -102,7 +102,7 @@ pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<
                 .into_iter()
                 .filter(|skill| skill.name == name)
                 .collect();
-            let order = ["claude", "cursor", "codex", "agents", "xdg-agents"];
+            let order = ["agents", "xdg-agents", "claude-code", "cursor", "codex"];
             matches.sort_by_key(|skill| {
                 order
                     .iter()
@@ -122,7 +122,7 @@ pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<
     }
 
     Err(SklError::LocalState(format!(
-        "skill `{name}` not found under ~/.claude/skills, ~/.cursor/skills, ~/.codex/skills, ~/.agents/skills, or ~/.config/agents/skills"
+        "skill `{name}` not found under catalog home roots (e.g. ~/.agents/skills, ~/.claude/skills, ~/.cursor/skills)"
     )))
 }
 
@@ -171,7 +171,7 @@ mod tests {
         std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
 
         let found = resolve_skill("greeter", &home, None).unwrap();
-        assert_eq!(found.source, "claude");
+        assert_eq!(found.source, "claude-code");
         assert_eq!(found.name, "greeter");
     }
 
@@ -231,10 +231,31 @@ mod tests {
             data_dir: tmp.path().join("data"),
             db_file: tmp.path().join("data/state.db"),
         };
-        crate::config::add_sticky_extras(&paths, &["cursor".into()]).unwrap();
-        let extras = resolve_activation_extras(Some(&paths), &["claude".into()]).unwrap();
-        assert_eq!(extras, ["claude", "cursor"]);
+        crate::config::add_sticky_extras(&paths, &["claude-code".into()]).unwrap();
+        let extras = resolve_activation_extras(Some(&paths), &["windsurf".into()]).unwrap();
+        assert_eq!(extras, ["claude-code", "windsurf"]);
         assert!(resolve_activation_extras(None, &[]).unwrap().is_empty());
         assert!(resolve_activation_extras(None, &["agents".into()]).is_err());
+        assert!(resolve_activation_extras(None, &["cursor".into()]).is_err());
+    }
+
+    #[test]
+    fn sticky_cursor_is_migrated_away() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: tmp.path().join("data"),
+            db_file: tmp.path().join("data/state.db"),
+        };
+        paths.ensure().unwrap();
+        std::fs::write(
+            &paths.config_file,
+            "[targets]\nextra = [\"cursor\", \"claude\"]\n",
+        )
+        .unwrap();
+        let extras = resolve_activation_extras(Some(&paths), &[]).unwrap();
+        assert_eq!(extras, ["claude-code"]);
+        assert!(!extras.iter().any(|id| id == "cursor"));
     }
 }

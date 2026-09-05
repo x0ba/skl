@@ -140,12 +140,13 @@ fn collect_skill_names(
 }
 
 fn detected_extra_ids(project: &Path, home: &Path) -> Vec<String> {
-    project_link_targets(project, home)
+    let ids: Vec<String> = project_link_targets(project, home)
         .into_iter()
-        .filter(|target| target.kind != LinkTargetKind::Canonical)
+        .filter(|target| target.kind == LinkTargetKind::OptIn)
         .filter(|target| !skill_names_in(&target.path).is_empty())
         .map(|target| target.id)
-        .collect()
+        .collect();
+    crate::local::linker::filter_extra_ids(&ids)
 }
 
 fn skill_names_in(root: &Path) -> Vec<String> {
@@ -373,7 +374,7 @@ mod tests {
         assert!(out.m0);
         assert!(!out.prune_old);
         assert_eq!(out.skills, vec!["greeter"]);
-        assert_eq!(out.extras, vec!["claude", "cursor"]);
+        assert_eq!(out.extras, vec!["claude-code"]);
         assert_eq!(out.links[0].agent, "agents");
         assert_eq!(out.links[0].action, LinkAction::Created);
         assert_eq!(
@@ -392,7 +393,7 @@ mod tests {
 
         let manifest = load_manifest(&project).unwrap();
         assert_eq!(manifest.targets.canonical, ["agents"]);
-        assert_eq!(manifest.targets.extra, ["claude", "cursor"]);
+        assert_eq!(manifest.targets.extra, ["claude-code"]);
         assert!(!is_m0_layout(&project));
         assert!(linker::m0_targets_warning(&project).is_none());
     }
@@ -415,7 +416,7 @@ mod tests {
         assert!(out
             .links
             .iter()
-            .any(|l| l.agent == "claude" && l.action == LinkAction::Removed));
+            .any(|l| l.agent == "claude-code" && l.action == LinkAction::Removed));
         assert!(out
             .links
             .iter()
@@ -488,7 +489,7 @@ mod tests {
                 .into_iter()
                 .map(|t| t.id)
                 .collect();
-        assert_eq!(ids, ["agents", "claude", "cursor"]);
+        assert_eq!(ids, ["agents", "claude-code"]);
 
         migrate_targets(&project, &home, None, true).unwrap();
         let pruned: Vec<_> =

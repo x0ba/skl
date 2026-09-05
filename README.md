@@ -72,7 +72,7 @@ cargo run -p skl -- status   # auto_sync / sync_frequency / last_sync / optional
 
 ### doctor
 
-Reports home agent skill roots (`~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`, `~/.agents/skills`, `~/.config/agents/skills` — same list as `skl init`), whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` soft-prompt once for extra dests (`claude` / `cursor` / `codex`); CI / non-interactive skips the prompt.
+Reports every unique catalog global root (vercel-labs/skills agents.ts) plus `~/.agents/skills` and `~/.config/agents/skills` — same list as `skl init` — whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` show an interactive checklist (↑↓ move, space toggle, enter confirm): locked Universal (`.agents/skills`) is always on; toggleable rows are detected custom-project agents plus `claude-code`. Never cursor/codex. CI / non-TTY / `SKL_NO_PROMPT` / `SKL_YES` skip the UI.
 ```bash
 # API down is still a successful report (health = unreachable)
 cargo run -p skl -- doctor
@@ -81,24 +81,33 @@ cargo run -p skl -- doctor
 API_BASE=http://localhost:8787 cargo run -p skl -- doctor
 ```
 
+### Harness catalog
+
+Vendored from [vercel-labs/skills `src/agents.ts`](https://github.com/vercel-labs/skills/blob/main/src/agents.ts) at `crates/cli/data/agents-catalog.json` (~77 ids). Refresh with `node scripts/sync-agents-catalog.mjs`.
+
+- **Universal** — `project_skills_dir == .agents/skills` (cursor, codex, amp, …). `skl use` alone covers these readers; they are **never** extras / `-a` / checklist rows.
+- **Custom** — any other project dir (e.g. `claude-code` → `.claude/skills`). Sticky extras, `-a`, and the checklist only accept these.
+- **Alias** — sticky / `-a` / `skills.toml` `claude` migrates to `claude-code`. Leftover `cursor` / `codex` extras are dropped with a stderr warn (no-op).
+- OpenClaw's dynamic global is baked to `~/.openclaw/skills`. New canonical files prefer `~/.agents/skills`; init still imports every unique catalog global.
+
 ### targets
 
-Sticky extra dests live in `~/.config/skl/config.toml` (`SKL_CONFIG_DIR` overrides the XDG config dir). Canonical dest is always `.agents/skills`. Ids: `agents` (always), extras `claude` | `cursor` | `codex`.
+Sticky extra dests live in `~/.config/skl/config.toml` (`SKL_CONFIG_DIR` overrides the XDG config dir). Canonical dest is always `.agents/skills`. Extras are custom catalog ids only (`claude-code`, `windsurf`, …). `skl targets add cursor` (or any universal id) is rejected.
 
 ```bash
-cargo run -p skl -- targets              # show canonical + sticky extras
-cargo run -p skl -- targets add claude   # also link .claude/skills on `use`
-cargo run -p skl -- targets add cursor
-cargo run -p skl -- targets remove cursor
+cargo run -p skl -- targets                    # show canonical + sticky extras
+cargo run -p skl -- targets add claude-code    # also link .claude/skills on `use`
+cargo run -p skl -- targets add claude         # alias → claude-code
+cargo run -p skl -- targets remove claude-code
 ```
 
 ### use / unuse
 
-Default is **symlink** into the project's **`.agents/skills` only**. Extra harness dirs (`.claude/skills`, `.cursor/skills`, `.codex/skills`) are created only when opted in via:
+Default is **symlink** into the project's **`.agents/skills` only** (enough for cursor/codex). Extra harness dirs are created only when the catalog project dir is custom and opted in via:
 
-- sticky extras (`skl targets add <id>` → `~/.config/skl/config.toml`)
+- sticky extras (`skl targets add claude-code` → `~/.config/skl/config.toml`)
 - project `skills.toml` `[targets].extra`
-- this invocation: `skl use <skill> -a claude -a cursor`
+- this invocation: `skl use <skill> -a claude-code`
 
 If the filesystem refuses (EPERM / ENOTSUP / Windows privilege), `skl use` copies instead and records `mode = "copy"` in `skills.toml`. `--project` overrides cwd.
 
@@ -114,7 +123,7 @@ test ! -e .claude && test ! -e .cursor
 cat skills.toml
 
 # This run only (also persisted on the project as [targets].extra)
-cargo run -p skl -- use greeter -a claude
+cargo run -p skl -- use greeter -a claude-code
 ls -l .agents/skills/greeter .claude/skills/greeter
 
 cargo run -p skl -- use                 # list activated
