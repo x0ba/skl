@@ -953,10 +953,7 @@ mod tests {
         assert_eq!(manifest.skills.len(), 1);
         assert_eq!(manifest.skills[0].name, "greeter");
         assert_eq!(manifest.skills[0].mode, LINK_MODE);
-        assert_eq!(
-            manifest.skills[0].source.as_deref(),
-            Some(PORTABLE_SOURCE)
-        );
+        assert_eq!(manifest.skills[0].source.as_deref(), Some(PORTABLE_SOURCE));
         assert!(manifest.skills[0].path.is_none());
         let raw = fs::read_to_string(manifest_path(&project)).unwrap();
         assert!(raw.contains("symlink"));

@@ -67,7 +67,7 @@ pub fn migrate_targets(
     let mut links = Vec::new();
     let mut resolved = Vec::new();
     for name in &names {
-        let skill = resolve_migrating_skill(name, project, home, db_file, &manifest)?;
+        let skill = resolve_migrating_skill(name, project, home, db_file)?;
         let dest = canonical.path.join(&skill.name);
         let prior_copy = manifest
             .skills
@@ -80,7 +80,7 @@ pub fn migrate_targets(
             path: dest,
             action: placed.action,
         });
-        upsert_skill(&mut manifest, &skill, &source, placed.mode);
+        upsert_skill(&mut manifest, &skill, placed.mode);
         resolved.push((skill.name, prior_copy));
     }
 
@@ -179,10 +179,8 @@ fn resolve_migrating_skill(
     project: &Path,
     home: &Path,
     db_file: Option<&Path>,
-    _manifest: &linker::SkillsManifest,
 ) -> Result<DiscoveredSkill> {
     // Ignore legacy absolute `path` — resolve by name from this machine.
-
     if let Ok(skill) = resolve_skill(name, home, db_file) {
         return Ok(skill);
     }
@@ -207,12 +205,7 @@ fn resolve_migrating_skill(
     )))
 }
 
-fn upsert_skill(
-    manifest: &mut linker::SkillsManifest,
-    skill: &DiscoveredSkill,
-    _source: &Path,
-    mode: &str,
-) {
+fn upsert_skill(manifest: &mut linker::SkillsManifest, skill: &DiscoveredSkill, mode: &str) {
     let entry = ActivatedSkill::portable(&skill.name, mode);
     if let Some(existing) = manifest.skills.iter_mut().find(|s| s.name == skill.name) {
         *existing = entry;
