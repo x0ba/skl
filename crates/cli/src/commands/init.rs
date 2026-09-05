@@ -13,7 +13,11 @@ pub fn run() -> Result<()> {
     if discovered.is_empty() {
         eprintln!("No skills found under:");
         for root in config::skill_roots(&home) {
-            let mark = if root.path.is_dir() { "empty" } else { "missing" };
+            let mark = if root.path.is_dir() {
+                "empty"
+            } else {
+                "missing"
+            };
             eprintln!("  {:<8} {} ({mark})", root.source, root.path.display());
         }
     } else {
@@ -40,5 +44,6 @@ pub fn run() -> Result<()> {
         paths.db_file.display()
     );
     eprintln!("Local state is ready for `skl sync` (POST /v1/sync).");
+    config::maybe_prompt_sticky_extras(&paths)?;
     Ok(())
 }

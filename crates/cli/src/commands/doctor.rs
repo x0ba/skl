@@ -54,6 +54,8 @@ pub struct DoctorReport {
     /// Activated skill modes from cwd `skills.toml` (last symlink vs copy).
     pub project_manifest: Option<PathBuf>,
     pub project_modes: Vec<(String, String)>,
+    /// Warn-only: M0 layout needs `skl migrate targets` (never auto-mutates).
+    pub m0_targets_warning: Option<String>,
 }
 
 pub async fn run(api_base: String) -> Result<()> {
@@ -61,6 +63,9 @@ pub async fn run(api_base: String) -> Result<()> {
     let paths = Paths::resolve().ok();
     let report = collect(&api_base, &home, paths.as_ref()).await;
     print_report(&report);
+    if let Some(paths) = paths.as_ref() {
+        config::maybe_prompt_sticky_extras(paths)?;
+    }
     Ok(())
 }
 
@@ -98,7 +103,7 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
     } else {
         None
     };
-    let (project_manifest, project_modes) = project_link_modes();
+    let (project_manifest, project_modes, m0_targets_warning) = project_link_modes();
 
     DoctorReport {
         api_base: api_base.to_string(),
@@ -116,6 +121,7 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         windows_note,
         project_manifest,
         project_modes,
+        m0_targets_warning,
     }
 }
 
@@ -152,23 +158,24 @@ fn inspect_root(root: SkillRoot) -> RootStatus {
     }
 }
 
-fn project_link_modes() -> (Option<PathBuf>, Vec<(String, String)>) {
+fn project_link_modes() -> (Option<PathBuf>, Vec<(String, String)>, Option<String>) {
     let Ok(cwd) = std::env::current_dir() else {
-        return (None, Vec::new());
+        return (None, Vec::new(), None);
     };
+    let warning = linker::m0_targets_warning(&cwd);
     let path = linker::manifest_path(&cwd);
     if !path.exists() {
-        return (None, Vec::new());
+        return (None, Vec::new(), warning);
     }
     let Ok(manifest) = linker::load_manifest(&cwd) else {
-        return (Some(path), Vec::new());
+        return (Some(path), Vec::new(), warning);
     };
     let modes = manifest
         .skills
         .into_iter()
         .map(|skill| (skill.name, skill.mode))
         .collect();
-    (Some(path), modes)
+    (Some(path), modes, warning)
 }
 
 fn inspect_dir(path: &Path) -> PathStatus {
@@ -371,6 +378,9 @@ fn print_report(report: &DoctorReport) {
         }
         (None, _) => {}
     }
+    if let Some(warning) = &report.m0_targets_warning {
+        println!("warn         {warning}");
+    }
 }
 
 fn yn(value: bool) -> &'static str {
@@ -443,6 +453,7 @@ mod tests {
         assert!(report.symlink, "host temp dir should allow symlinks");
         assert_eq!(report.symlink_detail, "ok");
         assert!(report.windows_note.is_none());
+        assert!(report.m0_targets_warning.is_none());
     }
 
     #[tokio::test]

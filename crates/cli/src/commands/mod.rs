@@ -4,5 +4,6 @@ pub mod list;
 pub mod login;
 pub mod status;
 pub mod sync;
+pub mod targets;
 pub mod unuse;
 pub mod use_cmd;
