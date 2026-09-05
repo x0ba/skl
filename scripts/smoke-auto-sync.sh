@@ -2,8 +2,10 @@
 # Dual-HOME auto-sync smoke stacked on furnace `maybe_run` (no daemon).
 # Never calls `skl sync` on the mutate / pull / use path.
 #
-#   1. Machine A mutates skill → age due → A init (push) → B status (pull)
-#      → skill present in B library without manual `skl sync`
+#   1. Machine A mutates library (new skill) → age due → A init (push) →
+#      B status (pull) → skill present in B library without manual `skl sync`.
+#      Piggyback is KeepRemote: same-slug overwrites after upload conflict
+#      and restore remote, so this path publishes *new* slugs.
 #   2. Two rapid verbs within 15m → only one POST /v1/sync
 #   3. API down during `use` → link succeeds; `status` shows sync_issue
 #
@@ -72,9 +74,14 @@ prepare_machine() {
 smoke_dual_home() {
   echo "==> [1] Dual-HOME: A mutate → due → B verb → library (no skl sync)"
 
+  # KeepRemote cannot push a same-slug edit after the first upload (API
+  # treats local≠remote tree hash as a conflict and restores remote). A
+  # new slug is missing_skills / local-only — piggyback can publish it.
+  local skill_more="${SKILL_NAME}-more"
+
   seed_skill "$MACHINE_A" "$SKILL_NAME" "# ${SKILL_NAME}
 
-hello from machine A v1
+hello from machine A
 "
   prepare_machine "$MACHINE_A" "$TOKEN_A"
 
@@ -93,19 +100,20 @@ hello from machine A v1
   skl_assert_contains "$b_init" "Imported 0 skill"
   skl_assert_contains "$b_init" "POST $API/v1/sync"
   skl_assert_file_contains "$MACHINE_B/.claude/skills/${SKILL_NAME}/SKILL.md" \
-    "hello from machine A v1"
+    "hello from machine A"
 
-  echo "    A: mutate library"
-  printf '%s' "# ${SKILL_NAME}
+  echo "    A: mutate library (new skill, not a same-slug overwrite)"
+  seed_skill "$MACHINE_A" "$skill_more" "# ${skill_more}
 
-hello from machine A v2
-" >"$MACHINE_A/.claude/skills/${SKILL_NAME}/SKILL.md"
+second skill from machine A
+"
 
   echo "    A: age due, then init (refresh index + piggyback push)"
   skl_age_auto_sync "$MACHINE_A" "$AGE_SECS"
   local a_push
   a_push="$(run_a init 2>&1)"
   echo "$a_push"
+  skl_assert_contains "$a_push" "Imported 2 skill"
   skl_assert_contains "$a_push" "POST $API/v1/sync"
 
   echo "    B: age due, then status (best-effort sync — not display-only)"
@@ -118,7 +126,9 @@ hello from machine A v2
   skl_assert_contains "$b_status" "sync_frequency 900s"
   skl_assert_contains "$b_status" "last_sync"
   skl_assert_file_contains "$MACHINE_B/.claude/skills/${SKILL_NAME}/SKILL.md" \
-    "hello from machine A v2"
+    "hello from machine A"
+  skl_assert_file_contains "$MACHINE_B/.claude/skills/${skill_more}/SKILL.md" \
+    "second skill from machine A"
 
   echo "    B: use links the pulled library (agents-only)"
   mkdir -p "$PROJECT_B"
@@ -136,7 +146,7 @@ hello from machine A v2
   fi
   skl_assert_file_contains \
     "$PROJECT_B/.agents/skills/${SKILL_NAME}/SKILL.md" \
-    "hello from machine A v2"
+    "hello from machine A"
 
   echo "OK: Dual-HOME library updated without manual skl sync"
 }

@@ -63,7 +63,7 @@ frequency_secs = 900     # sync_frequency — 15m; also the failed-attempt throt
 - **`sync_frequency`** — `[sync].frequency_secs` (default `900`). Two rapid verbs inside the window share one network sync. Age is `last_sync` *and* `last_auto_sync_attempt_at`.
 - **`last_sync`** — not a config key. Written to `state.db` (`last_sync_at` + summary) and printed by `skl status` / `skl doctor`. A failed piggyback is fail-soft: the verb still succeeds and `skl status` shows `sync_issue   …` (cleared on the next successful sync).
 
-`skl use` with the API down still links a skill already in the local library. Background conflicts use keep-remote (no TTY). Explicit `skl sync` still fails hard if the API is unreachable.
+`skl use` with the API down still links a skill already in the local library. Background conflicts use keep-remote (no TTY): a same-slug local edit after the first upload will not push (the conflict restores remote). New skills and remote-only updates still piggyback. Explicit `skl sync --keep-local` is the overwrite path. Explicit `skl sync` still fails hard if the API is unreachable.
 
 ```bash
 cargo run -p skl -- status   # auto_sync / sync_frequency / last_sync / optional sync_issue
