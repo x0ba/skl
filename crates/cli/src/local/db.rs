@@ -196,7 +196,22 @@ impl LocalDb {
             "last_sync_json",
             &serde_json::to_string(summary).map_err(SklError::from)?,
         )?;
+        self.clear_sync_error()?;
         Ok(())
+    }
+
+    pub fn record_sync_error(&self, message: &str) -> Result<()> {
+        self.set_meta("last_sync_error", message)
+    }
+
+    pub fn clear_sync_error(&self) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM meta WHERE key = 'last_sync_error'", [])?;
+        Ok(())
+    }
+
+    pub fn last_sync_error(&self) -> Result<Option<String>> {
+        Ok(self.get_meta("last_sync_error")?.filter(|s| !s.is_empty()))
     }
 
     pub fn last_sync_summary(&self) -> Result<Option<(i64, SyncSummary)>> {

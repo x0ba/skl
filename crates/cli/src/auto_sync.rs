@@ -87,7 +87,7 @@ async fn maybe_run_with(
     let prefs = match config::load(paths) {
         Ok(cfg) => cfg.sync,
         Err(err) => {
-            return fail_soft(reason, err.to_string());
+            return fail_soft(paths, reason, err.to_string());
         }
     };
     if !prefs.auto {
@@ -98,7 +98,7 @@ async fn maybe_run_with(
     }
     let db = match LocalDb::open(&paths.db_file) {
         Ok(db) => db,
-        Err(err) => return fail_soft(reason, err.to_string()),
+        Err(err) => return fail_soft(paths, reason, err.to_string()),
     };
     let now = unix_now();
     if !is_due(&db, &prefs, now) {
@@ -116,11 +116,11 @@ async fn maybe_run_with(
         },
     };
     if let Err(err) = db.set_meta(META_LAST_AUTO_SYNC_ATTEMPT_AT, &now.to_string()) {
-        return fail_soft(reason, err.to_string());
+        return fail_soft(paths, reason, err.to_string());
     }
     let home = match config::home_dir() {
         Ok(home) => home,
-        Err(err) => return fail_soft(reason, err.to_string()),
+        Err(err) => return fail_soft(paths, reason, err.to_string()),
     };
     match sync::run_with_opts(
         api_base,
@@ -135,11 +135,14 @@ async fn maybe_run_with(
     .await
     {
         Ok(outcome) => AutoSyncResult::Ran(outcome),
-        Err(err) => fail_soft(reason, err.to_string()),
+        Err(err) => fail_soft(paths, reason, err.to_string()),
     }
 }
 
-fn fail_soft(reason: &str, err: String) -> AutoSyncResult {
+fn fail_soft(paths: &Paths, reason: &str, err: String) -> AutoSyncResult {
+    if let Ok(db) = LocalDb::open(&paths.db_file) {
+        let _ = db.record_sync_error(&err);
+    }
     eprintln!("auto-sync ({reason}): {err} (ignored)");
     AutoSyncResult::FailedSoft { err }
 }
@@ -273,6 +276,8 @@ mod tests {
             .unwrap()
             .expect("attempt stamp");
         assert!(attempt.parse::<i64>().unwrap() > 0);
+        let issue = db.last_sync_error().unwrap().expect("sync issue");
+        assert!(!issue.is_empty(), "{issue}");
         match maybe_run_with("http://127.0.0.1:1", &paths, "use", Some("dev:alice")).await {
             AutoSyncResult::Skipped { why } => assert_eq!(why, SKIP_NOT_DUE),
             other => panic!("second attempt should throttle, got {other:?}"),

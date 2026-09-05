@@ -49,17 +49,26 @@ After `skl login`, the device `access_token` is stored in the OS keyring (`servi
 
 ### auto-sync
 
-Piggyback hash-sync when due. Defaults (override in `~/.config/skl/config.toml`):
+Verb-triggered piggyback (no daemon). `login` / `init` / `use` / `unuse` / `status` call furnace `maybe_run` when due. `doctor` only *displays* `last_sync`.
+
+`~/.config/skl/config.toml` (`SKL_CONFIG_DIR` overrides XDG):
 
 ```toml
 [sync]
-auto = true
-frequency_secs = 900   # 15 minutes; also throttles failed attempts
+auto = true              # auto_sync — default on; false → explicit `skl sync` only
+frequency_secs = 900     # sync_frequency — 15m; also the failed-attempt throttle
 ```
 
-Hooks: `login` (after the device token is stored), `init` (after import), `use` / `unuse` (**fail-soft** — the parent verb still succeeds), `status` (best-effort; still prints status, plus a one-liner if a sync ran). `doctor` prints `last_sync` from `state.db` only — **no** `maybe_run`, no sync network. `list` may piggyback fail-soft but is not the only trigger.
+- **`auto_sync`** — `[sync].auto`. When on, those verbs POST `/v1/sync` if due. Explicit-sync smokes write `auto = false`.
+- **`sync_frequency`** — `[sync].frequency_secs` (default `900`). Two rapid verbs inside the window share one network sync. Age is `last_sync` *and* `last_auto_sync_attempt_at`.
+- **`last_sync`** — not a config key. Written to `state.db` (`last_sync_at` + summary) and printed by `skl status` / `skl doctor`. A failed piggyback is fail-soft: the verb still succeeds and `skl status` shows `sync_issue   …` (cleared on the next successful sync).
 
-Background conflicts use keep-remote (no TTY prompt). Failed attempts still write `last_auto_sync_attempt_at` so a down API cannot retry every command. Explicit `skl sync` is unchanged.
+`skl use` with the API down still links a skill already in the local library. Background conflicts use keep-remote (no TTY). Explicit `skl sync` still fails hard if the API is unreachable.
+
+```bash
+cargo run -p skl -- status   # auto_sync / sync_frequency / last_sync / optional sync_issue
+./scripts/smoke-auto-sync.sh # dual-HOME + throttle + fail-soft (no `skl sync`)
+```
 
 ### doctor
 
@@ -156,7 +165,9 @@ cargo build -p skl
 ./scripts/smoke-import-sync-use.sh   # init → sync → skl use (.agents/skills first)
 ./scripts/smoke-clash.sh             # keep-local / keep-remote + scrub
 ./scripts/smoke-migrate-targets.sh   # M0 fixture → doctor warn → migrate (no API)
+./scripts/smoke-auto-sync.sh         # dual-HOME + throttle + fail-soft (no `skl sync`)
 
 # Boot postgres + apps/api here
 START_API=1 ./scripts/smoke-import-sync-use.sh
+START_API=1 ./scripts/smoke-auto-sync.sh
 ```

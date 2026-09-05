@@ -29,6 +29,13 @@ pub async fn run(api_base: String) -> Result<()> {
     println!("config       {}", paths.config_file.display());
     println!("state.db     {}", paths.db_file.display());
 
+    let cfg = config::load(&paths).unwrap_or_default();
+    println!(
+        "auto_sync    {}",
+        if cfg.sync.auto { "on" } else { "off" }
+    );
+    println!("sync_frequency {}s", cfg.sync.frequency_secs);
+
     let auto = maybe_run(&api_base, &paths, "status").await;
 
     if paths.db_file.exists() {
@@ -47,9 +54,20 @@ pub async fn run(api_base: String) -> Result<()> {
             }
             None => println!("last_sync    (none)"),
         }
+        match &auto {
+            AutoSyncResult::FailedSoft { err } => println!("sync_issue   {err}"),
+            _ => {
+                if let Some(issue) = db.last_sync_error()? {
+                    println!("sync_issue   {issue}");
+                }
+            }
+        }
     } else {
         println!("local_skills 0  (run `skl init`)");
         println!("last_sync    (none)");
+        if let AutoSyncResult::FailedSoft { err } = &auto {
+            println!("sync_issue   {err}");
+        }
     }
 
     if let AutoSyncResult::Ran(outcome) = auto {
@@ -62,6 +80,5 @@ pub async fn run(api_base: String) -> Result<()> {
         );
     }
 
-    let _ = config::load(&paths);
     Ok(())
 }

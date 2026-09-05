@@ -42,6 +42,9 @@ skl_require_bin
 skl_wait_for_api
 
 mkdir -p "$MACHINE_A" "$MACHINE_B"
+# Explicit `skl sync` harness — keep-local / keep-remote stay on the verb.
+skl_write_sync_prefs "$MACHINE_A" false 900
+skl_write_sync_prefs "$MACHINE_B" false 900
 seed_skill "$MACHINE_A" $'# Clash demo\n\nMachine A version of clash-demo.\n'
 seed_skill "$MACHINE_B" $'# Clash demo\n\nMachine B version of clash-demo.\n'
 

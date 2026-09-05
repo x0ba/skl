@@ -132,6 +132,67 @@ skl_run() {
     "$BIN" "$@"
 }
 
+# Write furnace `[sync]` prefs into one machine HOME.
+# Usage: skl_write_sync_prefs <home> <auto:true|false> <frequency_secs>
+skl_write_sync_prefs() {
+  local home="$1"
+  local auto="$2"
+  local freq="$3"
+  mkdir -p "$home/.config/skl"
+  cat >"$home/.config/skl/config.toml" <<EOF
+[sync]
+auto = ${auto}
+frequency_secs = ${freq}
+EOF
+}
+
+# Backdate last_sync_at + last_auto_sync_attempt_at so maybe_run is due.
+# Usage: skl_age_auto_sync <home> [age_secs]
+skl_age_auto_sync() {
+  local home="$1"
+  local age="${2:-901}"
+  local db="$home/.local/share/skl/state.db"
+  if [[ ! -f "$db" ]]; then
+    echo "missing $db (run init first)" >&2
+    exit 1
+  fi
+  python3 - "$db" "$age" <<'PY'
+import sqlite3, sys, time
+
+db, age = sys.argv[1], int(sys.argv[2])
+stamp = str(int(time.time()) - age)
+con = sqlite3.connect(db)
+con.execute(
+    "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+)
+for key in ("last_sync_at", "last_auto_sync_attempt_at"):
+    con.execute(
+        "INSERT INTO meta (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, stamp),
+    )
+con.commit()
+PY
+}
+
+skl_count_sync_posts() {
+  local haystack="$1"
+  local api="${API:-http://localhost:8787}"
+  printf '%s\n' "$haystack" | grep -F -c -- "POST ${api}/v1/sync" || true
+}
+
+skl_assert_sync_posts() {
+  local haystack="$1"
+  local expected="$2"
+  local got
+  got="$(skl_count_sync_posts "$haystack")"
+  if [[ "$got" != "$expected" ]]; then
+    echo "expected $expected POST /v1/sync, got $got" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 skl_assert_contains() {
   local haystack="$1"
   local needle="$2"

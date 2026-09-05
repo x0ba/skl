@@ -73,6 +73,9 @@ skl_wait_for_api
 mkdir -p "$MACHINE_A" "$MACHINE_B" "$PROJECT_B"
 # Machine B needs an existing pull root so sync writes into ~/.claude/skills.
 mkdir -p "$MACHINE_B/.claude/skills"
+# Explicit `skl sync` harness — do not let furnace maybe_run steal the first PUT.
+skl_write_sync_prefs "$MACHINE_A" false 900
+skl_write_sync_prefs "$MACHINE_B" false 900
 seed_skill "$MACHINE_A" "$SKILL_NAME" "$SKILL_BODY"
 
 echo "==> machine A: import (skl init)"
