@@ -107,7 +107,7 @@ cargo run -p skl -- status   # auto_sync / sync_frequency / last_sync / optional
 
 ### doctor
 
-Reports every unique catalog global root (vercel-labs/skills agents.ts) plus `~/.agents/skills` and `~/.config/agents/skills` — same list as `skl init` — whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` show an interactive checklist (↑↓ move, space toggle, enter confirm): locked Universal (`.agents/skills`) is always on; toggleable rows are detected custom-project agents plus `claude-code`. Never cursor/codex. CI / non-TTY / `SKL_NO_PROMPT` / `SKL_YES` skip the UI.
+Reports every unique catalog global root (vercel-labs/skills agents.ts) plus `~/.agents/skills` and `~/.config/agents/skills` — same list as `skl init` — whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. Also warns if `skills.toml` still lists host-absolute `path`s — run `skl use --all` to rewrite names-only. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` show an interactive checklist (↑↓ move, space toggle, enter confirm): locked Universal (`.agents/skills`) is always on; toggleable rows are detected custom-project agents plus `claude-code`. Never cursor/codex. CI / non-TTY / `SKL_NO_PROMPT` / `SKL_YES` skip the UI.
 ```bash
 # API down is still a successful report (health = unreachable)
 cargo run -p skl -- doctor
@@ -146,6 +146,17 @@ Default is **symlink** into the project's **`.agents/skills` only** (enough for 
 
 If the filesystem refuses (EPERM / ENOTSUP / Windows privilege), `skl use` copies instead and records `mode = "copy"` in `skills.toml`. `--project` overrides cwd.
 
+`skills.toml` is **commit-safe across machines**: it lists skill **names** (and `mode`), not absolute paths. Manifest = what; the personal library on this machine (`~/.local/share/skl/skills/`, or `SKL_DATA_DIR`) = where. Project dests (`.agents/skills` and extras) are local materialization — do not commit them. See [`examples/skills.gitignore`](examples/skills.gitignore) (copy lines you want; `skl` will not edit `.gitignore` for you).
+
+After cloning a repo that already has `skills.toml`:
+
+```bash
+skl sync          # pull the personal library onto this machine
+skl use --all     # rematerialize every listed skill into project dests
+```
+
+`skl use` with no args still **lists** activated skills. Restore is only `skl use --all` — sync never auto-restores.
+
 ```bash
 # Home skill (or a path already imported by `skl init`)
 mkdir -p ~/.claude/skills/greeter
@@ -155,13 +166,14 @@ printf '# hello\n' > ~/.claude/skills/greeter/SKILL.md
 cargo run -p skl -- use greeter
 ls -l .agents/skills/greeter
 test ! -e .claude && test ! -e .cursor
-cat skills.toml
+cat skills.toml   # names + mode; no host path
 
 # This run only (also persisted on the project as [targets].extra)
 cargo run -p skl -- use greeter -a claude-code
 ls -l .agents/skills/greeter .claude/skills/greeter
 
 cargo run -p skl -- use                 # list activated
+cargo run -p skl -- use --all           # restore all names from this machine's library
 cargo run -p skl -- unuse greeter
 
 # Explicit project
@@ -192,7 +204,7 @@ Name clash without `--force` / `--as` errors (non-TTY: no prompt). A project sym
 
 ### migrate targets
 
-Explicit only — `skl use` / `skl doctor` never rewrite an M0 layout. Detects projects whose skills live only under `.claude`/`.cursor`, ensures `.agents/skills/<skill>` from the home library (symlink→copy fallback), and writes `[targets]` (`canonical = ["agents"]`, prior dests as `extra`). Old links stay unless `--prune-old`.
+Explicit only — `skl use` / `skl doctor` never rewrite an M0 layout. Detects projects whose skills live only under `.claude`/`.cursor`, ensures `.agents/skills/<skill>` from the home library (symlink→copy fallback), and writes `[targets]` (`canonical = ["agents"]`, prior dests as `extra`). Old links stay unless `--prune-old`. Rewrites `skills.toml` to the portable names-only shape (drops legacy absolute `path`).
 
 ```bash
 # Deliberate M0 fixture (no API):

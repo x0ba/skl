@@ -1,4 +1,4 @@
-# Managed by `skl use` / `skl unuse` / `skl migrate targets`. Prefer symlink; copy if the filesystem refuses.
+# Managed by `skl use` / `skl unuse` / `skl use --all`. Names only — resolve from this machine's library.
 
 [targets]
 canonical = ["agents"]
@@ -6,6 +6,5 @@ extra = ["claude-code"]
 
 [[skills]]
 name = "greploop"
-source = "agents"
-path = "/Users/daniel/.agents/skills/greploop"
+source = "library"
 mode = "symlink"

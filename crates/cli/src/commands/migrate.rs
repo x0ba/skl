@@ -67,7 +67,7 @@ pub fn migrate_targets(
     let mut links = Vec::new();
     let mut resolved = Vec::new();
     for name in &names {
-        let skill = resolve_migrating_skill(name, project, home, db_file, &manifest)?;
+        let skill = resolve_migrating_skill(name, project, home, db_file)?;
         let dest = canonical.path.join(&skill.name);
         let prior_copy = manifest
             .skills
@@ -80,7 +80,7 @@ pub fn migrate_targets(
             path: dest,
             action: placed.action,
         });
-        upsert_skill(&mut manifest, &skill, &source, placed.mode);
+        upsert_skill(&mut manifest, &skill, placed.mode);
         resolved.push((skill.name, prior_copy));
     }
 
@@ -179,15 +179,8 @@ fn resolve_migrating_skill(
     project: &Path,
     home: &Path,
     db_file: Option<&Path>,
-    manifest: &linker::SkillsManifest,
 ) -> Result<DiscoveredSkill> {
-    if let Some(entry) = manifest.skills.iter().find(|s| s.name == name) {
-        let path = PathBuf::from(&entry.path);
-        if path.is_dir() {
-            return Ok(discovered_from_entry(entry, path));
-        }
-    }
-
+    // Ignore legacy absolute `path` — resolve by name from this machine.
     if let Ok(skill) = resolve_skill(name, home, db_file) {
         return Ok(skill);
     }
@@ -212,33 +205,8 @@ fn resolve_migrating_skill(
     )))
 }
 
-fn discovered_from_entry(entry: &ActivatedSkill, path: PathBuf) -> DiscoveredSkill {
-    let tree = crate::local::skills::hash_skill_dir(&path).unwrap_or_else(|_| {
-        crate::api::types::SkillTree {
-            tree_hash: String::new(),
-            files: std::collections::BTreeMap::new(),
-        }
-    });
-    DiscoveredSkill {
-        name: entry.name.clone(),
-        source: entry.source.clone(),
-        path,
-        tree,
-    }
-}
-
-fn upsert_skill(
-    manifest: &mut linker::SkillsManifest,
-    skill: &DiscoveredSkill,
-    source: &Path,
-    mode: &str,
-) {
-    let entry = ActivatedSkill {
-        name: skill.name.clone(),
-        source: skill.source.clone(),
-        path: source.to_string_lossy().into_owned(),
-        mode: mode.to_string(),
-    };
+fn upsert_skill(manifest: &mut linker::SkillsManifest, skill: &DiscoveredSkill, mode: &str) {
+    let entry = ActivatedSkill::portable(&skill.name, mode);
     if let Some(existing) = manifest.skills.iter_mut().find(|s| s.name == skill.name) {
         *existing = entry;
     } else {
@@ -347,8 +315,8 @@ mod tests {
                 targets: ManifestTargets::default(),
                 skills: vec![linker::ActivatedSkill {
                     name: skill.name.clone(),
-                    source: skill.source.clone(),
-                    path: skill.path.to_string_lossy().into_owned(),
+                    source: Some(skill.source.clone()),
+                    path: Some(skill.path.to_string_lossy().into_owned()),
                     mode: LINK_MODE.to_string(),
                 }],
             },
@@ -394,6 +362,13 @@ mod tests {
         let manifest = load_manifest(&project).unwrap();
         assert_eq!(manifest.targets.canonical, ["agents"]);
         assert_eq!(manifest.targets.extra, ["claude-code"]);
+        assert!(manifest.skills[0].path.is_none());
+        assert_eq!(
+            manifest.skills[0].source.as_deref(),
+            Some(linker::PORTABLE_SOURCE)
+        );
+        let raw = fs::read_to_string(linker::manifest_path(&project)).unwrap();
+        assert!(!raw.contains("path ="), "{raw}");
         assert!(!is_m0_layout(&project));
         assert!(linker::m0_targets_warning(&project).is_none());
     }
@@ -473,6 +448,34 @@ mod tests {
         assert!(warning.contains("skl migrate targets"), "{warning}");
         assert!(!project.join(".agents").exists());
         assert!(project.join(".claude/skills/greeter").exists());
+    }
+
+    #[test]
+    fn migrate_resolves_by_name_when_manifest_path_is_foreign() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+        plant_m0(&project, &skill);
+        fs::write(
+            linker::manifest_path(&project),
+            r#"
+[[skills]]
+name = "greeter"
+source = "claude"
+path = "/Users/other/.claude/skills/greeter"
+mode = "symlink"
+"#,
+        )
+        .unwrap();
+
+        let out = migrate_targets(&project, &home, None, false).unwrap();
+        assert_eq!(out.skills, vec!["greeter"]);
+        assert!(project.join(".agents/skills/greeter").exists());
+        let raw = fs::read_to_string(linker::manifest_path(&project)).unwrap();
+        assert!(!raw.contains("path ="), "{raw}");
+        assert!(!raw.contains("/Users/other"), "{raw}");
     }
 
     #[test]

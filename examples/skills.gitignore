@@ -1,0 +1,10 @@
+# Local materialization of `skills.toml` — machine-specific links/copies.
+# The manifest (`skills.toml`) is commit-safe (skill names only).
+# These dests are recreated on each machine with `skl use --all`.
+#
+# Do not force-add these to a repo's .gitignore without asking.
+# Copy the lines you want, or:
+#   cat examples/skills.gitignore >> .gitignore
+
+.agents/skills/
+.claude/skills/
