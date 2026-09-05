@@ -47,19 +47,36 @@ cargo run -p skl -- --help
 
 After `skl login`, the device `access_token` is stored in the OS keyring (`service=skl`, `account=device_token`). In headless/CI environments the keyring may not persist across processes — follow-on commands then say `not logged in`. Export `SKL_TOKEN=<access_token>` (overrides the keyring), or use `skl login --dev-user <id>` / `Bearer dev:<id>` when `ALLOW_DEV_AUTH` is on. `skl doctor` already reports keyring + `SKL_TOKEN` presence.
 
-### auto-sync
+### auto-sync (no daemon)
 
-Piggyback hash-sync when due. Defaults (override in `~/.config/skl/config.toml`):
+There is **no background daemon**. When `auto_sync` is on (`[sync] auto` in `config.toml`), a due CLI verb piggybacks `auto_sync::maybe_run` and then continues.
+
+**Verbs that piggyback when due**
+
+| Verb | Behavior |
+| --- | --- |
+| `login` | after the device token is stored |
+| `init` | after the home import |
+| `use` / `unuse` | **fail-soft** — link/unlink always wins; sync errors log `auto-sync (<verb>): … (ignored)` |
+| `status` | **best-effort** when due (not display-only); still prints `last_sync`, plus `auto_sync ran` if a sync ran |
+
+`skl doctor` does **not** call `maybe_run`. It only **displays** `last_sync` from `state.db`. `skl list` may piggyback fail-soft; do not treat it as the only trigger. Explicit `skl sync` is unchanged.
+
+**`sync_frequency` / due / throttle**
+
+Real keys in `~/.config/skl/config.toml` (`SKL_CONFIG_DIR` overrides). Missing `[sync]` uses these defaults:
 
 ```toml
 [sync]
-auto = true
-frequency_secs = 900   # 15 minutes; also throttles failed attempts
+auto = true            # auto_sync
+frequency_secs = 900   # sync_frequency; default 900 (15m)
 ```
 
-Hooks: `login` (after the device token is stored), `init` (after import), `use` / `unuse` (**fail-soft** — the parent verb still succeeds), `status` (best-effort; still prints status, plus a one-liner if a sync ran). `doctor` prints `last_sync` from `state.db` only — **no** `maybe_run`, no sync network. `list` may piggyback fail-soft but is not the only trigger.
+Due uses existing `state.db` `last_sync_at`. Attempts are also throttled by `last_auto_sync_attempt_at` — at most one network try per `frequency_secs` (default 15 minutes). Background piggyback is non-interactive (`ConflictMode::KeepRemote`, no TTY). Failed attempts still stamp `last_auto_sync_attempt_at`.
 
-Background conflicts use keep-remote (no TTY prompt). Failed attempts still write `last_auto_sync_attempt_at` so a down API cannot retry every command. Explicit `skl sync` is unchanged.
+**`last_sync`**
+
+`skl status` and `skl doctor` print the existing `last_sync` line (`at=… uploaded=…`). After a fail-soft miss (API down during `use`), the link still succeeds and `maybe_run` logs `auto-sync (use): … (ignored)`. A due `status` stays best-effort: exit 0, still prints `last_sync`, plus the same fail-soft line if the attempt fails. `skl doctor` shows those last-sync facts without POSTing `/v1/sync`.
 
 ### doctor
 
@@ -156,7 +173,9 @@ cargo build -p skl
 ./scripts/smoke-import-sync-use.sh   # init → sync → skl use (.agents/skills first)
 ./scripts/smoke-clash.sh             # keep-local / keep-remote + scrub
 ./scripts/smoke-migrate-targets.sh   # M0 fixture → doctor warn → migrate (no API)
+./scripts/smoke-auto-sync.sh         # Dual-HOME / throttle / fail-soft (binds maybe_run)
 
 # Boot postgres + apps/api here
 START_API=1 ./scripts/smoke-import-sync-use.sh
+START_API=1 ./scripts/smoke-auto-sync.sh
 ```

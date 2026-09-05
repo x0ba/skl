@@ -4,7 +4,8 @@
 #
 # Used by scripts/smoke-import-sync-use.sh. The clash + scrub harness
 # (scripts/smoke-clash.sh on the conflict/scrub PR) uses the same HOME /
-# SKL_TOKEN / ALLOW_DEV_AUTH=true pattern.
+# SKL_TOKEN / ALLOW_DEV_AUTH=true pattern. Auto-sync piggyback coverage
+# lives in scripts/smoke-auto-sync.sh (binds furnace SyncPrefs + maybe_run).
 #
 # Env:
 #   API_BASE      default http://localhost:8787
@@ -177,5 +178,135 @@ skl_assert_symlink_to() {
       echo "symlink $link -> $dest (expected $expected)" >&2
       exit 1
     fi
+  fi
+}
+
+# --- M2 auto-sync helpers (furnace SyncPrefs + maybe_run) ---
+# Locked shapes (bob/Daniel):
+#   config.toml  [sync] auto=…  frequency_secs=…   (default 900)
+#   state.db     last_sync_at (existing) + last_auto_sync_attempt_at (throttle)
+#   piggyback    login / init / use / unuse / status
+#   no network   doctor (display last_sync only)
+#   no daemon
+
+# Write [sync] prefs without dropping api_base / [targets].
+# Usage: skl_write_sync_prefs <home> [auto=true] [frequency_secs=900]
+skl_write_sync_prefs() {
+  local home="$1"
+  local auto="${2:-true}"
+  local freq="${3:-900}"
+  local cfg="$home/.config/skl/config.toml"
+  mkdir -p "$(dirname "$cfg")"
+  python3 - "$cfg" "$auto" "$freq" <<'PY'
+import re
+import sys
+
+path, auto, freq = sys.argv[1], sys.argv[2], sys.argv[3]
+auto_lit = "true" if auto.lower() in ("1", "true", "yes") else "false"
+try:
+    text = open(path, encoding="utf-8").read()
+except FileNotFoundError:
+    text = ""
+block = f"[sync]\nauto = {auto_lit}\nfrequency_secs = {int(freq)}\n"
+if re.search(r"(?m)^\[sync\]\s*$", text):
+    text = re.sub(
+        r"(?ms)^\[sync\]\s*\n(?:(?!^\[).)*",
+        block + "\n",
+        text,
+        count=1,
+    )
+else:
+    if text and not text.endswith("\n"):
+        text += "\n"
+    if text and not text.endswith("\n\n"):
+        text += "\n"
+    text += block
+open(path, "w", encoding="utf-8").write(text)
+PY
+}
+
+# Backdate last_sync_at + last_auto_sync_attempt_at so due + throttle allow.
+# Default 901s > default frequency 900 and the 15m attempt floor when testing
+# a shorter age would still be blocked — pass 901 or more.
+# Usage: skl_age_auto_sync <home> [seconds=901]
+skl_age_auto_sync() {
+  local home="$1"
+  local seconds="${2:-901}"
+  local db="$home/.local/share/skl/state.db"
+  if [[ ! -f "$db" ]]; then
+    echo "missing state.db: $db (run skl init first)" >&2
+    exit 1
+  fi
+  python3 - "$db" "$seconds" <<'PY'
+import sqlite3
+import sys
+import time
+
+db, age = sys.argv[1], int(sys.argv[2])
+conn = sqlite3.connect(db)
+conn.execute(
+    "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+)
+aged = str(int(time.time()) - age)
+for key in ("last_sync_at", "last_auto_sync_attempt_at"):
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, aged),
+    )
+conn.commit()
+PY
+}
+
+# Count engine lines: `POST {api}/v1/sync` (re-POST included).
+skl_count_sync_posts() {
+  local haystack="$1"
+  local count
+  count="$(printf '%s\n' "$haystack" | grep -c 'POST .*/v1/sync' || true)"
+  echo "$count"
+}
+
+skl_assert_sync_posts() {
+  local haystack="$1"
+  local expected="$2"
+  local count
+  count="$(skl_count_sync_posts "$haystack")"
+  if [[ "$count" != "$expected" ]]; then
+    echo "expected $expected POST /v1/sync, got $count" >&2
+    echo "got:" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
+# Bind fail-soft copy to furnace maybe_run:
+#   eprintln!("auto-sync ({reason}): {err} (ignored)");
+# status still prints last_sync after FailedSoft. Override needle with
+# SKL_SMOKE_SYNC_ISSUE_NEEDLE if furnace copy changes.
+skl_assert_sync_issue() {
+  local haystack="$1"
+  local needle="${SKL_SMOKE_SYNC_ISSUE_NEEDLE:-auto-sync (}"
+  local lowered
+  lowered="$(printf '%s\n' "$haystack" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$haystack" == *"$needle"* ]] \
+    && [[ "$haystack" == *"(ignored)"* ]] \
+    && [[ "$lowered" == *"last_sync"* ]]; then
+    return 0
+  fi
+  echo "expected maybe_run fail-soft ('auto-sync (<verb>): … (ignored)') and last_sync" >&2
+  echo "got:" >&2
+  echo "$haystack" >&2
+  exit 1
+}
+
+# Fast-fail when this binary has no piggyback maybe_run.
+skl_require_auto_sync_hooks() {
+  local sample="$1"
+  if [[ "$(skl_count_sync_posts "$sample")" -lt 1 ]]; then
+    echo "auto_sync::maybe_run did not POST /v1/sync on a due piggyback verb." >&2
+    echo "Need furnace SyncPrefs + login/init/use/unuse/status hooks on this binary." >&2
+    echo "got:" >&2
+    echo "$sample" >&2
+    exit 1
   fi
 }

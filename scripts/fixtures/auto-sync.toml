@@ -1,0 +1,8 @@
+# Fixture only — furnace SyncPrefs keys (Config.sync).
+# Smoke writes this table into each machine's ~/.config/skl/config.toml.
+# Real keys: [sync] auto (auto_sync), frequency_secs (sync_frequency, default 900).
+# Not a runtime default. No daemon.
+
+[sync]
+auto = true
+frequency_secs = 900
