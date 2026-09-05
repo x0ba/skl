@@ -151,6 +151,10 @@ cargo run -p skl -- capture .agents/skills/greeter --force       # overwrite exi
 
 Name clash without `--force` / `--as` errors (non-TTY: no prompt). A project symlink that already points at the library skill is a no-op. After a successful local capture, piggyback `maybe_run` is fail-soft (API down does not fail capture).
 
+```bash
+./scripts/smoke-capture.sh # Dual-HOME capture → sync B → use + clash / --force / --as / --keep-copy / fail-soft / non-TTY
+```
+
 ### migrate targets
 
 Explicit only — `skl use` / `skl doctor` never rewrite an M0 layout. Detects projects whose skills live only under `.claude`/`.cursor`, ensures `.agents/skills/<skill>` from the home library (symlink→copy fallback), and writes `[targets]` (`canonical = ["agents"]`, prior dests as `extra`). Old links stay unless `--prune-old`.
@@ -192,8 +196,10 @@ cargo build -p skl
 ./scripts/smoke-migrate-targets.sh   # M0 fixture → doctor warn → migrate (no API)
 ./scripts/smoke-init-home-agents.sh  # init from ~/.agents/skills + ~/.config/agents/skills (no API)
 ./scripts/smoke-auto-sync.sh         # dual-HOME + throttle + fail-soft (no `skl sync`)
+./scripts/smoke-capture.sh           # project skill → capture → sync B → use; clash / --force / --as / --keep-copy / fail-soft / non-TTY
 
 # Boot postgres + apps/api here
 START_API=1 ./scripts/smoke-import-sync-use.sh
 START_API=1 ./scripts/smoke-auto-sync.sh
+START_API=1 ./scripts/smoke-capture.sh
 ```
