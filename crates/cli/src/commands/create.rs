@@ -34,11 +34,16 @@ pub async fn run(name: &str, api_base: &str) -> Result<()> {
 }
 
 /// Local create + editor + fail-soft piggyback. Auto-sync errors never fail the verb.
+///
+/// Editor launch/exit failures are warnings: the skill is already on disk.
 pub async fn run_with(name: &str, paths: &Paths, api_base: &str) -> Result<()> {
     let out = create_library_skill(name, paths)?;
     eprintln!("created {}  ({})", out.name, out.library_path.display());
-    crate::editor::open(&out.skill_md)?;
-    reindex(&out, paths)?;
+    if let Err(err) = crate::editor::open(&out.skill_md) {
+        eprintln!("edit: {err}  (skill was created; edit the file to continue)");
+    } else if let Err(err) = reindex(&out, paths) {
+        eprintln!("index: {err}");
+    }
     let _ = crate::auto_sync::maybe_run(api_base, paths, "create").await;
     Ok(())
 }
@@ -65,14 +70,26 @@ pub fn create_library_skill(name: &str, paths: &Paths) -> Result<CreateOutcome> 
 
     fs::create_dir_all(&library_path)?;
     let skill_md = library_path.join("SKILL.md");
-    fs::write(&skill_md, skill_template(name))?;
-    index_library(name, &library_path, paths)?;
+    if let Err(err) = write_and_index(name, &library_path, &skill_md, paths) {
+        let _ = fs::remove_dir_all(&library_path);
+        return Err(err);
+    }
 
     Ok(CreateOutcome {
         name: name.to_string(),
         library_path,
         skill_md,
     })
+}
+
+fn write_and_index(name: &str, library_path: &Path, skill_md: &Path, paths: &Paths) -> Result<()> {
+    fs::write(skill_md, skill_template(name))?;
+    index_library(name, library_path, paths)
+}
+
+/// True when `{data_dir}/skills/<name>` already exists (same rule as CLI create).
+pub fn library_occupied(name: &str, paths: &Paths) -> bool {
+    path_exists(&paths.library_skill(name))
 }
 
 fn index_library(name: &str, library_path: &Path, paths: &Paths) -> Result<()> {
@@ -160,6 +177,48 @@ mod tests {
     }
 
     #[test]
+    fn create_same_name_as_foreign_index_is_ok() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = isolated_paths(tmp.path());
+        let other = tmp.path().join("other/notes");
+        fs::create_dir_all(&other).unwrap();
+        fs::write(other.join("SKILL.md"), "# foreign\n").unwrap();
+        let tree = skills::hash_skill_dir(&other).unwrap();
+        LocalDb::open(&paths.db_file)
+            .unwrap()
+            .upsert_skill(&DiscoveredSkill {
+                name: "notes".into(),
+                source: "claude".into(),
+                path: other,
+                tree,
+            })
+            .unwrap();
+
+        let out = create_library_skill("notes", &paths).unwrap();
+        assert_eq!(out.library_path, paths.library_skill("notes"));
+        assert!(out.skill_md.is_file());
+    }
+
+    #[test]
+    fn failed_write_or_index_removes_partial_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = isolated_paths(tmp.path());
+        paths.ensure().unwrap();
+        fs::create_dir_all(paths.library_dir()).unwrap();
+        // Make state.db a directory so indexing fails after SKILL.md is written.
+        fs::create_dir_all(&paths.db_file).unwrap();
+
+        let err = create_library_skill("broken", &paths)
+            .unwrap_err()
+            .to_string();
+        assert!(!err.contains("already exists"), "{err}");
+        assert!(
+            !paths.library_skill("broken").exists(),
+            "partial library dir must be removed so retry can proceed"
+        );
+    }
+
+    #[test]
     fn clash_without_overwrite_errors() {
         let tmp = tempfile::tempdir().unwrap();
         let paths = isolated_paths(tmp.path());
@@ -186,6 +245,30 @@ mod tests {
             !paths.library_dir().exists()
                 || paths.library_dir().read_dir().unwrap().next().is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn editor_failure_does_not_fail_create() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = isolated_paths(tmp.path());
+        let prev_visual = std::env::var_os("VISUAL");
+        let prev_editor = std::env::var_os("EDITOR");
+        std::env::remove_var("VISUAL");
+        std::env::set_var("EDITOR", "false");
+
+        let result = run_with("notes", &paths, "http://127.0.0.1:1").await;
+
+        match prev_visual {
+            Some(v) => std::env::set_var("VISUAL", v),
+            None => std::env::remove_var("VISUAL"),
+        }
+        match prev_editor {
+            Some(v) => std::env::set_var("EDITOR", v),
+            None => std::env::remove_var("EDITOR"),
+        }
+
+        result.expect("create must succeed even if $EDITOR exits nonzero");
+        assert!(paths.library_skill("notes").join("SKILL.md").is_file());
     }
 
     #[tokio::test]

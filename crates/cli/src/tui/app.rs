@@ -433,10 +433,12 @@ impl App {
                 self.overlay = Overlay::None;
                 self.status = "create cancelled".into();
             }
-            KeyCode::Enter => match ready_create_name(&self.create_name, &self.catalog.skills) {
-                Ok(_) => return Tick::SuspendCreate,
-                Err(err) => self.status = err,
-            },
+            KeyCode::Enter => {
+                match ready_create_name(&self.create_name, Paths::resolve().ok().as_ref()) {
+                    Ok(_) => return Tick::SuspendCreate,
+                    Err(err) => self.status = err,
+                }
+            }
             KeyCode::Backspace => {
                 self.create_name.pop();
             }
@@ -754,14 +756,18 @@ pub fn load_preview(row: &SkillRow) -> Preview {
     }
 }
 
-fn ready_create_name(raw: &str, skills: &[SkillRow]) -> std::result::Result<String, String> {
+fn ready_create_name(raw: &str, paths: Option<&Paths>) -> std::result::Result<String, String> {
     let name = raw.trim().to_string();
     if name.is_empty() {
         return Err("enter a skill name".into());
     }
     linker::validate_skill_name(&name).map_err(|err| err.to_string())?;
-    if skills.iter().any(|row| row.name == name) {
-        return Err(format!("skill `{name}` already exists"));
+    if let Some(paths) = paths {
+        if crate::commands::create::library_occupied(&name, paths) {
+            return Err(format!(
+                "skill `{name}` already exists in the personal library"
+            ));
+        }
     }
     Ok(name)
 }
@@ -909,7 +915,7 @@ mod tests {
     }
 
     #[test]
-    fn create_overlay_rejects_empty_invalid_and_existing() {
+    fn create_overlay_rejects_empty_and_invalid() {
         let mut app = app_with(sample_catalog());
         app.handle_key(key(KeyCode::Char('n')));
         assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::Continue);
@@ -920,15 +926,13 @@ mod tests {
         assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::Continue);
         assert!(app.status.contains("invalid skill name"), "{}", app.status);
 
+        // Catalog-only names (other sources / project dests) are not a clash.
+        // Use a name that is not a real library skill on this machine.
         app.create_name.clear();
-        app.handle_key(key(KeyCode::Char('a')));
-        app.handle_key(key(KeyCode::Char('l')));
-        app.handle_key(key(KeyCode::Char('p')));
-        app.handle_key(key(KeyCode::Char('h')));
-        app.handle_key(key(KeyCode::Char('a')));
-        assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::Continue);
-        assert!(app.status.contains("already exists"), "{}", app.status);
-        assert_eq!(app.overlay, Overlay::Create);
+        for c in "zz-not-in-library".chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::SuspendCreate);
     }
 
     #[test]
@@ -1062,6 +1066,33 @@ mod tests {
         assert!(cat.skills.is_empty());
         assert!(cat.empty_hint.is_some());
         assert!(!lib.exists());
+    }
+
+    #[test]
+    fn create_overlay_rejects_library_occupied() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let data = home.join(".local/share/skl");
+        let cfg = home.join(".config/skl");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(&cfg).unwrap();
+        fs::create_dir_all(&project).unwrap();
+        plant_library_skill(&data, "greeter", "# existing\n");
+
+        let _iso = IsolatedFs::enter(&home, &data, &cfg, &project);
+        let mut app = App::load().expect("load catalog");
+        app.handle_key(key(KeyCode::Char('n')));
+        for c in "greeter".chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::Continue);
+        assert!(
+            app.status.contains("already exists"),
+            "library clash status: {}",
+            app.status
+        );
+        assert_eq!(app.overlay, Overlay::Create);
     }
 
     #[test]
