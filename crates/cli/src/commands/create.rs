@@ -4,7 +4,9 @@
 //! (default `~/.local/share/skl/skills/`, override with `SKL_DATA_DIR`).
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crate::config::Paths;
 use crate::error::{Result, SklError};
@@ -42,15 +44,34 @@ pub async fn run_with(name: &str, paths: &Paths, api_base: &str) -> Result<()> {
     if let Err(err) = crate::editor::open(&out.skill_md) {
         eprintln!("edit: {err}  (skill was created; edit the file to continue)");
     } else if let Err(err) = reindex(&out, paths) {
-        eprintln!("index: {err}");
+        eprintln!("{}", stale_index_hint(&err));
     }
     let _ = crate::auto_sync::maybe_run(api_base, paths, "create").await;
     Ok(())
 }
 
 /// Re-hash after the editor returns so `state.db` matches the written tree.
+///
+/// Retries briefly so a transient SQLite lock does not leave the starter hash.
 pub fn reindex(out: &CreateOutcome, paths: &Paths) -> Result<()> {
-    index_library(&out.name, &out.library_path, paths)
+    let mut last = None;
+    for attempt in 0..3 {
+        match index_library(&out.name, &out.library_path, paths) {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                last = Some(err);
+                if attempt < 2 {
+                    std::thread::sleep(Duration::from_millis(40 * (attempt as u64 + 1)));
+                }
+            }
+        }
+    }
+    Err(last.expect("reindex attempted at least once"))
+}
+
+/// Status line when the skill is on disk but the local index is still the starter hash.
+pub fn stale_index_hint(err: &SklError) -> String {
+    format!("index: {err}  (skill was created; run `skl sync` to refresh the local index)")
 }
 
 /// Write `{data_dir}/skills/<name>/SKILL.md` and index it. Does not open an editor.
@@ -61,14 +82,7 @@ pub fn create_library_skill(name: &str, paths: &Paths) -> Result<CreateOutcome> 
     paths.ensure()?;
     fs::create_dir_all(paths.library_dir())?;
     let library_path = paths.library_skill(name);
-    if path_exists(&library_path) {
-        return Err(SklError::LocalState(format!(
-            "skill `{name}` already exists in the personal library at {}",
-            library_path.display()
-        )));
-    }
-
-    fs::create_dir_all(&library_path)?;
+    claim_library_dir(name, &library_path)?;
     let skill_md = library_path.join("SKILL.md");
     if let Err(err) = write_and_index(name, &library_path, &skill_md, paths) {
         let _ = fs::remove_dir_all(&library_path);
@@ -80,6 +94,17 @@ pub fn create_library_skill(name: &str, paths: &Paths) -> Result<CreateOutcome> 
         library_path,
         skill_md,
     })
+}
+
+fn claim_library_dir(name: &str, library_path: &Path) -> Result<()> {
+    match fs::create_dir(library_path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == ErrorKind::AlreadyExists => Err(SklError::LocalState(format!(
+            "skill `{name}` already exists in the personal library at {}",
+            library_path.display()
+        ))),
+        Err(err) => Err(err.into()),
+    }
 }
 
 fn write_and_index(name: &str, library_path: &Path, skill_md: &Path, paths: &Paths) -> Result<()> {
@@ -216,6 +241,60 @@ mod tests {
             !paths.library_skill("broken").exists(),
             "partial library dir must be removed so retry can proceed"
         );
+    }
+
+    #[test]
+    fn clash_leaves_existing_skill_untouched() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = isolated_paths(tmp.path());
+        paths.ensure().unwrap();
+        fs::create_dir_all(paths.library_dir()).unwrap();
+        let dest = paths.library_skill("greeter");
+        fs::create_dir(&dest).unwrap();
+        fs::write(dest.join("SKILL.md"), "keep me\n").unwrap();
+
+        let err = create_library_skill("greeter", &paths)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "keep me\n"
+        );
+    }
+
+    #[test]
+    fn concurrent_creates_leave_exactly_one_skill() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+        let a = std::thread::spawn({
+            let root = root.clone();
+            move || create_library_skill("race", &isolated_paths(&root))
+        });
+        let b = std::thread::spawn({
+            let root = root.clone();
+            move || create_library_skill("race", &isolated_paths(&root))
+        });
+        let ra = a.join().expect("thread a");
+        let rb = b.join().expect("thread b");
+        let wins = [&ra, &rb].iter().filter(|r| r.is_ok()).count();
+        let losses = [&ra, &rb].iter().filter(|r| r.is_err()).count();
+        assert_eq!((wins, losses), (1, 1), "a={ra:?} b={rb:?}");
+        let dest = isolated_paths(&root).library_skill("race");
+        assert!(dest.join("SKILL.md").is_file());
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            skill_template("race")
+        );
+    }
+
+    #[test]
+    fn stale_index_hint_tells_user_to_sync() {
+        let err = SklError::LocalState("database is locked".into());
+        let hint = stale_index_hint(&err);
+        assert!(hint.contains("index:"), "{hint}");
+        assert!(hint.contains("skl sync"), "{hint}");
+        assert!(hint.contains("skill was created"), "{hint}");
     }
 
     #[test]

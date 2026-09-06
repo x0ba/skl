@@ -189,13 +189,18 @@ pub async fn run(api_base: String) -> Result<()> {
                 term.suspend()?;
                 match crate::commands::create::create_library_skill(&name, &paths) {
                     Ok(out) => {
-                        if let Err(err) = crate::editor::open(&out.skill_md) {
+                        let mut status = if let Err(err) = crate::editor::open(&out.skill_md) {
                             eprintln!("edit: {err}");
-                            app.status = format!("created {name}  (edit: {err})");
+                            format!("created {name}  (edit: {err})")
                         } else {
-                            app.status = format!("created {name}");
+                            format!("created {name}")
+                        };
+                        if let Err(err) = crate::commands::create::reindex(&out, &paths) {
+                            let hint = crate::commands::create::stale_index_hint(&err);
+                            eprintln!("{hint}");
+                            status = format!("created {name}  ({hint})");
                         }
-                        let _ = crate::commands::create::reindex(&out, &paths);
+                        app.status = status;
                         app.query.clear();
                         app.reload();
                         app.select_named(&name);
