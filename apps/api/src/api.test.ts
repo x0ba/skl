@@ -186,6 +186,49 @@ describe("device auth + sync demo path", () => {
     expect(devices[0]?.id).toBe(deviceId);
     expect(devices[0]?.last_used_at).toBeTruthy();
 
+    const gone = await app.request("/v1/skills/greeter", {
+      method: "DELETE",
+      headers: deviceAuth,
+    });
+    expect(gone.status).toBe(204);
+    const goneAgain = await app.request("/v1/skills/greeter", {
+      method: "DELETE",
+      headers: deviceAuth,
+    });
+    expect(goneAgain.status).toBe(204);
+
+    const missing = await app.request("/v1/skills/greeter", { headers: deviceAuth });
+    expect(missing.status).toBe(404);
+
+    const afterDelete = await app.request("/v1/skills", { headers: deviceAuth });
+    expect(((await json(afterDelete)).skills as unknown[])).toEqual([]);
+
+    const replay = await app.request("/v1/skills/greeter/tree", {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...deviceAuth },
+      body: JSON.stringify({
+        tree_hash: treeHash,
+        files: { "SKILL.md": blobHash },
+      }),
+    });
+    expect(replay.status).toBe(200);
+    expect((await json(replay)).tree_hash).toBe(treeHash);
+    const stillGone = await app.request("/v1/skills/greeter", { headers: deviceAuth });
+    expect(stillGone.status).toBe(404);
+
+    const emptyAfterDelete = await app.request("/v1/sync", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...clerkAuth },
+      body: JSON.stringify({ skills: {} }),
+    });
+    expect((await json(emptyAfterDelete)).missing_skills).toEqual([]);
+
+    const unknown = await app.request("/v1/skills/never-existed", {
+      method: "DELETE",
+      headers: deviceAuth,
+    });
+    expect(unknown.status).toBe(404);
+
     const revoke = await app.request(`/v1/devices/${deviceId}`, {
       method: "DELETE",
       headers: clerkAuth,

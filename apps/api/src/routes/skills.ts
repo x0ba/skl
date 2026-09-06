@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type {
@@ -13,6 +13,7 @@ import type { AuthVariables } from "../lib/auth";
 import { getAuth, requireAuth } from "../lib/auth";
 import { iso, jsonError } from "../lib/http";
 import {
+  deleteSkill,
   listSkillFiles,
   normalizeFileMap,
   parseSkillName,
@@ -60,12 +61,23 @@ skillRoutes.put(
   },
 );
 
+skillRoutes.delete("/skills/:name", async (c) => {
+  try {
+    const auth = getAuth(c);
+    const name = parseSkillName(c.req.param("name"));
+    await deleteSkill(auth, name);
+    return c.body(null, 204);
+  } catch (error) {
+    return handleSkillError(c, error);
+  }
+});
+
 skillRoutes.get("/skills", async (c) => {
   const auth = getAuth(c);
   const rows = await db
     .select()
     .from(skills)
-    .where(eq(skills.userId, auth.userId))
+    .where(and(eq(skills.userId, auth.userId), isNull(skills.deletedAt)))
     .orderBy(desc(skills.updatedAt));
 
   const body: SkillsListResponse = {
@@ -87,7 +99,13 @@ skillRoutes.get("/skills/:name", async (c) => {
     const rows = await db
       .select()
       .from(skills)
-      .where(and(eq(skills.userId, auth.userId), eq(skills.name, name)))
+      .where(
+        and(
+          eq(skills.userId, auth.userId),
+          eq(skills.name, name),
+          isNull(skills.deletedAt),
+        ),
+      )
       .limit(1);
     const skill = rows[0];
     if (!skill || !skill.currentVersionId || !skill.currentTreeHash) {

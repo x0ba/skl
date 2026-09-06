@@ -86,7 +86,9 @@ fn cursor_and_codex_never_appear_as_toggles() {
 
     let candidates = catalog::soft_prompt_candidates(home, &[]);
     assert!(
-        !candidates.iter().any(|id| *id == "cursor" || *id == "codex"),
+        !candidates
+            .iter()
+            .any(|id| *id == "cursor" || *id == "codex"),
         "soft-prompt candidates leaked cursor/codex: {candidates:?}"
     );
 
@@ -121,7 +123,9 @@ fn universal_row_is_locked_only_catalog_customs_toggle() {
     let items = toggle_items(home, &[]);
 
     assert!(
-        items.iter().all(|item| item.id != linker::CANONICAL_TARGET_ID),
+        items
+            .iter()
+            .all(|item| item.id != linker::CANONICAL_TARGET_ID),
         "Universal/agents must not be a toggle: {items:?}"
     );
     for item in &items {
@@ -153,10 +157,7 @@ fn partition_and_sample_customs_from_furnace_catalog() {
 
     let claude_code = catalog::get("claude-code").expect("vendored catalog");
     assert_eq!(claude_code.project_skills_dir, ".claude/skills");
-    assert_eq!(
-        claude_code.global_skills_dir,
-        Some("{home}/.claude/skills")
-    );
+    assert_eq!(claude_code.global_skills_dir, Some("{home}/.claude/skills"));
     assert!(catalog::is_custom_project("claude-code"));
 
     let cont = catalog::get("continue").expect("vendored catalog");
@@ -165,10 +166,7 @@ fn partition_and_sample_customs_from_furnace_catalog() {
 
     let openclaw = catalog::get("openclaw").expect("vendored catalog");
     assert_eq!(openclaw.project_skills_dir, "skills");
-    assert_eq!(
-        openclaw.global_skills_dir,
-        Some("{home}/.openclaw/skills")
-    );
+    assert_eq!(openclaw.global_skills_dir, Some("{home}/.openclaw/skills"));
 }
 
 #[test]
@@ -189,14 +187,13 @@ fn unique_globals_include_fallbacks_and_non_trio() {
 
 #[test]
 fn sticky_claude_migrates_to_claude_code_dropping_cursor_codex() {
-    let (extras, warns) = linker::migrate_extra_ids(&[
-        "claude".into(),
-        "cursor".into(),
-        "codex".into(),
-    ]);
+    let (extras, warns) =
+        linker::migrate_extra_ids(&["claude".into(), "cursor".into(), "codex".into()]);
     assert_eq!(extras, ["claude-code"]);
     assert!(
-        warns.iter().any(|w| w.contains("claude") && w.contains("claude-code")),
+        warns
+            .iter()
+            .any(|w| w.contains("claude") && w.contains("claude-code")),
         "{warns:?}"
     );
     assert!(warns.iter().any(|w| w.contains("cursor")), "{warns:?}");
@@ -272,14 +269,18 @@ fn use_alone_writes_only_agents_claude_code_adds_claude() {
 
     let alone = linker::activate(&project, &home, &skill).unwrap();
     assert_eq!(
-        alone.links.iter().map(|l| l.agent.as_str()).collect::<Vec<_>>(),
+        alone
+            .links
+            .iter()
+            .map(|l| l.agent.as_str())
+            .collect::<Vec<_>>(),
         ["agents"]
     );
     assert!(project.join(".agents/skills/greeter").exists());
     assert!(!project.join(".claude").exists());
 
-    let extra = linker::activate_with_extras(&project, &home, &skill, &["claude-code".into()])
-        .unwrap();
+    let extra =
+        linker::activate_with_extras(&project, &home, &skill, &["claude-code".into()]).unwrap();
     assert_eq!(
         extra
             .links

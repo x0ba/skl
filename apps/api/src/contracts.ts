@@ -14,6 +14,7 @@
  *   PUT    /v1/skills/:name/tree
  *   GET    /v1/skills
  *   GET    /v1/skills/:name
+ *   DELETE /v1/skills/:name
  *   GET    /v1/health
  *
  * Auth: `Authorization: Bearer` Clerk JWT (web) or device token (CLI).

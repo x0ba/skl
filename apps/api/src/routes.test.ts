@@ -15,6 +15,7 @@ const LOCKED = [
   "PUT /v1/skills/:name/tree",
   "GET /v1/skills",
   "GET /v1/skills/:name",
+  "DELETE /v1/skills/:name",
 ];
 
 const ALLOWED_ROOT = new Set(["/", "/*"]);

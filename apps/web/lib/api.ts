@@ -106,6 +106,10 @@ export async function getSkill(
   return apiFetch<SkillDetailResponse>(skillPath(name), token);
 }
 
+export async function deleteSkill(token: string, name: string): Promise<void> {
+  await apiFetch<void>(skillPath(name), token, { method: "DELETE" });
+}
+
 /** Raw UTF-8 of a content-addressed blob. Used to preview SKILL.md. */
 export async function getBlobText(
   token: string,
@@ -146,6 +150,7 @@ export function describeApproveError(error: ApiError): string {
  */
 const ERROR_SENTENCES: Record<string, string> = {
   skill_not_found: "No skill with that name in this account.",
+  skill_unmanaged: "That skill is no longer managed by SKL.",
   device_not_found: "That device no longer exists.",
   missing_authorization: "No credentials were sent with the request.",
   invalid_token: "That bearer token was rejected. It may have been revoked.",

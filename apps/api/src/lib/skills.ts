@@ -78,17 +78,28 @@ export async function putSkillTree(
     });
   }
 
-  const missing = await missingBlobHashes(Object.values(files));
-  if (missing.length > 0) {
-    throw new SkillError("missing_blobs", 400, { hashes: missing });
-  }
-
   const existing = await db
     .select()
     .from(skills)
     .where(and(eq(skills.userId, auth.userId), eq(skills.name, name)))
     .limit(1);
   let skill = existing[0];
+
+  // Tombstone: stay unmanaged. Returning the requested hash lets older CLIs
+  // finish push_trees without recreating the remote skill.
+  if (skill?.deletedAt) {
+    return {
+      name: skill.name,
+      version_id: skill.currentVersionId ?? "",
+      tree_hash: expected,
+      updated_at: skill.updatedAt,
+    };
+  }
+
+  const missing = await missingBlobHashes(Object.values(files));
+  if (missing.length > 0) {
+    throw new SkillError("missing_blobs", 400, { hashes: missing });
+  }
 
   if (skill && skill.currentTreeHash === expected && skill.currentVersionId) {
     return {
@@ -164,6 +175,27 @@ export async function putSkillTree(
     tree_hash: expected,
     updated_at: next.updatedAt,
   };
+}
+
+export async function deleteSkill(auth: AuthContext, name: string) {
+  const existing = await db
+    .select()
+    .from(skills)
+    .where(and(eq(skills.userId, auth.userId), eq(skills.name, name)))
+    .limit(1);
+  const skill = existing[0];
+  if (!skill) {
+    throw new SkillError("skill_not_found", 404);
+  }
+  if (skill.deletedAt) {
+    return;
+  }
+
+  const now = new Date();
+  await db
+    .update(skills)
+    .set({ deletedAt: now, updatedAt: now })
+    .where(eq(skills.id, skill.id));
 }
 
 export async function listSkillFiles(versionId: string) {

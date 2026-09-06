@@ -3,6 +3,7 @@
 //!
 //! Read models are wrapped objects, never bare `string[]`:
 //!   GET /v1/skills  → `{ skills: { name, tree_hash, updated_at }[] }`
+//!   DELETE /v1/skills/:name → `204` (unmanages; files on disk stay)
 //!   GET /v1/devices → `{ devices: { id, name, created_at, last_used_at, revoked_at }[] }`
 //!   GET /v1/health  → `{ ok: true }` exactly
 

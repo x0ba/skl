@@ -19,6 +19,7 @@ Furnace (CLI + device-approve page) should import `apps/api/src/contracts.ts` (o
 | `PUT` | `/v1/skills/:name/tree` | Clerk or device | `{ tree_hash, files }` | `{ name, tree_hash, updated_at }` |
 | `GET` | `/v1/skills` | Clerk or device | — | `{ skills: [{ name, tree_hash, updated_at }] }` |
 | `GET` | `/v1/skills/:name` | Clerk or device | — | `{ name, tree_hash, files, updated_at }` |
+| `DELETE` | `/v1/skills/:name` | Clerk or device | — | `204` (unmanages; local files are not touched) |
 | `GET` | `/v1/health` | public | — | `{ ok: true }` |
 
 Device tokens are long-lived (`expires_in: null`). **No `refresh_token`.** Raw token is returned once; only a SHA-256 hash is stored. Sync is hash-map `POST /v1/sync` only (no cursor/etag).

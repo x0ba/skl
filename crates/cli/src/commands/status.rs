@@ -30,10 +30,7 @@ pub async fn run(api_base: String) -> Result<()> {
     println!("state.db     {}", paths.db_file.display());
 
     let cfg = config::load(&paths).unwrap_or_default();
-    println!(
-        "auto_sync    {}",
-        if cfg.sync.auto { "on" } else { "off" }
-    );
+    println!("auto_sync    {}", if cfg.sync.auto { "on" } else { "off" });
     println!("sync_frequency {}s", cfg.sync.frequency_secs);
 
     let auto = maybe_run(&api_base, &paths, "status").await;

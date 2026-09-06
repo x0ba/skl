@@ -114,12 +114,11 @@ impl ApiClient {
                 Ok(DeviceTokenPoll::Success(success))
             }
             StatusCode::BAD_REQUEST => {
-                let body: DeviceTokenErrorBody = serde_json::from_slice(&bytes).map_err(|_| {
-                    SklError::Api {
+                let body: DeviceTokenErrorBody =
+                    serde_json::from_slice(&bytes).map_err(|_| SklError::Api {
                         status: 400,
                         body: String::from_utf8_lossy(&bytes).into_owned(),
-                    }
-                })?;
+                    })?;
                 Ok(match body.error {
                     DeviceTokenErrorKind::AuthorizationPending => DeviceTokenPoll::Pending,
                     DeviceTokenErrorKind::SlowDown => DeviceTokenPoll::SlowDown,
@@ -183,8 +182,8 @@ impl ApiClient {
 
     /// PUT /v1/blobs/:hash as `{ content_base64 }` (alternate contract body).
     pub async fn put_blob_json(&self, hash: &str, bytes: &[u8]) -> Result<PutBlobResponse> {
-        use base64::Engine;
         use super::types::PutBlobJsonRequest;
+        use base64::Engine;
         let path = format!("/v1/blobs/{hash}");
         let body = PutBlobJsonRequest {
             content_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
@@ -251,6 +250,24 @@ impl ApiClient {
             .await
     }
 
+    pub async fn delete_skill(&self, name: &str) -> Result<()> {
+        let path = format!("/v1/skills/{}", encode_path_segment(name));
+        let response = self
+            .apply_auth(self.http.delete(self.url(&path)))
+            .send()
+            .await
+            .map_err(|err| SklError::ApiUnreachable {
+                url: self.url(&path),
+                source: err.to_string(),
+            })?;
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            return Err(SklError::Api { status, body });
+        }
+        Ok(())
+    }
+
     pub async fn list_devices(&self) -> Result<DevicesListResponse> {
         self.send_json::<(), _>(Method::GET, "/v1/devices", None, true)
             .await
@@ -296,7 +313,7 @@ fn encode_path_segment(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::types::{DEVICE_GRANT_TYPE, DeviceCodeResponse};
+    use crate::api::types::{DeviceCodeResponse, DEVICE_GRANT_TYPE};
     use serde_json::json;
     use wiremock::matchers::{body_json, header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -308,17 +325,19 @@ mod tests {
         Mock::given(method("POST"))
             .and(path("/v1/auth/device/code"))
             .and(body_json(json!({ "client_name": "skl@testhost" })))
-            .respond_with(ResponseTemplate::new(200).set_body_json(DeviceCodeResponse {
-                device_code: "dc-1".into(),
-                user_code: "ABCD-1234".into(),
-                verification_uri: format!("{}/device", server.uri()),
-                verification_uri_complete: format!(
-                    "{}/device?user_code=ABCD-1234",
-                    server.uri()
-                ),
-                expires_in: 600,
-                interval: 1,
-            }))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(DeviceCodeResponse {
+                    device_code: "dc-1".into(),
+                    user_code: "ABCD-1234".into(),
+                    verification_uri: format!("{}/device", server.uri()),
+                    verification_uri_complete: format!(
+                        "{}/device?user_code=ABCD-1234",
+                        server.uri()
+                    ),
+                    expires_in: 600,
+                    interval: 1,
+                }),
+            )
             .mount(&server)
             .await;
 
@@ -412,7 +431,9 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = ApiClient::new(server.uri()).unwrap().with_token("dev:alice");
+        let client = ApiClient::new(server.uri())
+            .unwrap()
+            .with_token("dev:alice");
         let put = client.put_blob("aabb", b"hello".to_vec()).await.unwrap();
         assert_eq!(put.hash, "aabb");
         assert_eq!(put.size, 5);
@@ -433,7 +454,9 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = ApiClient::new(server.uri()).unwrap().with_token("dev:alice");
+        let client = ApiClient::new(server.uri())
+            .unwrap()
+            .with_token("dev:alice");
         let put = client.put_blob_json("ccdd", b"hello").await.unwrap();
         assert_eq!(put.hash, "ccdd");
         assert_eq!(put.size, 5);
@@ -456,7 +479,9 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = ApiClient::new(server.uri()).unwrap().with_token("dev:alice");
+        let client = ApiClient::new(server.uri())
+            .unwrap()
+            .with_token("dev:alice");
         let list = client.list_devices().await.unwrap();
         assert_eq!(list.devices[0].id, "d1");
         assert_eq!(list.devices[0].last_used_at, None);
@@ -496,8 +521,26 @@ mod tests {
             .mount(&server)
             .await;
 
-        let client = ApiClient::new(server.uri()).unwrap().with_token("dev:alice");
+        let client = ApiClient::new(server.uri())
+            .unwrap()
+            .with_token("dev:alice");
         let list = client.list_skills().await.unwrap();
         assert_eq!(list.skills[0].name, "greeter");
+    }
+
+    #[tokio::test]
+    async fn delete_skill_is_204() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/v1/skills/greeter"))
+            .and(header("authorization", "Bearer dev:alice"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let client = ApiClient::new(server.uri())
+            .unwrap()
+            .with_token("dev:alice");
+        client.delete_skill("greeter").await.unwrap();
     }
 }

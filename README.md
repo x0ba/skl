@@ -82,6 +82,7 @@ Non-TTY, `SKL_NO_TUI=1`, or `--no-tui` prints help and never enters raw mode (sa
 | `[` `]` or Ctrl-j / Ctrl-k | scroll preview |
 | `e` | edit `SKILL.md` (`$VISUAL` or `$EDITOR`) |
 | `u` / `U` | use / unuse in **cwd** (same as `skl use` / `skl unuse`) |
+| `d` | delete from SKL (files on disk kept; same as `skl delete`) |
 | `s` | sync (blocking; same as `skl sync`) |
 | `r` | refresh from local library |
 | `?` | help |
@@ -207,6 +208,16 @@ cargo run -p skl -- use greeter --project /path/to/proj
 ```
 
 `skl use` refuses to overwrite a real directory it did not create. `skl unuse` removes symlinks and copy-mode dirs it created. Conflict/scrub hooks live in `crates/cli/src/hooks/` (`skl sync --keep-local` / `--keep-remote`).
+
+### delete
+
+Stop managing a skill in SKL (`DELETE /v1/skills/:name`). The skill stays on disk — library copies, project dests, and `skills.toml` are not touched. Later `skl sync` will not recreate it on the account.
+
+```bash
+cargo run -p skl -- delete greeter
+```
+
+Same action from the TUI (`d` then `y`) or the web skill page (**Remove from SKL**).
 
 ### capture
 

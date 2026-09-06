@@ -1,4 +1,5 @@
 pub mod capture;
+pub mod delete;
 pub mod doctor;
 pub mod init;
 pub mod list;

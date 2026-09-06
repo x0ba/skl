@@ -1,5 +1,5 @@
 import { zValidator } from "@hono/zod-validator";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { ClientSkillState, SyncConflict, SyncDownloadBlob, SyncResponse } from "../contracts";
@@ -60,7 +60,7 @@ syncRoutes.post("/sync", requireAuth, zValidator("json", syncBody), async (c) =>
     const serverRows = await db
       .select()
       .from(skills)
-      .where(eq(skills.userId, auth.userId));
+      .where(and(eq(skills.userId, auth.userId), isNull(skills.deletedAt)));
 
     const serverByName = new Map(
       serverRows

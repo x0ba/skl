@@ -157,11 +157,15 @@ pub fn capture(input: &Path, opts: &CaptureOpts, paths: &Paths) -> Result<Captur
     }
 
     index_library(&name, &library_path, paths)?;
-    record_portable_manifest(&project, &name, if opts.keep_copy {
-        linker::COPY_MODE
-    } else {
-        linker::LINK_MODE
-    })?;
+    record_portable_manifest(
+        &project,
+        &name,
+        if opts.keep_copy {
+            linker::COPY_MODE
+        } else {
+            linker::LINK_MODE
+        },
+    )?;
 
     let action = if opts.keep_copy {
         CaptureAction::KeepCopy

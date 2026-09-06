@@ -27,10 +27,11 @@ Ctrl-j / Ctrl-k  scroll preview
 e              edit SKILL.md ($VISUAL or $EDITOR)
 u              use in this project (same as `skl use <name>`)
 U              unuse in this project (same as `skl unuse <name>`)
+d              delete from SKL (files on disk kept; same as `skl delete <name>`)
 s              sync (blocking; same as `skl sync`)
 r              refresh from local library / state.db
 ?              this help
-q or Esc       quit (Esc also leaves search / help)
+q or Esc       quit (Esc also leaves search / help / delete confirm)
 
 Browse works offline. Sync needs login + API.
 ";
@@ -40,6 +41,7 @@ pub enum Overlay {
     None,
     Help,
     Search,
+    ConfirmDelete,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +88,8 @@ pub enum Tick {
     /// Leave TUI, run an external action, then reload.
     SuspendSync,
     SuspendEdit,
+    /// DELETE /v1/skills/:name — files on disk stay.
+    DeleteRemote,
 }
 
 pub async fn run(api_base: String) -> Result<()> {
@@ -137,6 +141,19 @@ pub async fn run(api_base: String) -> Result<()> {
                 }
                 term.resume()?;
                 app.reload();
+            }
+            Tick::DeleteRemote => {
+                let Some(name) = app.selected_row().map(|r| r.name.clone()) else {
+                    app.status = "no skill selected".into();
+                    continue;
+                };
+                match crate::commands::delete::run(std::slice::from_ref(&name), &api_base).await {
+                    Ok(()) => {
+                        app.status = format!("unmanaged {name} (files kept)");
+                        app.reload();
+                    }
+                    Err(err) => app.status = format!("delete: {err}"),
+                }
             }
             Tick::SuspendEdit => {
                 let Some(path) = app.selected_skill_md_path() else {
@@ -266,6 +283,10 @@ impl App {
             return Tick::Continue;
         }
 
+        if self.overlay == Overlay::ConfirmDelete {
+            return self.handle_delete_confirm_key(key);
+        }
+
         if self.overlay == Overlay::Search {
             return self.handle_search_key(key);
         }
@@ -318,7 +339,31 @@ impl App {
                 self.deactivate_selected();
                 Tick::Continue
             }
+            (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                if self.selected_row().is_none() {
+                    self.status = "no skill selected".into();
+                } else {
+                    self.overlay = Overlay::ConfirmDelete;
+                    self.status.clear();
+                }
+                Tick::Continue
+            }
             (KeyCode::Char('s'), _) => Tick::SuspendSync,
+            _ => Tick::Continue,
+        }
+    }
+
+    fn handle_delete_confirm_key(&mut self, key: KeyEvent) -> Tick {
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                self.overlay = Overlay::None;
+                Tick::DeleteRemote
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('q') | KeyCode::Esc => {
+                self.overlay = Overlay::None;
+                self.status = "delete cancelled".into();
+                Tick::Continue
+            }
             _ => Tick::Continue,
         }
     }
@@ -435,7 +480,7 @@ pub fn format_header(catalog: &Catalog, now: i64) -> String {
     let n = catalog.skills.len();
     let age = format_sync_age(catalog.last_sync_at, now);
     format!(
-        "skl  {n} skill{}  last sync {age}  {}",
+        "library: {n} skill{}  ·  last sync: {age}  ·  project: {}",
         if n == 1 { "" } else { "s" },
         catalog.project_label
     )
@@ -780,12 +825,26 @@ mod tests {
     }
 
     #[test]
+    fn d_confirms_then_deletes() {
+        let mut app = app_with(sample_catalog());
+        assert_eq!(app.handle_key(key(KeyCode::Char('d'))), Tick::Continue);
+        assert_eq!(app.overlay, Overlay::ConfirmDelete);
+        assert_eq!(app.handle_key(key(KeyCode::Char('n'))), Tick::Continue);
+        assert_eq!(app.overlay, Overlay::None);
+        assert!(app.status.contains("cancelled"), "{}", app.status);
+
+        app.handle_key(key(KeyCode::Char('d')));
+        assert_eq!(app.handle_key(key(KeyCode::Char('y'))), Tick::DeleteRemote);
+        assert_eq!(app.overlay, Overlay::None);
+    }
+
+    #[test]
     fn header_shows_count_age_and_project() {
         let cat = sample_catalog();
         let line = format_header(&cat, 1_700_003_600);
-        assert!(line.contains("3 skills"), "{line}");
-        assert!(line.contains("last sync"), "{line}");
-        assert!(line.contains("proj"), "{line}");
+        assert!(line.contains("library: 3 skills"), "{line}");
+        assert!(line.contains("last sync:"), "{line}");
+        assert!(line.contains("project: proj"), "{line}");
         assert!(line.contains("ago") || line.contains("just now"), "{line}");
     }
 

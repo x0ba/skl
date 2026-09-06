@@ -30,11 +30,7 @@ use crate::hooks::conflict::ConflictMode;
 use crate::tui::{decide_launch, LaunchDecision, LaunchInput};
 
 #[derive(Debug, Parser)]
-#[command(
-    name = "skl",
-    about = "Personal agent skill sync",
-    version
-)]
+#[command(name = "skl", about = "Personal agent skill sync", version)]
 struct Cli {
     /// API origin (no trailing slash). Overrides config. Env: API_BASE.
     #[arg(long, env = "API_BASE", global = true)]
@@ -120,6 +116,11 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },
+    /// Stop managing a skill in SKL. Files on disk are left alone.
+    Delete {
+        #[arg(value_name = "SKILL", required = true)]
+        skills: Vec<String>,
+    },
     /// Remove project skill symlinks and drop them from skills.toml.
     Unuse {
         #[arg(value_name = "SKILL", required = true)]
@@ -188,7 +189,10 @@ async fn run() -> Result<(), SklError> {
         return dispatch_tui(cli.no_tui, api_base).await;
     }
 
-    match cli.command.expect("subcommand required when not launching TUI") {
+    match cli
+        .command
+        .expect("subcommand required when not launching TUI")
+    {
         Command::Login { dev_user } => commands::login::run(api_base, dev_user).await,
         Command::Setup { non_interactive } => commands::setup::run(api_base, non_interactive).await,
         Command::Init => commands::init::run(api_base).await,
@@ -251,6 +255,7 @@ async fn run() -> Result<(), SklError> {
             )
             .await
         }
+        Command::Delete { skills } => commands::delete::run(&skills, &api_base).await,
         Command::Unuse { skills, project } => {
             commands::unuse::run(&skills, project, &api_base).await
         }
@@ -317,8 +322,16 @@ mod cli_parse_tests {
             Some(Command::Sync { .. })
         ));
         assert!(matches!(
-            Cli::try_parse_from(["skl", "use", "greeter"]).unwrap().command,
+            Cli::try_parse_from(["skl", "use", "greeter"])
+                .unwrap()
+                .command,
             Some(Command::Use { .. })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "delete", "greeter"])
+                .unwrap()
+                .command,
+            Some(Command::Delete { .. })
         ));
     }
 }

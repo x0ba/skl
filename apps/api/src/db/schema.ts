@@ -104,6 +104,7 @@ export const skills = pgTable("skills", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   currentVersionId: uuid("current_version_id"),
   currentTreeHash: text("current_tree_hash"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

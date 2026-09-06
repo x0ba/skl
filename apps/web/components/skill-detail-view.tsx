@@ -1,14 +1,17 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/auth-gate";
-import { ActionButton, ActionLink } from "@/components/ui/action-link";
+import { useSession } from "@/components/providers";
+import { ActionButton, ActionLink, DangerButton } from "@/components/ui/action-link";
 import { Banner } from "@/components/ui/banner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Meta } from "@/components/ui/field";
 import { Lane, LaneEnd, LaneHead, LaneRow } from "@/components/ui/lane";
 import { PageHeader } from "@/components/ui/page-header";
 import { Label } from "@/components/ui/text";
-import { getBlobText, getSkill } from "@/lib/api";
+import { deleteSkill, describeApiError, getBlobText, getSkill } from "@/lib/api";
 import type { SkillDetailResponse } from "@/lib/contracts";
 import { exactTime, pluralize, relativeTime, shortHash, splitPath } from "@/lib/format";
 import { useResource } from "@/lib/use-resource";
@@ -21,6 +24,11 @@ type SkillDetail = SkillDetailResponse & {
 };
 
 export function SkillDetailView({ name }: { name: string }) {
+  const router = useRouter();
+  const session = useSession();
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const fetcher = useCallback(async (token: string): Promise<SkillDetail> => {
     const skill = await getSkill(token, name);
     const hash = skill.files[SKILL_FILE];
@@ -32,6 +40,24 @@ export function SkillDetailView({ name }: { name: string }) {
   }, [name]);
   const { data, error, loading, refreshing, unauthenticated, refresh } =
     useResource(fetcher);
+
+  async function onDelete() {
+    setDeleteError(null);
+    const token = await session.getAccessToken();
+    if (!token) {
+      setDeleteError("No credentials. Sign in or set a bearer token first.");
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteSkill(token, name);
+      router.push("/skills");
+    } catch (caught) {
+      setDeleteError(describeApiError(caught));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   // Root files before nested ones, so SKILL.md — the entry point an agent
   // actually reads — leads instead of collating under `references/`.
@@ -54,6 +80,20 @@ export function SkillDetailView({ name }: { name: string }) {
             <ActionButton onClick={refresh} disabled={refreshing}>
               {refreshing ? "Refreshing…" : "Refresh"}
             </ActionButton>
+            {data ? (
+              <ConfirmDialog
+                trigger={
+                  <DangerButton disabled={deleting}>
+                    {deleting ? "Removing…" : "Remove from SKL"}
+                  </DangerButton>
+                }
+                title={`Stop managing ${name}?`}
+                description="SKL will no longer sync this skill. Copies already on your machines stay on disk."
+                confirmLabel="Remove from SKL"
+                pending={deleting}
+                onConfirm={() => void onDelete()}
+              />
+            ) : null}
           </div>
         }
       />
@@ -61,6 +101,12 @@ export function SkillDetailView({ name }: { name: string }) {
       {error ? (
         <Banner tone="danger" title="Could not load this skill" className="mb-8">
           {error}
+        </Banner>
+      ) : null}
+
+      {deleteError ? (
+        <Banner tone="danger" title="Could not remove this skill" className="mb-8">
+          {deleteError}
         </Banner>
       ) : null}
 

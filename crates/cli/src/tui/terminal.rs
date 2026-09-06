@@ -54,9 +54,8 @@ impl TuiTerminal {
 
     /// Re-enter after [`Self::suspend`].
     pub fn resume(&mut self) -> Result<()> {
-        enable_raw_mode().map_err(|err| {
-            SklError::LocalState(format!("cannot re-enable raw mode ({err})"))
-        })?;
+        enable_raw_mode()
+            .map_err(|err| SklError::LocalState(format!("cannot re-enable raw mode ({err})")))?;
         execute!(self.terminal.backend_mut(), EnterAlternateScreen)?;
         self.terminal.clear()?;
         self.restored = false;

@@ -36,11 +36,8 @@ fn draw_header(frame: &mut Frame<'_>, area: Rect, app: &App) {
         .as_deref()
         .map(|e| format!("  ! {e}"))
         .unwrap_or_default();
-    let para = Paragraph::new(format!("{title}{err}")).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(" skl "),
-    );
+    let para = Paragraph::new(format!("{title}{err}"))
+        .block(Block::default().borders(Borders::ALL).title(" skl "));
     frame.render_widget(para, area);
 }
 
@@ -116,10 +113,19 @@ fn draw_preview(frame: &mut Frame<'_>, area: Rect, app: &App) {
 }
 
 fn draw_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let keys = if app.overlay == Overlay::Search {
-        "type to filter  ↑↓ list  Enter done  Esc clear"
-    } else {
-        "/ search  ↑↓/jk list  [] preview  e edit  u/U  s sync  r ? q"
+    let keys = match app.overlay {
+        Overlay::Search => "type to filter  ↑↓ move  Enter done  Esc clear".to_string(),
+        Overlay::ConfirmDelete => {
+            let name = app
+                .selected_row()
+                .map(|row| row.name.as_str())
+                .unwrap_or("skill");
+            format!("unmanage {name}? files stay on disk   y confirm  n/Esc cancel")
+        }
+        Overlay::None | Overlay::Help => {
+            "/ search  ↑↓/jk move  [] scroll  e edit  u/U use  d delete  s sync  r refresh  ? help  q quit"
+                .to_string()
+        }
     };
     let status = if app.status.is_empty() {
         keys.to_string()
