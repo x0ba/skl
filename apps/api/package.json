@@ -1,6 +1,7 @@
 {
   "name": "@skl/api",
   "type": "module",
+  "packageManager": "pnpm@11.22.0",
   "exports": {
     ".": "./src/index.ts",
     "./contracts": "./src/contracts.ts"
@@ -19,12 +20,12 @@
     "drizzle-orm": "^0.45.1",
     "hono": "^4.13.5",
     "postgres": "^3.4.8",
+    "tsx": "^4.23.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
     "drizzle-kit": "^0.31.8",
-    "tsx": "^4.23.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   }
