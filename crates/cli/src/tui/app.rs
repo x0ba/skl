@@ -189,18 +189,17 @@ pub async fn run(api_base: String) -> Result<()> {
                 term.suspend()?;
                 match crate::commands::create::create_library_skill(&name, &paths) {
                     Ok(out) => {
-                        let mut status = if let Err(err) = crate::editor::open(&out.skill_md) {
+                        app.status = if let Err(err) = crate::editor::open(&out.skill_md) {
+                            // Starter is already indexed; do not reindex or overwrite this warning.
                             eprintln!("edit: {err}");
                             format!("created {name}  (edit: {err})")
+                        } else if let Err(err) = crate::commands::create::reindex(&out, &paths) {
+                            let hint = crate::commands::create::stale_index_hint(&err);
+                            eprintln!("{hint}");
+                            format!("created {name}  ({hint})")
                         } else {
                             format!("created {name}")
                         };
-                        if let Err(err) = crate::commands::create::reindex(&out, &paths) {
-                            let hint = crate::commands::create::stale_index_hint(&err);
-                            eprintln!("{hint}");
-                            status = format!("created {name}  ({hint})");
-                        }
-                        app.status = status;
                         app.query.clear();
                         app.reload();
                         app.select_named(&name);
