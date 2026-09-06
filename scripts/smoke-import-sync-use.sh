@@ -3,9 +3,9 @@
 #   import (skl init) → sync → skl use
 #
 # Same Clerk-dev user, two HOMEs (two devices). A clash is per-user, not
-# cross-user — use the same SKL_TOKEN (or SKL_TOKEN_A/B both set to the
-# same ALLOW_DEV_AUTH id). Distinct tokens are different users and will
-# not share skills.
+# cross-user — login the same ALLOW_DEV_AUTH id into each machine's local
+# store (or set SKL_TOKEN / SKL_TOKEN_A/B). Distinct ids are different
+# users and will not share skills.
 #
 # Clash / keep-local / scrub coverage stays in scripts/smoke-clash.sh
 # (conflict/scrub PR). This harness does not rewrite furnace sync/use.
@@ -59,11 +59,11 @@ seed_skill() {
 }
 
 run_a() {
-  SKL_TOKEN="$TOKEN_A" skl_run "$MACHINE_A" "$@"
+  SKL_TOKEN="$TOKEN_A" skl_run_store "$MACHINE_A" "$@"
 }
 
 run_b() {
-  SKL_TOKEN="$TOKEN_B" skl_run "$MACHINE_B" "$@"
+  SKL_TOKEN="$TOKEN_B" skl_run_store "$MACHINE_B" "$@"
 }
 
 skl_start_api
@@ -76,6 +76,8 @@ mkdir -p "$MACHINE_B/.agents/skills"
 # Explicit `skl sync` harness — do not let furnace maybe_run steal the first PUT.
 skl_write_sync_prefs "$MACHINE_A" false 900
 skl_write_sync_prefs "$MACHINE_B" false 900
+skl_login_store "$MACHINE_A" "$TOKEN_A" >/dev/null
+skl_login_store "$MACHINE_B" "$TOKEN_B" >/dev/null
 seed_skill "$MACHINE_A" "$SKILL_NAME" "$SKILL_BODY"
 
 echo "==> machine A: import (skl init)"

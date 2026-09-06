@@ -40,10 +40,17 @@ fn login_dev_user_persists_without_keyring() {
         stderr.contains("store") && !stderr.to_lowercase().contains("keyring"),
         "{stderr}"
     );
-    assert!(
-        home.join(".local/share/skl/state.db").exists(),
-        "login must create state.db"
-    );
+    let db = home.join(".local/share/skl/state.db");
+    let data_dir = home.join(".local/share/skl");
+    assert!(db.exists(), "login must create state.db");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let dir_mode = std::fs::metadata(&data_dir).unwrap().permissions().mode() & 0o777;
+        let file_mode = std::fs::metadata(&db).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir_mode, 0o700, "data dir must be 0700");
+        assert_eq!(file_mode, 0o600, "state.db must be 0600");
+    }
     let status = run_skl(home, &["status"]);
     assert!(status.status.success());
     let stdout = String::from_utf8_lossy(&status.stdout);

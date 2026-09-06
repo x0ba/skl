@@ -27,6 +27,7 @@ on:
       - "scripts/smoke-capture.sh"
       - "scripts/smoke-portable-use-all.sh"
       - "scripts/smoke-tui.sh"
+      - "scripts/smoke-local-token.sh"
       - "scripts/tui-pty.py"
       - "apps/api/**"
       - "docker-compose.yml"
@@ -49,6 +50,7 @@ on:
       - "scripts/smoke-capture.sh"
       - "scripts/smoke-portable-use-all.sh"
       - "scripts/smoke-tui.sh"
+      - "scripts/smoke-local-token.sh"
       - "scripts/tui-pty.py"
       - "apps/api/**"
       - "docker-compose.yml"
@@ -110,7 +112,7 @@ jobs:
             dist/SHA256SUMS
 
   smoke-import-sync-use:
-    name: import → sync → use + clash + auto-sync + capture + portable use --all + tui
+    name: import → sync → use + clash + auto-sync + capture + portable use --all + tui + local token
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -141,8 +143,8 @@ jobs:
           ALLOW_DEV_AUTH: "true"
           START_API: "1"
           SKIP_DOCKER: "1"
-          # Each script sets its own SKL_TOKEN (overrides the local state.db
-          # store). Login no longer needs gnome-keyring / DBus.
+          # Dual-HOME scripts login into the local state.db store (no DBus /
+          # gnome-keyring). SKL_SMOKE_TOKEN_ENV=1 still forces SKL_TOKEN.
         run: |
           ./scripts/smoke-import-sync-use.sh
           ./scripts/smoke-clash.sh
@@ -150,6 +152,7 @@ jobs:
           ./scripts/smoke-capture.sh
           ./scripts/smoke-portable-use-all.sh
           ./scripts/smoke-tui.sh
+          ./scripts/smoke-local-token.sh
 
   smoke-install:
     name: curl install.sh (no rust)

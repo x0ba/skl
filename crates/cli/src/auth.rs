@@ -361,6 +361,50 @@ mod tests {
         assert_eq!(load_device_token().unwrap(), "dev:from-keyring");
     }
 
+    struct KeyringCleanup;
+
+    impl Drop for KeyringCleanup {
+        fn drop(&mut self) {
+            if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT) {
+                let _ = entry.delete_credential();
+            }
+        }
+    }
+
+    fn plant_native_keyring(token: &str) -> bool {
+        let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT) else {
+            return false;
+        };
+        entry.set_password(token).is_ok()
+    }
+
+    #[test]
+    fn migrate_once_reads_native_keyring_when_local_empty() {
+        let _env = EnvGuard::isolated();
+        let _cleanup = KeyringCleanup;
+        if !plant_native_keyring("dev:from-keyring-native") {
+            eprintln!("skip: native keyring backend unavailable (no DBus required)");
+            return;
+        }
+        assert_eq!(load_device_token().unwrap(), "dev:from-keyring-native");
+        assert_eq!(token_source(), TokenSource::Local);
+        let paths = Paths::resolve().unwrap();
+        let db = LocalDb::open(&paths.db_file).unwrap();
+        assert_eq!(
+            db.get_meta(META_DEVICE_TOKEN).unwrap().as_deref(),
+            Some("dev:from-keyring-native")
+        );
+        assert!(
+            plant_native_keyring("dev:from-keyring-other"),
+            "second plant should still succeed"
+        );
+        assert_eq!(load_device_token().unwrap(), "dev:from-keyring-native");
+        assert_eq!(
+            db.get_meta(META_DEVICE_TOKEN).unwrap().as_deref(),
+            Some("dev:from-keyring-native")
+        );
+    }
+
     #[test]
     fn store_empty_token_fails() {
         let _env = EnvGuard::isolated();
