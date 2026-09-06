@@ -105,7 +105,7 @@ skl setup --non-interactive
 
 ### login
 
-After `skl login`, the device `access_token` is stored in local `state.db` (`meta.device_token` under `~/.local/share/skl` / `SKL_DATA_DIR`; file mode `0600`). The OS keyring is not required. A leftover keyring entry is migrated once into the local store if the store is empty, then left unused. Export `SKL_TOKEN=<access_token>` or `SKL_TOKEN_FILE` to override the local store (tests / CI), or use `skl login --dev-user <id>` / `Bearer dev:<id>` when `ALLOW_DEV_AUTH` is on. `skl logout` clears the local token. `skl doctor` reports the store path + `SKL_TOKEN` / `SKL_TOKEN_FILE` presence.
+After `skl login`, the device `access_token` is stored in local `state.db` (`meta.device_token` under `~/.local/share/skl` / `SKL_DATA_DIR`; file mode `0600`). The OS keyring is not required. A leftover native keyring entry (macOS Keychain, Windows Credential Manager, Linux keyutils) is migrated once into the local store if the store is empty, then left unused. Leftover GNOME/KDE Secret Service entries are not read unless the binary was built with `--features legacy-secret-service` — otherwise run `skl login` again. Export `SKL_TOKEN=<access_token>` or `SKL_TOKEN_FILE` to override the local store (tests / CI), or use `skl login --dev-user <id>` / `Bearer dev:<id>` when `ALLOW_DEV_AUTH` is on. `skl logout` clears the local token. `skl doctor` reports the store path + `SKL_TOKEN` / `SKL_TOKEN_FILE` presence.
 
 ### auto-sync
 

@@ -83,15 +83,13 @@ fn try_keyring_password() -> Option<String> {
 /// Returns the adopted token. Does not overwrite an existing local token.
 /// Keyring is left in place (stale leftover is unused).
 fn migrate_keyring_once() -> Result<Option<String>> {
-    if load_local_token()?.is_some() {
-        return Ok(None);
-    }
     let Some(token) = try_keyring_password() else {
         return Ok(None);
     };
-    let db = open_store()?;
-    db.set_meta(META_DEVICE_TOKEN, &token)?;
-    Ok(Some(token))
+    if adopt_legacy_token_if_empty(&token)? {
+        return Ok(Some(token));
+    }
+    Ok(None)
 }
 
 /// Persist `token` into `state.db` when the local store is empty.
