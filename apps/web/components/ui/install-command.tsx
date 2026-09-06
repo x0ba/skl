@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react";
 import { CopyCommand } from "@/components/ui/copy-command";
 
 function installCommand(origin: string): string {
-  return `curl -fsSL ${origin}/install.sh | bash`;
+  return `curl -fsSL ${origin}/install.sh | sh`;
 }
 
 /**

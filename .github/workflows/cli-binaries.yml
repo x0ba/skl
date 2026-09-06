@@ -76,7 +76,7 @@ jobs:
         with:
           tool: cargo-zigbuild
       - name: Check install.sh
-        run: bash -n apps/web/public/install.sh && ./scripts/install.sh --print-target
+        run: sh -n apps/web/public/install.sh && ./scripts/install.sh --print-target
       - name: Cross-compile portable binaries
         run: TARGETS=x86_64-unknown-linux-musl,aarch64-unknown-linux-musl,x86_64-pc-windows-gnu ./scripts/cross-compile.sh
       - name: Smoke the musl binary

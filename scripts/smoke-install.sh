@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Install smoke for `apps/web/public/install.sh`.
 #
-# Clean env: after a binary exists, the curl | bash path never calls cargo/rustc.
+# Clean env: after a binary exists, the curl | sh path never calls cargo/rustc.
 #
 #   1. fake GitHub Release over HTTP (skl-<triple> + SHA256SUMS + install.sh)
-#   2. curl install.sh | bash -s -- --non-interactive  → ~/.local/bin/skl
+#   2. curl install.sh | sh -s -- --non-interactive  → ~/.local/bin/skl
 #   3. skl --help
 #   4. SKL_NON_INTERACTIVE=1 and non-TTY (no flags) also skip first-run
 #   5. skl setup --non-interactive skips login / init / checklist
@@ -71,7 +71,7 @@ plant_rc() {
   printf 'keep-fish\n' >"$home/.config/fish/config.fish"
 }
 
-# PATH with curl/bash/coreutils but no rustc/cargo — the install path is curl-only.
+# PATH with curl/sh/coreutils but no rustc/cargo — the install path is curl-only.
 clean_path() {
   local dir rustc_path cargo_path
   rustc_path="$(command -v rustc 2>/dev/null || true)"
@@ -104,7 +104,7 @@ resolve_bin() {
     return
   fi
   local target candidate
-  target="$(bash "$ROOT/scripts/install.sh" --print-target)"
+  target="$(sh "$ROOT/scripts/install.sh" --print-target)"
   for candidate in \
     "$ROOT/dist/skl-${target}" \
     "$ROOT/dist/skl" \
@@ -158,20 +158,20 @@ run_install() {
   shift
   local log="$1"
   shift
-  # Remaining args are extra env assignments (KEY=VAL) then optional bash -s args.
+  # Remaining args are extra env assignments (KEY=VAL) then optional sh -s args.
   local -a env_vars=(
     "HOME=$home"
     "SKL_DOWNLOAD_BASE=$RELEASE_URL"
     "PATH=$CLEAN_PATH"
     "TERM=dumb"
   )
-  local -a bash_args=()
+  local -a sh_args=()
   local item
   for item in "$@"; do
     if [[ "$item" == *"="* && "$item" != --* ]]; then
       env_vars+=("$item")
     else
-      bash_args+=("$item")
+      sh_args+=("$item")
     fi
   done
 
@@ -179,21 +179,21 @@ run_install() {
   mkdir -p "$home" "$WORKDIR/tmp"
   env_vars+=("TMPDIR=$WORKDIR/tmp")
 
-  # Hero path: curl install.sh | bash. PATH has no rustc/cargo.
-  local bash_bin
-  bash_bin="$(command -v bash)"
+  # Hero path: curl install.sh | sh. PATH has no rustc/cargo.
+  local sh_bin
+  sh_bin="$(command -v sh)"
   set +e
-  if [[ ${#bash_args[@]} -gt 0 ]]; then
-    curl -fsSL "${RELEASE_URL}/install.sh" | env -i "${env_vars[@]}" "$bash_bin" -s -- "${bash_args[@]}" >"$log" 2>&1
+  if [[ ${#sh_args[@]} -gt 0 ]]; then
+    curl -fsSL "${RELEASE_URL}/install.sh" | env -i "${env_vars[@]}" "$sh_bin" -s -- "${sh_args[@]}" >"$log" 2>&1
   else
-    curl -fsSL "${RELEASE_URL}/install.sh" | env -i "${env_vars[@]}" "$bash_bin" >"$log" 2>&1
+    curl -fsSL "${RELEASE_URL}/install.sh" | env -i "${env_vars[@]}" "$sh_bin" >"$log" 2>&1
   fi
   INSTALL_RC=$?
   set -e
 }
 
 echo "==> print-target"
-TARGET="$(bash "$ROOT/scripts/install.sh" --print-target)"
+TARGET="$(sh "$ROOT/scripts/install.sh" --print-target)"
 case "$TARGET" in
   aarch64-apple-darwin | x86_64-apple-darwin | \
   x86_64-unknown-linux-musl | aarch64-unknown-linux-musl | \
@@ -220,6 +220,10 @@ PATH="$CLEAN_PATH" command -v curl >/dev/null || {
   echo "curl missing from clean PATH" >&2
   exit 1
 }
+PATH="$CLEAN_PATH" command -v sh >/dev/null || {
+  echo "sh missing from clean PATH" >&2
+  exit 1
+}
 echo "    clean PATH (no rustc/cargo)"
 
 mkdir -p "$WORKDIR/release"
@@ -243,7 +247,7 @@ start_release_server "$WORKDIR/release"
 echo "==> fake release $RELEASE_URL"
 
 # --- 1. --non-interactive (hero CI path) ----------------------------------
-echo "==> curl install.sh | bash -s -- --non-interactive"
+echo "==> curl install.sh | sh -s -- --non-interactive"
 HOME_A="$WORKDIR/home-a"
 LOG_A="$WORKDIR/install-a.log"
 run_install "$HOME_A" "$LOG_A" --non-interactive
@@ -281,7 +285,7 @@ skl_assert_contains "$SETUP" "Skipping first-run prompts"
 assert_no_prompt "$SETUP" "skl setup --non-interactive"
 
 # --- 2. SKL_NON_INTERACTIVE=1 ---------------------------------------------
-echo "==> curl install.sh | SKL_NON_INTERACTIVE=1 bash"
+echo "==> curl install.sh | SKL_NON_INTERACTIVE=1 sh"
 HOME_B="$WORKDIR/home-b"
 LOG_B="$WORKDIR/install-b.log"
 run_install "$HOME_B" "$LOG_B" SKL_NON_INTERACTIVE=1
@@ -295,20 +299,20 @@ skl_assert_contains "$(cat "$LOG_B")" "non-interactive / non-TTY: binary only"
 assert_no_prompt "$(cat "$LOG_B")" "SKL_NON_INTERACTIVE=1"
 assert_rc_untouched "$HOME_B"
 
-# --- 3. non-TTY, no flags (curl | bash without a terminal) -----------------
-echo "==> curl install.sh | bash  (stdout redirected, no flags)"
+# --- 3. non-TTY, no flags (curl | sh without a terminal) -----------------
+echo "==> curl install.sh | sh  (stdout redirected, no flags)"
 HOME_C="$WORKDIR/home-c"
 LOG_C="$WORKDIR/install-c.log"
 # Unset CI so we exercise the non-TTY branch, not the CI short-circuit.
 run_install "$HOME_C" "$LOG_C"
 [[ "$INSTALL_RC" -eq 0 ]] || {
-  echo "non-TTY curl|bash install failed ($INSTALL_RC)" >&2
+  echo "non-TTY curl|sh install failed ($INSTALL_RC)" >&2
   cat "$LOG_C" >&2
   exit 1
 }
 skl_assert_contains "$(cat "$LOG_C")" "installed ${HOME_C}/.local/bin/skl"
 skl_assert_contains "$(cat "$LOG_C")" "non-interactive / non-TTY: binary only"
-assert_no_prompt "$(cat "$LOG_C")" "non-TTY curl|bash"
+assert_no_prompt "$(cat "$LOG_C")" "non-TTY curl|sh"
 assert_rc_untouched "$HOME_C"
 PATH="$HOME_C/.local/bin:$CLEAN_PATH" HOME="$HOME_C" \
   "$HOME_C/.local/bin/skl" --help >/dev/null

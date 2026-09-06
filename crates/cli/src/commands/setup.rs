@@ -32,7 +32,7 @@ pub async fn run(api_base: String, non_interactive: bool) -> Result<()> {
     first_run(&api_base, &mut stdin, &mut stderr).await
 }
 
-/// Keep the hosted API after `curl | bash` even if the user skips login.
+/// Keep the hosted API after `curl | sh` even if the user skips login.
 fn remember_api_base(api_base: &str) -> Result<()> {
     let paths = Paths::resolve()?;
     paths.ensure()?;

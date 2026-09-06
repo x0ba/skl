@@ -1,6 +1,6 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
-set -euo pipefail
+set -eu
 
 # Download origin for release binaries + SHA256SUMS (not this script).
 SKL_DOWNLOAD_BASE="${SKL_DOWNLOAD_BASE:-https://github.com/x0ba/skl/releases/latest/download}"
@@ -29,7 +29,7 @@ Environment:
   SKL_NON_INTERACTIVE Set to skip first-run prompts (same as --non-interactive)
   API_BASE            API origin for first-run setup (default: https://api.tryskl.fyi)
 
-Non-interactive / non-TTY (including curl | bash in CI) installs the binary only.
+Non-interactive / non-TTY (including curl | sh in CI) installs the binary only.
 On a TTY, first-run asks login [Y/n] then init [Y/n]; init shows the harness
 checklist (Universal .agents locked). This script never edits shell rc files.
 EOF
@@ -53,7 +53,7 @@ parse_args() {
         ;;
     esac
   done
-  if [[ -n "${SKL_NON_INTERACTIVE:-}" ]]; then
+  if [ -n "${SKL_NON_INTERACTIVE:-}" ]; then
     NON_INTERACTIVE=1
   fi
 }
@@ -130,12 +130,12 @@ verify_checksum() {
   fi
   expected="$(awk -v f="$filename" '$2 == f { print $1; exit }' "$tmp")"
   rm -f "$tmp"
-  if [[ -z "$expected" ]]; then
+  if [ -z "$expected" ]; then
     warn "no SHA256SUMS entry for $filename; skipping verify"
     return 0
   fi
   actual="$(checksum "$dest_dir/$filename" | awk '{ print $1 }')" || die "no sha256sum/shasum"
-  if [[ "$actual" != "$expected" ]]; then
+  if [ "$actual" != "$expected" ]; then
     die "checksum mismatch for $filename (got $actual, want $expected)"
   fi
   log "checksum ok ($filename)"
@@ -175,11 +175,11 @@ yourself if you want it to persist.
 EOF
 }
 
-# curl | bash: stdin is the script pipe. Use /dev/tty when the user is at a TTY.
+# curl | sh: stdin is the script pipe. Use /dev/tty when the user is at a TTY.
 is_tty_first_run() {
-  [[ "$NON_INTERACTIVE" != "1" ]] || return 1
-  [[ -z "${CI:-}" ]] || return 1
-  [[ -t 1 ]] && [[ -e /dev/tty ]] && [[ -r /dev/tty ]]
+  [ "$NON_INTERACTIVE" != "1" ] || return 1
+  [ -z "${CI:-}" ] || return 1
+  [ -t 1 ] && [ -e /dev/tty ] && [ -r /dev/tty ]
 }
 
 run_first_run() {
@@ -193,7 +193,7 @@ run_first_run() {
   : "${API_BASE:=https://api.tryskl.fyi}"
   export API_BASE
   log "first-run: invoking ${bin} setup (login / init / harness checklist)"
-  # Reattach the controlling TTY so dialoguer + Y/n prompts work after curl | bash.
+  # Reattach the controlling TTY so dialoguer + Y/n prompts work after curl | sh.
   "$bin" setup </dev/tty >/dev/tty 2>/dev/tty || warn "skl setup exited $?"
 }
 
