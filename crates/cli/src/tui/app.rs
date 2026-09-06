@@ -526,7 +526,7 @@ pub fn activate_cwd(name: &str) -> Result<String> {
     let paths = Paths::resolve().ok();
     let db_file = paths.as_ref().map(|p| p.db_file.as_path());
     let extras = resolve_activation_extras(paths.as_ref(), &[])?;
-    let mode = crate::commands::use_cmd::resolve_projection_mode(paths.as_ref(), false);
+    let mode = crate::commands::use_cmd::resolve_projection_mode(paths.as_ref(), false)?;
     let skill = resolve_skill(name, &home, db_file)?;
     let out = linker::activate_with(
         &project,

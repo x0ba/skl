@@ -102,8 +102,13 @@ impl ProjectPrefs {
         self.projection == default_projection()
     }
 
-    pub fn mode(&self) -> linker::ProjectionMode {
-        linker::ProjectionMode::parse(&self.projection).unwrap_or(linker::ProjectionMode::Copy)
+    pub fn mode(&self) -> Result<linker::ProjectionMode> {
+        linker::ProjectionMode::parse(&self.projection).ok_or_else(|| {
+            SklError::Config(format!(
+                "unknown [project].projection `{}` (expected copy, materialize, link, or symlink)",
+                self.projection.trim()
+            ))
+        })
     }
 }
 
@@ -122,7 +127,7 @@ impl Config {
         linker::filter_extra_ids(&self.targets.extra)
     }
 
-    pub fn projection_mode(&self) -> linker::ProjectionMode {
+    pub fn projection_mode(&self) -> Result<linker::ProjectionMode> {
         self.project.mode()
     }
 }
@@ -192,6 +197,7 @@ pub fn load(paths: &Paths) -> Result<Config> {
         cfg.targets.extra = extras;
         let _ = save(paths, &cfg);
     }
+    cfg.project.mode()?;
     Ok(cfg)
 }
 
@@ -344,16 +350,36 @@ mod tests {
         assert!(!cfg.targets.prompted);
         assert!(cfg.sync.auto);
         assert_eq!(cfg.sync.frequency_secs, DEFAULT_SYNC_FREQUENCY_SECS);
-        assert_eq!(cfg.projection_mode(), linker::ProjectionMode::Copy);
+        assert_eq!(cfg.projection_mode().unwrap(), linker::ProjectionMode::Copy);
     }
 
     #[test]
     fn project_projection_link_overrides_default() {
         let cfg: Config = toml::from_str("[project]\nprojection = \"link\"\n").unwrap();
-        assert_eq!(cfg.projection_mode(), linker::ProjectionMode::Link);
+        assert_eq!(cfg.projection_mode().unwrap(), linker::ProjectionMode::Link);
         let materialize: Config =
             toml::from_str("[project]\nprojection = \"materialize\"\n").unwrap();
-        assert_eq!(materialize.projection_mode(), linker::ProjectionMode::Copy);
+        assert_eq!(
+            materialize.projection_mode().unwrap(),
+            linker::ProjectionMode::Copy
+        );
+    }
+
+    #[test]
+    fn unknown_project_projection_errors_on_load() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: tmp.path().join("data"),
+            db_file: tmp.path().join("data/state.db"),
+        };
+        paths.ensure().unwrap();
+        std::fs::write(&paths.config_file, "[project]\nprojection = \"coppy\"\n").unwrap();
+        let err = load(&paths).unwrap_err().to_string();
+        assert!(err.contains("unknown [project].projection"), "{err}");
+        assert!(err.contains("coppy"), "{err}");
+        assert!(err.contains("copy"), "{err}");
     }
 
     #[test]

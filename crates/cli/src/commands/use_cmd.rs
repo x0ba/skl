@@ -28,7 +28,7 @@ pub async fn run(
     let paths = Paths::resolve().ok();
     let db_file = paths.as_ref().map(|p| p.db_file.as_path());
     let extras = resolve_activation_extras(paths.as_ref(), agents)?;
-    let mode = resolve_projection_mode(paths.as_ref(), opts.link);
+    let mode = resolve_projection_mode(paths.as_ref(), opts.link)?;
 
     if all && !names.is_empty() {
         return Err(SklError::LocalState(
@@ -154,14 +154,18 @@ pub fn restore_all(
 }
 
 /// CLI `--link` wins; else `project.projection` in config; else copy.
-pub fn resolve_projection_mode(paths: Option<&Paths>, link: bool) -> ProjectionMode {
+/// Unknown config values error instead of silently becoming copy.
+pub fn resolve_projection_mode(paths: Option<&Paths>, link: bool) -> Result<ProjectionMode> {
     if link {
-        return ProjectionMode::Link;
+        return Ok(ProjectionMode::Link);
     }
-    paths
-        .and_then(|p| crate::config::load(p).ok())
-        .map(|cfg| cfg.projection_mode())
-        .unwrap_or(ProjectionMode::Copy)
+    let Some(paths) = paths else {
+        return Ok(ProjectionMode::Copy);
+    };
+    if !paths.config_file.exists() {
+        return Ok(ProjectionMode::Copy);
+    }
+    crate::config::load(paths)?.projection_mode()
 }
 
 fn missing_listed_skills_error(project: &Path, missing: &[String]) -> SklError {
@@ -659,21 +663,37 @@ mode = "symlink"
             db_file: tmp.path().join("data/state.db"),
         };
         paths.ensure().unwrap();
-        assert_eq!(resolve_projection_mode(None, false), ProjectionMode::Copy);
-        assert_eq!(resolve_projection_mode(None, true), ProjectionMode::Link);
+        assert_eq!(
+            resolve_projection_mode(None, false).unwrap(),
+            ProjectionMode::Copy
+        );
+        assert_eq!(
+            resolve_projection_mode(None, true).unwrap(),
+            ProjectionMode::Link
+        );
         std::fs::write(&paths.config_file, "[project]\nprojection = \"link\"\n").unwrap();
         assert_eq!(
-            resolve_projection_mode(Some(&paths), false),
+            resolve_projection_mode(Some(&paths), false).unwrap(),
             ProjectionMode::Link
         );
         assert_eq!(
-            resolve_projection_mode(Some(&paths), true),
+            resolve_projection_mode(Some(&paths), true).unwrap(),
             ProjectionMode::Link
         );
         std::fs::write(&paths.config_file, "[project]\nprojection = \"copy\"\n").unwrap();
         assert_eq!(
-            resolve_projection_mode(Some(&paths), false),
+            resolve_projection_mode(Some(&paths), false).unwrap(),
             ProjectionMode::Copy
+        );
+        std::fs::write(&paths.config_file, "[project]\nprojection = \"coppy\"\n").unwrap();
+        let err = resolve_projection_mode(Some(&paths), false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown [project].projection"), "{err}");
+        assert!(err.contains("coppy"), "{err}");
+        assert_eq!(
+            resolve_projection_mode(Some(&paths), true).unwrap(),
+            ProjectionMode::Link
         );
     }
 
