@@ -7,19 +7,19 @@ extra = ["claude-code"]
 [[skills]]
 name = "babysit-pr"
 source = "library"
-mode = "symlink"
+mode = "copy"
 
 [[skills]]
 name = "file-pr"
 source = "library"
-mode = "symlink"
+mode = "copy"
 
 [[skills]]
 name = "greploop"
 source = "library"
-mode = "symlink"
+mode = "copy"
 
 [[skills]]
 name = "html-communication"
 source = "library"
-mode = "symlink"
+mode = "copy"
