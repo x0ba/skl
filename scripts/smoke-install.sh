@@ -427,7 +427,7 @@ skl_assert_contains "$(cat "$UPDATE_C")" "checksum mismatch"
 echo "==> skl update (newer asset)"
 NEW="$WORKDIR/new-release"
 mkdir -p "$NEW"
-printf 'new-skl-release-bytes\n' >"$NEW/$ASSET"
+printf 'new-skl-release-bytes' >"$NEW/$ASSET"
 chmod +x "$NEW/$ASSET"
 printf '{"tag_name":"v99.0.0"}\n' >"$NEW/latest.json"
 cp "$ROOT/apps/web/public/install.sh" "$NEW/install.sh"
@@ -452,7 +452,7 @@ set -e
 }
 skl_assert_contains "$(cat "$UPDATE_B")" "updated ${HOME_A}/.local/bin/skl"
 skl_assert_contains "$(cat "$UPDATE_B")" "checksum ok ($ASSET)"
-[[ "$(cat "$HOME_A/.local/bin/skl")" == $'new-skl-release-bytes\n' ]] || {
+[[ "$(cat "$HOME_A/.local/bin/skl")" == "new-skl-release-bytes" ]] || {
   echo "skl update did not replace the binary" >&2
   cat "$UPDATE_B" >&2
   exit 1
