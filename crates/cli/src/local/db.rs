@@ -169,6 +169,18 @@ impl LocalDb {
             .find(|skill| skill.name == name))
     }
 
+    /// Drop every indexed row for `name` (all sources). Returns whether anything existed.
+    pub fn remove_skill(&self, name: &str) -> Result<bool> {
+        let tx = self.conn.unchecked_transaction()?;
+        let files = tx.execute(
+            "DELETE FROM skill_files WHERE skill_name = ?1",
+            params![name],
+        )?;
+        let skills = tx.execute("DELETE FROM skills WHERE name = ?1", params![name])?;
+        tx.commit()?;
+        Ok(files > 0 || skills > 0)
+    }
+
     /// Insert or replace one indexed skill without wiping the rest of the catalog.
     pub fn upsert_skill(&self, skill: &DiscoveredSkill) -> Result<()> {
         let now = std::time::SystemTime::now()
@@ -376,6 +388,11 @@ mod tests {
             beta.tree.files["SKILL.md"],
             crate::local::skills::hash_bytes(b"b2")
         );
+        assert!(db.remove_skill("beta").unwrap());
+        let listed = db.list_skills().unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].name, "alpha");
+        assert!(!db.remove_skill("beta").unwrap());
     }
 
     #[test]

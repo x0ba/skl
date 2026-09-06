@@ -120,7 +120,7 @@ fn draw_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
                 .selected_row()
                 .map(|row| row.name.as_str())
                 .unwrap_or("skill");
-            format!("unmanage {name}? files stay on disk   y confirm  n/Esc cancel")
+            format!("delete {name}? removes library copy   y confirm  n/Esc cancel")
         }
         Overlay::None | Overlay::Help => {
             "/ search  ↑↓/jk move  [] scroll  e edit  u/U use  d delete  s sync  r refresh  ? help  q quit"

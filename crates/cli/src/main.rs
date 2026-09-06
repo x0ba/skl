@@ -118,7 +118,7 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },
-    /// Stop managing a skill in SKL. Files on disk are left alone.
+    /// Remove a skill from SKL and delete the local library copy.
     Delete {
         #[arg(value_name = "SKILL", required = true)]
         skills: Vec<String>,

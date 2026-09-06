@@ -27,7 +27,7 @@ Ctrl-j / Ctrl-k  scroll preview
 e              edit SKILL.md ($VISUAL or $EDITOR)
 u              use in this project (same as `skl use <name>`)
 U              unuse in this project (same as `skl unuse <name>`)
-d              delete from SKL (files on disk kept; same as `skl delete <name>`)
+d              delete from SKL and the local library (same as `skl delete <name>`)
 s              sync (blocking; same as `skl sync`)
 r              refresh from local library / state.db
 ?              this help
@@ -88,7 +88,7 @@ pub enum Tick {
     /// Leave TUI, run an external action, then reload.
     SuspendSync,
     SuspendEdit,
-    /// DELETE /v1/skills/:name — files on disk stay.
+    /// DELETE /v1/skills/:name, then remove the local library copy.
     DeleteRemote,
 }
 
@@ -149,7 +149,7 @@ pub async fn run(api_base: String) -> Result<()> {
                 };
                 match crate::commands::delete::run(std::slice::from_ref(&name), &api_base).await {
                     Ok(()) => {
-                        app.status = format!("unmanaged {name} (files kept)");
+                        app.status = format!("deleted {name}");
                         app.reload();
                     }
                     Err(err) => app.status = format!("delete: {err}"),
@@ -897,6 +897,44 @@ mod tests {
         assert_eq!(cat.skills[0].name, "greeter");
         assert!(cat.skills[0].activated);
         assert!(cat.empty_hint.is_none());
+    }
+
+    #[test]
+    fn delete_removes_library_copy_from_catalog() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let lib = data.join("skills/greeter");
+        fs::create_dir_all(&lib).unwrap();
+        fs::write(lib.join("SKILL.md"), "# hi\n").unwrap();
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let db = LocalDb::open(&data.join("state.db")).unwrap();
+        db.replace_import(&[DiscoveredSkill {
+            name: "greeter".into(),
+            source: "agents".into(),
+            path: lib.clone(),
+            tree: hash_skill_dir(&lib).unwrap(),
+        }])
+        .unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: data,
+            db_file: tmp.path().join("data/state.db"),
+        };
+        assert_eq!(
+            load_catalog_at(&project, Some(&paths), 0)
+                .unwrap()
+                .skills
+                .len(),
+            1
+        );
+
+        crate::commands::delete::remove_local("greeter", &paths).unwrap();
+        let cat = load_catalog_at(&project, Some(&paths), 0).unwrap();
+        assert!(cat.skills.is_empty());
+        assert!(cat.empty_hint.is_some());
+        assert!(!lib.exists());
     }
 
     #[test]
