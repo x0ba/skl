@@ -46,12 +46,14 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Device authorization: poll for approval, store token in OS keyring.
+    /// Device authorization: poll for approval, store token in local state.
     Login {
         /// Local-only: store `Authorization: Bearer dev:<USER_ID>` (no Clerk / no device poll).
         #[arg(long, value_name = "USER_ID")]
         dev_user: Option<String>,
     },
+    /// Clear the local device token (`state.db` meta). Does not require the OS keyring.
+    Logout,
     /// First-run after install: login [Y/n], init [Y/n], harness checklist.
     Setup {
         /// Binary-only: skip login / init / checklist prompts.
@@ -76,7 +78,7 @@ enum Command {
     Status,
     /// List local skills from state.db (and remote presence when logged in).
     List,
-    /// Diagnose agent skill paths, keyring, state.db, and GET /v1/health.
+    /// Diagnose agent skill paths, local token store, state.db, and GET /v1/health.
     Doctor,
     /// Show or edit sticky extra dests (`~/.config/skl/config.toml`).
     Targets {
@@ -194,6 +196,7 @@ async fn run() -> Result<(), SklError> {
         .expect("subcommand required when not launching TUI")
     {
         Command::Login { dev_user } => commands::login::run(api_base, dev_user).await,
+        Command::Logout => commands::logout::run(),
         Command::Setup { non_interactive } => commands::setup::run(api_base, non_interactive).await,
         Command::Init => commands::init::run(api_base).await,
         Command::Sync {
@@ -313,6 +316,10 @@ mod cli_parse_tests {
 
     #[test]
     fn other_subcommands_still_parse() {
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "logout"]).unwrap().command,
+            Some(Command::Logout)
+        ));
         assert!(matches!(
             Cli::try_parse_from(["skl", "list"]).unwrap().command,
             Some(Command::List)

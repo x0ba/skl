@@ -118,6 +118,7 @@ impl Paths {
     pub fn ensure(&self) -> Result<()> {
         fs::create_dir_all(&self.config_dir)?;
         fs::create_dir_all(&self.data_dir)?;
+        crate::local::db::restrict_unix_mode(&self.data_dir, 0o700)?;
         Ok(())
     }
 

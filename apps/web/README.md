@@ -82,8 +82,8 @@ the local `dev:<user_id>` token.
    `expired_token` / 410).
 5. The CLI poll of `POST /v1/auth/device/token` should then receive
    `{ access_token, expires_in: null }`. After success the CLI stores that
-   token in the OS keyring; if later CLI commands say not logged in in
-   headless environments, export `SKL_TOKEN`.
+   token in local `state.db`. Headless / CI can export `SKL_TOKEN` or
+   `SKL_TOKEN_FILE` to override the store.
 6. `/` lists the new device via `GET /v1/devices` and the skill count via
    `GET /v1/skills`. **Revoke** calls `DELETE /v1/devices/:id`.
 

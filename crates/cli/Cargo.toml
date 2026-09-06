@@ -31,19 +31,20 @@ toml = "0.8"
 walkdir = "2"
 whoami = "1.5"
 
-# GNU/mac/Windows: furnace Secret Service (libdbus) + native backends.
-# musl release triples cannot pkg-config-cross libdbus; kernel keyutils only.
-[target.'cfg(not(target_env = "musl"))'.dependencies]
-keyring = { version = "3", features = [
+# Legacy migrate-once only. Normal login/logout uses state.db and does not
+# need DBus / Secret Service. Native backends (keyutils / Keychain /
+# Credential Manager) compile without libdbus — including musl.
+# Enable `legacy-secret-service` to also read leftover GNOME/KDE keyring
+# entries (needs libdbus-1-dev at compile time).
+keyring = { version = "3", default-features = false, features = [
     "apple-native",
     "windows-native",
-    "sync-secret-service",
-] }
-
-[target.'cfg(target_env = "musl")'.dependencies]
-keyring = { version = "3", default-features = false, features = [
     "linux-native",
 ] }
+
+[features]
+default = []
+legacy-secret-service = ["keyring/sync-secret-service"]
 
 [dev-dependencies]
 tempfile = "3"

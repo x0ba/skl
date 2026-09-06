@@ -7,9 +7,9 @@
 # (scripts/smoke-clash.sh on the conflict/scrub PR) uses the same HOME /
 # SKL_TOKEN / ALLOW_DEV_AUTH=true pattern.
 #
-# CI / headless: export SKL_TOKEN (or SKL_TOKEN_FILE). smokes must not call
-# `skl login` — that writes the OS keyring and needs DBus Secret Service
-# (`org.freedesktop.secrets`), which GitHub runners do not provide.
+# CI / headless: export SKL_TOKEN (or SKL_TOKEN_FILE). Env overrides the
+# local `state.db` token store. `skl login` no longer needs DBus / OS
+# keyring; existing smokes still set SKL_TOKEN so they stay isolated.
 #
 # Env:
 #   API_BASE      default http://localhost:8787
@@ -142,8 +142,8 @@ skl_run() {
     "$BIN" "$@"
 }
 
-# Isolated HOME for a smoke machine. Never calls `skl login` — CI has no
-# Secret Service, and SKL_TOKEN already overrides keyring reads.
+# Isolated HOME for a smoke machine. SKL_TOKEN overrides the local store
+# so machines stay isolated even if a leftover token exists.
 # Usage: skl_prepare_home <home-dir> [token]
 skl_prepare_home() {
   local home="$1"

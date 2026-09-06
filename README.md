@@ -105,7 +105,7 @@ skl setup --non-interactive
 
 ### login
 
-After `skl login`, the device `access_token` is stored in the OS keyring (`service=skl`, `account=device_token`). In headless/CI environments the keyring may not persist across processes — follow-on commands then say `not logged in`. Export `SKL_TOKEN=<access_token>` (overrides the keyring), or use `skl login --dev-user <id>` / `Bearer dev:<id>` when `ALLOW_DEV_AUTH` is on. `skl doctor` already reports keyring + `SKL_TOKEN` presence.
+After `skl login`, the device `access_token` is stored in local `state.db` (`meta.device_token` under `~/.local/share/skl` / `SKL_DATA_DIR`; file mode `0600`). The OS keyring is not required. A leftover native keyring entry (macOS Keychain, Windows Credential Manager, Linux keyutils) is migrated once into the local store if the store is empty, then left unused. Leftover GNOME/KDE Secret Service entries are not read unless the binary was built with `--features legacy-secret-service` — otherwise run `skl login` again. Export `SKL_TOKEN=<access_token>` or `SKL_TOKEN_FILE` to override the local store (tests / CI), or use `skl login --dev-user <id>` / `Bearer dev:<id>` when `ALLOW_DEV_AUTH` is on. `skl logout` clears the local token. `skl doctor` reports the store path + `SKL_TOKEN` / `SKL_TOKEN_FILE` presence.
 
 ### auto-sync
 
@@ -132,7 +132,7 @@ cargo run -p skl -- status   # auto_sync / sync_frequency / last_sync / optional
 
 ### doctor
 
-Reports every unique catalog global root (vercel-labs/skills agents.ts) plus `~/.agents/skills` and `~/.config/agents/skills` — same list as `skl init` — whether each exists/writable, symlink capability (copy fallback when unavailable), keyring + `SKL_TOKEN`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. Also warns if `skills.toml` still lists host-absolute `path`s — run `skl use --all` to rewrite names-only. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` show an interactive checklist (↑↓ move, space toggle, enter confirm): locked Universal (`.agents/skills`) is always on; toggleable rows are detected custom-project agents plus `claude-code`. Never cursor/codex. CI / non-TTY / `SKL_NO_PROMPT` / `SKL_YES` skip the UI.
+Reports every unique catalog global root (vercel-labs/skills agents.ts) plus `~/.agents/skills` and `~/.config/agents/skills` — same list as `skl init` — whether each exists/writable, symlink capability (copy fallback when unavailable), local token store + `SKL_TOKEN` / `SKL_TOKEN_FILE`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. Also warns if `skills.toml` still lists host-absolute `path`s — run `skl use --all` to rewrite names-only. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` show an interactive checklist (↑↓ move, space toggle, enter confirm): locked Universal (`.agents/skills`) is always on; toggleable rows are detected custom-project agents plus `claude-code`. Never cursor/codex. CI / non-TTY / `SKL_NO_PROMPT` / `SKL_YES` skip the UI.
 ```bash
 # API down is still a successful report (health = unreachable)
 cargo run -p skl -- doctor

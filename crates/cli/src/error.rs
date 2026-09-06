@@ -45,7 +45,10 @@ impl fmt::Display for SklError {
                 write!(f, "cannot reach API at {url}: {source}")
             }
             Self::Keyring(msg) => {
-                write!(f, "OS keyring error ({msg}); device token is stored in the system keyring (service=skl)")
+                write!(
+                    f,
+                    "legacy OS keyring error ({msg}); device token is stored in local state.db (not the system keyring)"
+                )
             }
             Self::Config(msg) => write!(f, "config: {msg}"),
             Self::LocalState(msg) => write!(f, "local state: {msg}"),
