@@ -1,7 +1,7 @@
 //! `skl update` — replace this binary with the latest GitHub Release asset.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Write};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -259,9 +259,11 @@ fn write_staging_file(dest: &Path, bytes: &[u8]) -> Result<PathBuf> {
     for seq in 0u32..1024 {
         let tmp = sibling(dest, &format!(".tmp.{pid}.{seq}"));
         match OpenOptions::new().write(true).create_new(true).open(&tmp) {
-            Ok(mut file) => {
-                file.write_all(bytes)?;
-                file.sync_all()?;
+            Ok(file) => {
+                // Close the create handle before writing so Linux execve of the
+                // staged file cannot fail with ETXTBSY (text file busy).
+                drop(file);
+                fs::write(&tmp, bytes)?;
                 return Ok(tmp);
             }
             Err(err) if err.kind() == ErrorKind::AlreadyExists => continue,
