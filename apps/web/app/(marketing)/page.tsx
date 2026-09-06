@@ -62,7 +62,7 @@ export default async function LandingPage() {
               lines={[
                 { kind: "command", text: "skl login" },
                 { kind: "output", text: "code: BQDF-7T2M" },
-                { kind: "output", text: "open https://skl.sh/device" },
+                { kind: "output", text: "open https://tryskl.fyi/device" },
                 { kind: "note", text: "" },
                 { kind: "note", text: "approved — device: mbp-16" },
               ]}

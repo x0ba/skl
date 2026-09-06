@@ -9,9 +9,13 @@ use crate::checklist;
 use crate::error::{Result, SklError};
 use crate::local::linker;
 
-/// Default API origin (`apps/api` listens on PORT=8787).
+/// Hosted API in release builds. `cargo run` / debug stays on local `apps/api`.
 /// Override with `--api-base` or `API_BASE`.
-pub const DEFAULT_API_BASE: &str = "http://localhost:8787";
+pub const DEFAULT_API_BASE: &str = if cfg!(debug_assertions) {
+    "http://localhost:8787"
+} else {
+    "https://api.tryskl.fyi"
+};
 
 /// Default piggyback interval (15 minutes). Also the attempt throttle.
 pub const DEFAULT_SYNC_FREQUENCY_SECS: u64 = 900;
@@ -286,6 +290,14 @@ mod tests {
         );
         assert_eq!(resolve_api_base(None, &cfg), "http://from-config.example");
         assert_eq!(resolve_api_base(None, &Config::default()), DEFAULT_API_BASE);
+        assert_eq!(
+            DEFAULT_API_BASE,
+            if cfg!(debug_assertions) {
+                "http://localhost:8787"
+            } else {
+                "https://api.tryskl.fyi"
+            }
+        );
     }
 
     #[test]

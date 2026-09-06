@@ -34,6 +34,7 @@ Environment:
   SKL_DOWNLOAD_BASE   Asset origin (default: GitHub Releases latest/download)
   SKL_INSTALL_DIR     Install directory (default: ~/.local/bin)
   SKL_NON_INTERACTIVE Set to skip first-run prompts (same as --non-interactive)
+  API_BASE            API origin for first-run setup (default: https://api.tryskl.fyi)
 
 Non-interactive / non-TTY (including curl | bash in CI) installs the binary only.
 On a TTY, first-run asks login [Y/n] then init [Y/n]; init shows the harness
@@ -194,6 +195,10 @@ run_first_run() {
     log "non-interactive / non-TTY: binary only (skip login, init, checklist)"
     return 0
   fi
+  # Released binaries still default to localhost until the next tag. The site
+  # installer must send setup at the hosted API so device URLs are tryskl.fyi.
+  : "${API_BASE:=https://api.tryskl.fyi}"
+  export API_BASE
   log "first-run: invoking ${bin} setup (login / init / harness checklist)"
   # Reattach the controlling TTY so dialoguer + Y/n prompts work after curl | bash.
   "$bin" setup </dev/tty >/dev/tty 2>/dev/tty || warn "skl setup exited $?"

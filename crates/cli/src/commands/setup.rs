@@ -3,6 +3,7 @@
 use std::io::{self, BufRead, IsTerminal, Write};
 
 use crate::commands::{init, login};
+use crate::config::{self, Paths};
 use crate::error::Result;
 use crate::prompt;
 
@@ -25,9 +26,22 @@ pub async fn run(api_base: String, non_interactive: bool) -> Result<()> {
     }
 
     eprintln!("skl first-run");
+    remember_api_base(&api_base)?;
     let mut stdin = io::BufReader::new(io::stdin());
     let mut stderr = io::stderr();
     first_run(&api_base, &mut stdin, &mut stderr).await
+}
+
+/// Keep the hosted API after `curl | bash` even if the user skips login.
+fn remember_api_base(api_base: &str) -> Result<()> {
+    let paths = Paths::resolve()?;
+    paths.ensure()?;
+    let mut cfg = config::load(&paths).unwrap_or_default();
+    if cfg.api_base.is_some() {
+        return Ok(());
+    }
+    cfg.api_base = Some(api_base.to_string());
+    config::save(&paths, &cfg)
 }
 
 async fn first_run<R: BufRead, W: Write>(
