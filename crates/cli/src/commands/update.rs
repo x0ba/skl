@@ -317,15 +317,22 @@ fn persist_file(path: &Path) -> Result<()> {
 }
 
 fn persist_dir(path: &Path) -> Result<()> {
-    // Best-effort: the binary is already in place. On Windows, File::open on a
-    // directory often fails before sync_all can run; do not turn that into a
-    // false update failure that would prompt a retry.
-    let dir = match File::open(path) {
-        Ok(dir) => dir,
-        Err(_) => return Ok(()),
-    };
-    let _ = dir.sync_all();
-    Ok(())
+    #[cfg(windows)]
+    {
+        // File::open on a directory is often unsupported; the binary is already
+        // in place, so a failed dir open must not look like a failed update.
+        let dir = match File::open(path) {
+            Ok(dir) => dir,
+            Err(_) => return Ok(()),
+        };
+        let _ = dir.sync_all();
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        File::open(path)?.sync_all()?;
+        Ok(())
+    }
 }
 
 fn sibling(path: &Path, suffix: &str) -> PathBuf {
