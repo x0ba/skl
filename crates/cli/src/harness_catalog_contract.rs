@@ -1,4 +1,4 @@
-//! Hammer coverage stacked on furnace #20 catalog + checklist UX.
+//! Catalog + checklist UX contract tests.
 //!
 //! Consumes `crate::catalog` / `crate::checklist` (vendored JSON only).
 //! Soft-prompt is an interactive MultiSelect: locked Universal row +
@@ -29,7 +29,7 @@ fn plant_skill(dir: &Path, body: &str) {
     std::fs::write(dir.join("SKILL.md"), body).unwrap();
 }
 
-/// Toggleable checklist rows from furnace candidates (never the locked Universal block).
+/// Toggleable checklist rows from catalog candidates (never the locked Universal block).
 fn toggle_items(home: &Path, sticky: &[String]) -> Vec<checklist::ChecklistItem> {
     let ids = catalog::soft_prompt_candidates(home, sticky);
     checklist::items_for_ids(&ids)

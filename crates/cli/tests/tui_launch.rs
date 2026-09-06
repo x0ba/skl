@@ -1,8 +1,7 @@
 //! Process-level: non-TTY / piped / CI / SKL_NO_TUI never enter fullscreen.
 //!
-//! Hammer coverage stacked on furnace launch policy. A PTY (`script` / python)
-//! is required to prove `--no-tui` on a real TTY — that lives in
-//! `scripts/smoke-tui.sh`. These tests stay CI-safe (no raw mode).
+//! A PTY (`script` / python) is required to prove `--no-tui` on a real TTY —
+//! that lives in `scripts/smoke-tui.sh`. These tests stay CI-safe (no raw mode).
 
 use std::io::Write;
 use std::process::{Command, Output, Stdio};

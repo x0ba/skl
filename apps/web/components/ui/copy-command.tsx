@@ -27,8 +27,6 @@ export function CopyCommand({
     try {
       await navigator.clipboard.writeText(command);
     } catch {
-      // Clipboard is unavailable (insecure origin or denied permission). The
-      // command stays selectable, so fail quietly rather than alarming anyone.
       return;
     }
     setCopied(true);

@@ -1,7 +1,4 @@
 //! `skl create` — start a personal-library skill and open it in `$EDITOR`.
-//!
-//! Canonical library: `{Paths.data_dir}/skills/<name>/`
-//! (default `~/.local/share/skl/skills/`, override with `SKL_DATA_DIR`).
 
 use std::fs;
 use std::io::ErrorKind;
@@ -15,7 +12,6 @@ use crate::local::library;
 use crate::local::linker;
 use crate::local::skills::{self, DiscoveredSkill};
 
-/// Indexed `source` for skills stored in the personal library.
 pub const LIBRARY_SOURCE: &str = library::LIBRARY_SOURCE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,8 +31,6 @@ pub async fn run(name: &str, api_base: &str) -> Result<()> {
     run_with(name, &paths, api_base).await
 }
 
-/// Local create + editor + fail-soft piggyback. Auto-sync errors never fail the verb.
-///
 /// Editor launch/exit failures are warnings: the skill is already on disk.
 pub async fn run_with(name: &str, paths: &Paths, api_base: &str) -> Result<()> {
     let out = create_library_skill(name, paths)?;
@@ -230,7 +224,6 @@ mod tests {
         let paths = isolated_paths(tmp.path());
         paths.ensure().unwrap();
         fs::create_dir_all(paths.library_dir()).unwrap();
-        // Make state.db a directory so indexing fails after SKILL.md is written.
         fs::create_dir_all(&paths.db_file).unwrap();
 
         let err = create_library_skill("broken", &paths)

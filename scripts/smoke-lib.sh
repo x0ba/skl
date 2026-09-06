@@ -7,7 +7,6 @@
 # scripts/smoke-init-home-agents.sh, and the other dual-HOME smokes.
 # Clash + scrub stays in scripts/smoke-clash.sh.
 #
-# DAN-14: `skl login` persists to local `state.db` (no DBus / OS keyring).
 # Prefer `skl_login_store` + `skl_run_store` so CI exercises that path.
 # Belt-and-suspenders: SKL_SMOKE_TOKEN_ENV=1 (or skl_run) still exports
 # SKL_TOKEN / SKL_TOKEN_FILE, which override the store.
@@ -447,7 +446,7 @@ skl_prepare_home() {
   printf '%s\n' "$token" >"$home/.config/skl/ci-token"
 }
 
-# Write furnace `[sync]` prefs into one machine HOME.
+# Write `[sync]` prefs into one machine HOME.
 # Usage: skl_write_sync_prefs <home> <auto:true|false> <frequency_secs>
 skl_write_sync_prefs() {
   local home="$1"
@@ -530,7 +529,6 @@ skl_assert_not_contains() {
   fi
 }
 
-# Furnace portable manifest: names + mode, never host paths.
 # Usage: skl_assert_portable_manifest <skills.toml> [forbidden-substring...]
 skl_assert_portable_manifest() {
   local path="$1"

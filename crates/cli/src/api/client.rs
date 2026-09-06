@@ -10,7 +10,7 @@ use super::types::{
 };
 use crate::error::{Result, SklError};
 
-/// Typed HTTP client for the locked cipher API (`/v1` prefix is required).
+/// Typed HTTP client for the locked API (`/v1` prefix is required).
 #[derive(Debug, Clone)]
 pub struct ApiClient {
     http: Client,

@@ -59,8 +59,6 @@ export function SkillDetailView({ name }: { name: string }) {
     }
   }
 
-  // Root files before nested ones, so SKILL.md — the entry point an agent
-  // actually reads — leads instead of collating under `references/`.
   const files = useMemo(() => {
     if (!data) return [];
     return Object.entries(data.files).sort(([a], [b]) => {

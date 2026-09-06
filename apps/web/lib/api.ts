@@ -166,7 +166,6 @@ export function describeApiError(error: unknown): string {
     );
   }
   if (error instanceof Error) {
-    // A failed fetch surfaces as a bare TypeError with no useful detail.
     if (error.name === "TypeError") {
       return `Could not reach the API at ${API_BASE}.`;
     }

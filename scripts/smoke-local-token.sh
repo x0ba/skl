@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Hammer coverage stacked on furnace DAN-14 local token store.
 # Consumes `skl login --dev-user` / `logout` / `status` / `doctor` and the
 # existing SKL_TOKEN / SKL_TOKEN_FILE overrides. Does not invent verbs.
 #

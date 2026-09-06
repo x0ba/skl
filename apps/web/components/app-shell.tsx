@@ -23,9 +23,6 @@ function NavLink({ href, label }: { href: string; label: string }) {
       aria-current={active ? "page" : undefined}
       className={cn(
         "relative block py-1.5 font-mono text-[13px] transition-colors md:pl-4",
-        // The vertical tick only reads as "current" against a stacked list. In
-        // the mobile rail the nav runs horizontally, where a left tick looks
-        // like a separator between items, so active is underlined there.
         active
           ? "text-foreground underline decoration-from-font underline-offset-4 md:no-underline md:before:absolute md:before:left-0 md:before:top-1/2 md:before:h-3 md:before:w-px md:before:-translate-y-1/2 md:before:bg-foreground"
           : "text-muted-foreground hover:text-foreground",

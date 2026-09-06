@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Dual-HOME auto-sync smoke stacked on furnace `maybe_run` (no daemon).
+# Dual-HOME auto-sync smoke for `maybe_run` (no daemon).
 # Never calls `skl sync` on the mutate / pull / use path.
 #
 #   1. Machine A mutates library (new skill) → age due → A init (push) →
@@ -27,7 +27,7 @@ TOKEN_A="${SKL_TOKEN_A:-$TOKEN}"
 TOKEN_B="${SKL_TOKEN_B:-$TOKEN}"
 SKILL_NAME="${SKL_SMOKE_SKILL:-autosync-$$}"
 DEAD_API="${SKL_SMOKE_DEAD_API:-http://127.0.0.1:1}"
-# Default furnace frequency is 900s; age past that so maybe_run is due.
+# Default sync frequency is 900s; age past that so maybe_run is due.
 AGE_SECS="${SKL_SMOKE_AGE_SECS:-901}"
 
 MACHINE_A="$WORKDIR/machine-a"

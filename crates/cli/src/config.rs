@@ -193,9 +193,7 @@ pub fn maybe_prompt_sticky_extras(paths: &Paths) -> Result<Config> {
             cfg.targets.prompted = true;
             save(paths, &cfg)?;
         }
-        Err(_) => {
-            // EOF / write failure: do not set prompted; never block the command.
-        }
+        Err(_) => {}
     }
     Ok(cfg)
 }

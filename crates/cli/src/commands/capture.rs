@@ -1,8 +1,5 @@
 //! `skl capture` — promote a project-local skill into the personal library.
 //!
-//! Canonical library: `{Paths.data_dir}/skills/<name>/`
-//! (default `~/.local/share/skl/skills/`, override with `SKL_DATA_DIR`).
-//!
 //! `.agents/skills` is the project link destination (and a home discovery
 //! root for `skl init`). It is **not** the personal library and is **not**
 //! a sync peer.
@@ -20,7 +17,6 @@ use crate::local::skills::{self, DiscoveredSkill};
 
 use super::use_cmd::{resolve_activation_extras, resolve_project};
 
-/// Indexed `source` for skills stored in the personal library.
 pub const LIBRARY_SOURCE: &str = library::LIBRARY_SOURCE;
 
 #[derive(Debug, Clone, Default)]
@@ -52,7 +48,6 @@ pub async fn run(path: PathBuf, opts: CaptureOpts, api_base: &str) -> Result<()>
     run_with(path, opts, &paths, api_base).await
 }
 
-/// Local capture + fail-soft piggyback. Auto-sync errors never fail the verb.
 pub async fn run_with(
     path: PathBuf,
     opts: CaptureOpts,

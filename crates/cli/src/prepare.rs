@@ -1,6 +1,6 @@
 //! Scrub file bytes **before** hashing.
 //!
-//! Upload order (furnace):
+//! Upload order:
 //! 1. [`prepare_bytes`] / [`prepare_sync`] — scrub, then SHA-256 those bytes
 //! 2. `POST /v1/sync` with the resulting `tree_hash` / `files` map
 //! 3. `PUT /v1/blobs/:hash` for each `upload[]` hash (bytes that were hashed)

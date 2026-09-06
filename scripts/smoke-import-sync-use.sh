@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 # Two-machine happy path against cipher's API on localhost:8787:
 #   import (skl init) → library only → sync → skl use (link → library)
-# DAN-15: mutate library → sync B → use --all restores; harness homes
-# are not sync peers. Clash / keep-local / scrub stays in smoke-clash.sh.
+# Harness homes are not sync peers. Clash / keep-local / scrub stays in smoke-clash.sh.
 #
 # Same Clerk-dev user, two HOMEs (two devices). A clash is per-user, not
 # cross-user — login the same ALLOW_DEV_AUTH id into each machine's local
 # store (or set SKL_TOKEN / SKL_TOKEN_A/B). Distinct ids are different
 # users and will not share skills.
-#
-# Clash / keep-local / scrub coverage stays in scripts/smoke-clash.sh
-# (conflict/scrub PR). This harness does not rewrite furnace sync/use.
 #
 # Prerequisites (or START_API=1 to boot them here):
 #   - apps/api listening on :8787
@@ -75,7 +71,6 @@ skl_wait_for_api
 
 mkdir -p "$MACHINE_A" "$MACHINE_B" "$PROJECT_B" "$PROJECT_RESTORE"
 mkdir -p "$MACHINE_B/.agents/skills"
-# Explicit `skl sync` harness — do not let furnace maybe_run steal the first PUT.
 skl_write_sync_prefs "$MACHINE_A" false 900
 skl_write_sync_prefs "$MACHINE_B" false 900
 skl_login_store "$MACHINE_A" "$TOKEN_A" >/dev/null

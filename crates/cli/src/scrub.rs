@@ -8,7 +8,7 @@ use crate::skill_tree::{slash_path, SkillFile, SkillTree};
 /// How loudly a finding should stop an upload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
-    /// Suspicious; furnace may continue if the user passed `--allow-warnings`.
+    /// Suspicious; upload may continue if the user passed `--allow-warnings`.
     Warn,
     /// Obvious credential. Upload must not proceed.
     Block,
@@ -138,8 +138,6 @@ static ENV_ASSIGN: LazyLock<Regex> = LazyLock::new(|| {
 const ENV_FILENAMES: &[&str] = &[".env", ".env.local", ".env.production", ".env.development"];
 
 /// Scan every file in a skill tree for obvious credential patterns.
-///
-/// Furnace: call this (via [`crate::pre_upload_guard`]) before any upload.
 pub fn scan_tree(tree: &SkillTree) -> ScanReport {
     let mut findings = Vec::new();
     for file in &tree.files {
@@ -157,7 +155,6 @@ pub fn scan_skill_file(file: &SkillFile) -> Vec<Finding> {
 }
 
 pub fn scan_bytes(skill_name: &str, path: &Path, bytes: &[u8]) -> Vec<Finding> {
-    // Always scan as text (lossy). A NUL byte must not drop token/key patterns.
     let text = String::from_utf8_lossy(bytes);
     let mut findings = Vec::new();
 
@@ -226,7 +223,6 @@ pub fn scan_bytes(skill_name: &str, path: &Path, bytes: &[u8]) -> Vec<Finding> {
             &ANTHROPIC,
             SecretKind::AnthropicKey,
         );
-        // OpenAI pattern also matches sk-ant-*; skip those lines already classified.
         if !ANTHROPIC.is_match(line) {
             push_matches(
                 &mut findings,

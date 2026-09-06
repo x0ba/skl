@@ -15,7 +15,6 @@ pub enum ResolveError {
     Aborted,
 }
 
-/// Furnace: implement or reuse this to decide keep-local / keep-remote.
 pub trait ConflictResolver {
     fn resolve(&mut self, conflict: &SyncConflict) -> Result<Resolution, ResolveError>;
 }
@@ -54,7 +53,6 @@ impl InteractiveResolver<io::BufReader<io::Stdin>, io::Stderr> {
         Self::new(io::BufReader::new(io::stdin()), io::stderr())
     }
 
-    /// Furnace: use this when stdin is a TTY; otherwise require flags.
     pub fn try_stdio() -> Result<Self, ResolveError> {
         if io::stdin().is_terminal() {
             Ok(Self::stdio())

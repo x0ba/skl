@@ -42,7 +42,6 @@ skl_require_bin
 skl_wait_for_api
 
 mkdir -p "$MACHINE_A" "$MACHINE_B"
-# Explicit `skl sync` harness — keep-local / keep-remote stay on the verb.
 skl_write_sync_prefs "$MACHINE_A" false 900
 skl_write_sync_prefs "$MACHINE_B" false 900
 skl_login_store "$MACHINE_A" "$TOKEN" >/dev/null

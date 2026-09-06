@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Hammer coverage for furnace portable `skills.toml` + restore verb
 # `skl use --all`. Does not invent a second restore command.
 #
 #   1. Same committed skills.toml on two HOMEs → sync library on B →

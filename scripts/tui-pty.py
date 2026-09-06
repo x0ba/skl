@@ -48,8 +48,8 @@ def main() -> int:
     argv = [bin_path] + sys.argv[4:]
     env = os.environ.copy()
     env.setdefault("SKL_NO_PROMPT", "1")
-    # Cloud/CI often export TERM=dumb. Furnace degrades on dumb; force a
-    # capable value so the PTY can actually Enter (override via SKL_TUI_TERM).
+    # Cloud/CI often export TERM=dumb; force a capable value so the PTY can
+    # actually Enter (override via SKL_TUI_TERM).
     term = env.get("SKL_TUI_TERM") or env.get("TERM") or "xterm-256color"
     if term.strip().lower() == "dumb":
         term = "xterm-256color"

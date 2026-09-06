@@ -39,7 +39,6 @@ async fn first_run<R: BufRead, W: Write>(
         login::run(api_base.to_string(), None).await?;
     }
     if prompt::confirm_yes_default(reader, writer, "Import existing skills (skl init)?")? {
-        // Harness checklist lives in init (Universal .agents locked).
         init::run(api_base.to_string()).await?;
     }
     Ok(())

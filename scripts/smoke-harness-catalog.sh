@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Hammer smoke stacked on furnace #20 harness catalog.
 # Consumes vendored `crates/cli/data/agents-catalog.json` only.
 #
 # Usage:

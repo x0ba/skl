@@ -190,7 +190,6 @@ pub async fn run(api_base: String) -> Result<()> {
                 match crate::commands::create::create_library_skill(&name, &paths) {
                     Ok(out) => {
                         app.status = if let Err(err) = crate::editor::open(&out.skill_md) {
-                            // Starter is already indexed; do not reindex or overwrite this warning.
                             eprintln!("edit: {err}");
                             format!("created {name}  (edit: {err})")
                         } else if let Err(err) = crate::commands::create::reindex(&out, &paths) {
@@ -656,7 +655,6 @@ pub fn load_catalog_at(project: &Path, paths: Option<&Paths>, _now: i64) -> Resu
     }
 
     skills.sort_by(|a, b| a.name.cmp(&b.name));
-    // Re-apply activated after merge (library row may precede db row).
     for row in &mut skills {
         row.activated = activated.contains(&row.name);
     }
@@ -930,8 +928,6 @@ mod tests {
         assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::Continue);
         assert!(app.status.contains("invalid skill name"), "{}", app.status);
 
-        // Catalog-only names (other sources / project dests) are not a clash.
-        // Use a name that is not a real library skill on this machine.
         app.create_name.clear();
         for c in "zz-not-in-library".chars() {
             app.handle_key(key(KeyCode::Char(c)));

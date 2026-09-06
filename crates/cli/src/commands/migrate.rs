@@ -1,7 +1,7 @@
 //! `skl migrate targets` — explicit M0 → canonical `.agents/skills`.
 //!
 //! Doctor warns; `skl use` does not call this. Destination paths come from
-//! furnace `project_link_targets` / `ensure_link` / `remove_managed_link`.
+//! `project_link_targets` / `ensure_link` / `remove_managed_link`.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -180,7 +180,6 @@ fn resolve_migrating_skill(
     home: &Path,
     db_file: Option<&Path>,
 ) -> Result<DiscoveredSkill> {
-    // Ignore legacy absolute `path` — resolve by name from this machine.
     if let Ok(skill) = resolve_skill(name, home, db_file) {
         return Ok(skill);
     }

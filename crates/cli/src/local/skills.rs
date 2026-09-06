@@ -169,7 +169,6 @@ mod tests {
 
     #[test]
     fn tree_hash_matches_api_contract() {
-        // apps/api/src/tree.test.ts
         assert_eq!(
             tree_hash(&BTreeMap::new()),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"

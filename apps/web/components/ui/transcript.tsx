@@ -25,7 +25,6 @@ export function Transcript({
         <code>
           {lines.map((line, i) => (
             <span key={i} className="block whitespace-pre">
-              {/* A blank line is a real separator here, so keep its height. */}
               {line.text === "" ? (
                 "\u00A0"
               ) : line.kind === "command" ? (

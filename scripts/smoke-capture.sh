@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Capture smoke stacked on furnace `skl capture` (do not invent a second verb).
+# Capture smoke for `skl capture`.
 #
 # Personal library is `{SKL_DATA_DIR}/skills/<name>/` (default
 # `~/.local/share/skl/skills/`). `.agents/skills` is the project link dest —

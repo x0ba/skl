@@ -43,7 +43,6 @@ export function SettingsView() {
 
     setPending(true);
     try {
-      // No bulk endpoint exists, so this fans out over DELETE /v1/devices/:id.
       const results = await Promise.allSettled(
         active.map((device) => revokeDevice(token, device.id)),
       );

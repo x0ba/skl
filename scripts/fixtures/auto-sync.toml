@@ -1,4 +1,4 @@
-# Fixture only — furnace SyncPrefs shape.
+# Fixture only — SyncPrefs shape.
 # Smoke writes this table into each machine's ~/.config/skl/config.toml.
 # No daemon.
 

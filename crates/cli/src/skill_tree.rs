@@ -91,8 +91,7 @@ fn tree_hash_from_pairs(rows: impl IntoIterator<Item = (String, String)>) -> Str
     hash_bytes(canonical.as_bytes())
 }
 
-/// SHA-256 hex of file bytes. Furnace should reuse this for local hashes
-/// so they match conflict detection.
+/// SHA-256 hex of file bytes.
 pub fn hash_bytes(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     hex::encode(digest)
@@ -310,7 +309,6 @@ mod tests {
 
     #[test]
     fn tree_hash_joins_with_newline_between_entries() {
-        // Two files: cipher canonical is `a\0ha\nb\0hb` (no trailing newline).
         let a = SkillFile {
             skill_name: "s".into(),
             relative_path: PathBuf::from("a"),

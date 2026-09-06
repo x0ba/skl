@@ -1,5 +1,5 @@
 /**
- * skl API contracts — furnace (CLI + device-approve page) mirrors this file.
+ * skl API contracts — CLI + device-approve page mirror this file.
  *
  * ALL routes are under /v1 (no unversioned aliases):
  *

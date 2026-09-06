@@ -1,5 +1,5 @@
 /**
- * Web-side copy of the furnace-facing types in `apps/api/src/contracts.ts`.
+ * Web-side copy of the types in `apps/api/src/contracts.ts`.
  * Keep shapes and `/v1` paths aligned with that file.
  */
 

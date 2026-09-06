@@ -33,7 +33,6 @@ pub async fn run(names: &[String], project: Option<PathBuf>, api_base: &str) -> 
         }
         eprintln!("  updated  {}", out.manifest.display());
     }
-    // Fail-soft: never fail `skl unuse` because auto-sync failed.
     if let Some(paths) = paths.as_ref() {
         let _ = crate::auto_sync::maybe_run(api_base, paths, "unuse").await;
     }

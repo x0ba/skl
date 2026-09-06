@@ -63,7 +63,7 @@ pub struct SyncConflict {
     pub remote_tree_hash: String,
     /// ISO-8601 from the remote skill row's `updated_at`.
     pub remote_updated_at: String,
-    /// Local mtime if furnace has it on disk. Never serialized.
+    /// Local mtime if present on disk. Never serialized.
     #[serde(default, skip)]
     pub local_mtime: Option<SystemTime>,
 }
@@ -135,8 +135,7 @@ impl SyncConflict {
     }
 }
 
-/// Client choice. No auto-merge. Furnace applies via rename or overwrite,
-/// then re-`POST /v1/sync`.
+/// Client choice. No auto-merge. Apply via rename or overwrite, then re-`POST /v1/sync`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Resolution {
@@ -173,7 +172,7 @@ pub struct ResolvedConflict {
 /// Compare two on-disk trees by skill name + tree hash.
 ///
 /// Production path is `POST /v1/sync` → [`SyncResponse::conflicts`]. Use this
-/// only in tests or when furnace already has both trees locally.
+/// only in tests or when both trees are available locally.
 pub fn detect_conflicts(local: &SkillTree, remote: &SkillTree) -> Vec<SyncConflict> {
     let mut names: HashSet<String> = local.skill_names().into_iter().collect();
     names.extend(remote.skill_names());

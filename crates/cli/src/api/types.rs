@@ -28,8 +28,6 @@ where
     }
 }
 
-// --- Device auth -----------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DeviceCodeRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -110,8 +108,6 @@ pub struct DeviceApproveResponse {
     pub device_id: String,
 }
 
-// --- Sync ------------------------------------------------------------------
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SkillTree {
     pub tree_hash: String,
@@ -170,8 +166,6 @@ pub struct PutBlobResponse {
     pub hash: String,
     pub size: u64,
 }
-
-// --- Read models -----------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct HealthResponse {

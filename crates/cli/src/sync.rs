@@ -71,7 +71,6 @@ pub async fn run_with_opts(
     }
 
     let db = LocalDb::open(&paths.db_file)?;
-    // Heal leftover harness-home index rows, then sync the library only.
     library::reindex_library_only(&db, paths)?;
     let body = db.sync_request()?;
 
@@ -473,7 +472,6 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         std::fs::create_dir_all(home.join(".agents/skills")).unwrap();
-        // Harness home exists so we can assert sync does *not* write there.
 
         let bytes = b"# remote\n".to_vec();
         let blob_hash = hash_bytes(&bytes);

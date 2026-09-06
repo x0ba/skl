@@ -31,11 +31,6 @@ export function useResource<T>(fetcher: (token: string) => Promise<T>): Resource
   const [settled, setSettled] = useState(false);
   const [unauthenticated, setUnauthenticated] = useState(false);
 
-  /**
-   * Resolving the token first is deliberate: it puts every `setState` behind an
-   * `await`, so mounting this hook does not update state synchronously inside
-   * an effect and trigger a cascading render.
-   */
   const load = useCallback(async () => {
     try {
       const token = await session.getAccessToken();
@@ -58,15 +53,10 @@ export function useResource<T>(fetcher: (token: string) => Promise<T>): Resource
 
   useEffect(() => {
     if (!session.isReady) return;
-    // `load` awaits the network before touching state, so this does not cause
-    // the cascading render the rule guards against — the analysis just cannot
-    // follow the async boundary.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load, session.isReady, session.isSignedIn, session.localToken]);
 
-  // Called from event handlers, where a synchronous state update is fine and
-  // gives the trigger immediate feedback.
   const refresh = useCallback(() => {
     setRefreshing(true);
     void load();

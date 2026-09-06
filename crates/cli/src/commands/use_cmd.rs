@@ -87,7 +87,6 @@ pub async fn run(
         }
         eprintln!("  updated  {}", out.manifest.display());
     }
-    // Fail-soft: never fail `skl use` because auto-sync failed.
     if let Some(paths) = paths.as_ref() {
         let _ = crate::auto_sync::maybe_run(api_base, paths, "use").await;
     }

@@ -93,11 +93,9 @@ export function DeviceApproveForm({
           >
             {Array.from({ length: CODE_LENGTH }, (_, index) => (
               <Fragment key={index}>
-                {/* The dash users see in ABCD-2345, drawn rather than typed. */}
                 {index === CODE_LENGTH / 2 ? (
                   <span aria-hidden className="mx-1 h-px w-2 bg-border" />
                 ) : null}
-                {/* Slot index comes from DOM order; the separator is not a slot. */}
                 <OTPField.Input
                   className="size-9 border border-input bg-background text-center font-mono text-[15px] uppercase text-foreground caret-primary focus:border-primary focus:outline-none data-filled:border-foreground"
                 />

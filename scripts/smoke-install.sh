@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install smoke stacked on furnace `apps/web/public/install.sh` (do not invent a second installer).
+# Install smoke for `apps/web/public/install.sh`.
 #
 # Clean env: after a binary exists, the curl | bash path never calls cargo/rustc.
 #

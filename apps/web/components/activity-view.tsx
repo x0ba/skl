@@ -21,8 +21,6 @@ export function ActivityView() {
   const { data, error, loading, refreshing, unauthenticated, refresh } =
     useResource(listSkills);
 
-  // Derived from each skill's `updated_at`. The API has no event log, so this
-  // is a most-recently-changed ordering, not a full history.
   const recent = useMemo(() => {
     const skills = data?.skills ?? [];
     return [...skills].sort(

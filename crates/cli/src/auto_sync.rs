@@ -1,6 +1,4 @@
-//! Piggyback auto-sync for furnace verbs.
-//!
-//! Hammer stacks smoke / docs / extra fail-soft / throttle cases on this API:
+//! Piggyback auto-sync after parent verbs.
 //!
 //! - [`is_due`] — `last_sync_at` **and** `last_auto_sync_attempt_at` vs
 //!   [`crate::config::SyncPrefs::frequency_secs`] (default 900s).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove `skl init` imports furnace home roots (same list as doctor):
+# Prove `skl init` imports home roots (same list as doctor):
 #   ~/.agents/skills
 #   ~/.config/agents/skills
 # No API required. Does not change harness roots or `skl use` dests.
@@ -36,7 +36,6 @@ printf '%s' "# ${XDG_NAME}
 
 hello from ~/.config/agents/skills
 " >"$HOME_DIR/.config/agents/skills/${XDG_NAME}/SKILL.md"
-# Explicit init — do not let furnace maybe_run try the API.
 skl_write_sync_prefs "$HOME_DIR" false 900
 
 echo "==> skl init imports ~/.agents/skills + ~/.config/agents/skills"

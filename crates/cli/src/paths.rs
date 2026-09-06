@@ -1,13 +1,7 @@
 //! HTTP paths matching `apps/api/src/contracts.ts` (`API_ROUTES`).
 //!
-//! Named `paths` (not `api`) so this file can sit next to furnace's
-//! `src/api/` HTTP client without a module clash.
-//!
-//! Cipher lock (all routes under `/v1`, no unversioned aliases):
-//! - `POST /v1/sync`
-//! - `PUT`/`GET /v1/blobs/:hash` (SHA-256 of scrubbed bytes)
-//! - `PUT /v1/skills/:name/tree`
-//! - `GET /v1/skills`, `GET /v1/skills/:name`
+//! Named `paths` (not `api`) so this file can sit next to the HTTP client
+//! module without a module clash.
 //!
 //! Auth: `Authorization: Bearer <device_token>`.
 

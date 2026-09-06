@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Hammer coverage stacked on furnace DAN-13 TUI. Does not invent keys or verbs.
 #
 #   1. Non-TTY / piped / CI never enters fullscreen (prints help)
 #   2. SKL_NO_TUI=1 / --no-tui forces help *on a TTY*
@@ -82,7 +81,7 @@ export SKL_DATA_DIR="$HOME_DIR/.local/share/skl"
 export SKL_CONFIG_DIR="$HOME_DIR/.config/skl"
 export SKL_NO_PROMPT=1
 export API_BASE="${API:-http://127.0.0.1:1}"
-# This environment may export TERM=dumb; furnace degrades instead of Enter.
+# This environment may export TERM=dumb; force a capable TERM for PTY tests.
 export TERM=xterm-256color
 
 echo "==> 1. non-TTY / piped / CI never enters fullscreen"
@@ -137,7 +136,6 @@ echo "$cli_use"
 skl_assert_contains "$cli_use" "using $SKILL_NAME"
 skl_assert_portable_manifest "$PROJECT_CLI/skills.toml"
 
-# Furnace TUI `u` activates cwd only (no --project). Drive it from project-tui.
 (
   cd "$PROJECT_TUI"
   tui_pty "$PTY_DIR/use-q" "uq" tui
