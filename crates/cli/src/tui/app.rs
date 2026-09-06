@@ -937,10 +937,12 @@ mod tests {
         let home = tmp.path().join("home");
         let project = tmp.path().join("proj");
         fs::create_dir_all(&project).unwrap();
-        let skill_dir = home.join(".claude/skills/greeter");
+        let data = tmp.path().join("data");
+        let skill_dir = data.join("skills/greeter");
         fs::create_dir_all(&skill_dir).unwrap();
         fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
-        let skill = resolve_skill("greeter", &home, None).unwrap();
+        let db_file = data.join("state.db");
+        let skill = resolve_skill("greeter", &home, Some(&db_file)).unwrap();
         linker::activate(&project, &home, &skill).unwrap();
         assert!(project.join(".agents/skills/greeter").exists());
         linker::deactivate(&project, &home, "greeter").unwrap();

@@ -330,7 +330,7 @@ mod tests {
         let err = resolve_skill("nope", tmp.path(), None)
             .unwrap_err()
             .to_string();
-        assert!(err.contains("not found"), "{err}");
+        assert!(err.contains("personal library"), "{err}");
     }
 
     #[test]
