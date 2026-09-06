@@ -5,7 +5,7 @@ description: Remove a skill from SKL and delete the local library copy.
 
 # skl delete
 
-Remove a skill from SKL and delete the local library copy.
+Delete a skill from SKL and from the local library.
 
 ## Synopsis
 
@@ -15,11 +15,11 @@ skl delete <skill>…
 
 ## Flags
 
-- `SKILL…` one or more names (required)
+- `SKILL…` — one or more names (required)
 
 ## What it writes
 
-Calls `DELETE /v1/skills/:name` on the API, then deletes `{data_dir}/skills/<name>/` and drops every `state.db` row for that name. Project dests and home agent dirs stay.
+Calls `DELETE /v1/skills/:name`, deletes `{data_dir}/skills/<name>/`, and removes its `state.db` entries. It does not change project or home agent directories.
 
 Requires a device token.
 

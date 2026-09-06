@@ -1,11 +1,11 @@
 ---
 title: skl tui
-description: Interactive two-pane skill browser. Also opened by bare skl on a TTY.
+description: Interactive two-pane skill browser, also opened by running skl in an interactive terminal.
 ---
 
 # skl tui
 
-Interactive two-pane skill browser. Also opened by bare `skl` on a TTY. `skl ui` is an alias.
+Interactive two-pane skill browser. Running `skl` in an interactive terminal opens it. `skl ui` is an alias.
 
 ## Synopsis
 
@@ -18,16 +18,16 @@ skl --no-tui
 
 ## Flags
 
-- `--no-tui` (global) print help instead of opening the TUI. Also `SKL_NO_TUI=1`.
+- `--no-tui` (global) — print help instead of opening the TUI. `SKL_NO_TUI=1` does the same.
 
-A non-TTY, piped stdin, or `CI` does not enter fullscreen.
+The fullscreen interface does not open with non-interactive or piped stdin, or in `CI`.
 
 ## What it writes
 
-Same disk effects as the matching CLI verbs when you press the keys. `n` creates, `e` edits, `u` uses, `U` unuses, `d` deletes, `s` syncs. Browse and preview read the local library only.
+Keys have the same file effects as their CLI commands: `n` creates, `e` edits, `u` activates, `U` removes from the project, `d` deletes, and `s` syncs. Browsing and previewing read only the local library.
 
 Keybindings are listed in [The TUI](/guide/tui).
 
 ## Errors
 
-Unsupported terminals print a reason and stay in the shell. Sync and delete errors from those keys surface as status-line text.
+On an unsupported terminal, skl prints the reason and stays in the shell. Sync and delete errors appear in the status line.

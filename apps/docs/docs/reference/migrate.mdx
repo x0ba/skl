@@ -5,7 +5,7 @@ description: Move old .claude and .cursor project links onto .agents/skills.
 
 # skl migrate
 
-Explicit layout rewrites. Never run from `skl use`.
+Move old project layouts to `.agents/skills`. This migration is never run by `skl use`.
 
 ## Synopsis
 
@@ -17,18 +17,18 @@ skl migrate targets --project <dir>
 
 ## Subcommands
 
-`targets` moves old `.claude` and `.cursor` project links onto canonical `.agents/skills`.
+`targets` moves old `.claude` and `.cursor` project links to `.agents/skills`.
 
 ## Flags
 
-- `--project DIR` project directory (default cwd)
-- `--prune-old` remove old `.claude`, `.cursor`, and `.codex` links after the canonical dest exists
+- `--project DIR` — project directory (default: current directory)
+- `--prune-old` — remove old `.claude`, `.cursor`, and `.codex` links after `.agents/skills` exists
 
 ## What it writes
 
-Creates or refreshes `.agents/skills/<name>` for each project skill. Rewrites `skills.toml` onto the canonical dest. With `--prune-old`, deletes the old managed links. Without `--prune-old`, detected extra dests may stay.
+Creates or refreshes `.agents/skills/<name>` for every project skill and rewrites `skills.toml` to use that directory. With `--prune-old`, it deletes the old managed links. Without it, detected extra agent directories may remain.
 
-Does not run on `skl use`. Doctor warns when it sees the old layout.
+`skl use` does not run this migration. `skl doctor` warns when it finds the old layout.
 
 ## Errors
 

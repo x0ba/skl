@@ -5,7 +5,7 @@ description: First-run prompts for login and init.
 
 # skl setup
 
-First-run after install. Asks login, then init.
+Run the initial prompts after installation: login, then import.
 
 ## Synopsis
 
@@ -16,15 +16,15 @@ skl setup --non-interactive
 
 ## Flags
 
-- `--non-interactive` skips login, init, and extras prompts. Prints `skl login && skl init` as the next step.
+- `--non-interactive` — skip login, import, and extra-agent prompts. Prints `skl login && skl init` as the next step.
 
-Prompts are also skipped when `CI`, `SKL_NO_PROMPT`, or `SKL_YES` is set, or when stdin is not a TTY.
+Prompts are also skipped when `CI`, `SKL_NO_PROMPT`, or `SKL_YES` is set, or when stdin is not interactive.
 
 ## What it writes
 
-If `config.toml` has no `api_base`, setup writes the process `api_base` so a skipped login still remembers the hosted API.
+If `config.toml` has no `api_base`, setup writes the process `api_base`. This preserves the hosted API setting even when login is skipped.
 
-Interactive answers run `skl login` and `skl init` in that order. Each step is optional. Default on the prompt is yes.
+Accepted prompts run `skl login` and then `skl init`. Both are optional and default to yes.
 
 ```text
 Log in now? [Y/n]
@@ -33,4 +33,4 @@ Import existing skills (skl init)? [Y/n]
 
 ## Errors
 
-Whatever `skl login` or `skl init` returns, if you accepted that step.
+Returns any error from an accepted `skl login` or `skl init` step.

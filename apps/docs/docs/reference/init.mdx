@@ -5,7 +5,7 @@ description: Import foreign home skills into the personal library.
 
 # skl init
 
-Import foreign skills into the personal library (`~/.local/share/skl/skills`).
+Import skills from home agent directories into the personal library (`~/.local/share/skl/skills`).
 
 ## Synopsis
 
@@ -19,9 +19,9 @@ None.
 
 ## What it writes
 
-Copies missing skills from home roots into `{data_dir}/skills`. Rebuilds the `state.db` import index from the library only. Foreign trees stay in place. Existing library names are left untouched.
+Copies missing skills from home directories into `{data_dir}/skills`. Rebuilds the `state.db` import index from the library only. It leaves source directories and existing library skills unchanged.
 
-May prompt once for sticky extras and write `[targets]` in `config.toml`. May piggyback auto-sync.
+May prompt once to configure extra agent directories and write `[targets]` in `config.toml`. It may also start automatic sync.
 
 Home roots include `~/.agents/skills`, `~/.config/agents/skills`, `~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`, and other catalog globals.
 

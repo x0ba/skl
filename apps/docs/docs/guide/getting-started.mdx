@@ -5,9 +5,9 @@ description: Install skl, import existing skills, optionally sync, then use a sk
 
 # Getting started
 
-This guide walks through setup one step at a time. If you only want the commands, the [home page](/) has them.
+This guide covers the setup steps in order. For the short version, see the [home page](/).
 
-Setup takes four steps. Only the first is required.
+Setup has four steps. Only installation is required.
 
 1. Install skl
 2. Import existing skills, if you have any
@@ -16,21 +16,21 @@ Setup takes four steps. Only the first is required.
 
 ## 1. Install
 
-The install script downloads the binary and can walk you through first-run:
+The install script downloads the binary and can guide you through the initial setup:
 
 ```bash
 curl -fsSL https://www.tryskl.fyi/install.sh | sh
 ```
 
-On a TTY it asks `Log in now? [Y/n]`, then `Import existing skills (skl init)? [Y/n]`. A non-TTY or CI install writes the binary only.
+In an interactive terminal, it asks whether to log in and import existing skills. In CI or a non-interactive shell, it installs only the binary.
 
 Want flags and `PATH` notes? See [Installation](/guide/installation).
 
-At this point `skl` is on disk. Bare `skl` on a TTY opens the TUI.
+After installation, running `skl` in an interactive terminal opens the TUI.
 
 ## 2. Import existing skills
 
-`skl init` copies skills from home agent dirs into the personal library. The foreign trees stay where they are.
+`skl init` copies skills from home agent directories into the personal library. It does not change the source directories.
 
 ```bash
 skl init
@@ -40,7 +40,7 @@ Skip this if you have nothing to import. You can create a skill later with `skl 
 
 ## 3. Set up sync (optional)
 
-Sync backs the personal library up and shares it between machines. You can use the hosted API or [run the server from this repo](/self-hosting).
+Sync backs up the personal library and makes it available on other machines. You can use the hosted API or [run the server yourself](/self-hosting).
 
 ```bash
 skl login
@@ -49,7 +49,7 @@ skl sync
 
 `skl login` prints a verification URL and a user code. Approve the device in the browser. The **device token** is stored in `~/.local/share/skl/state.db`.
 
-Skipping this step is fine. The personal library stays on this machine, not backed up and not synchronized. [Setting up sync](/guide/sync) covers a second machine, conflicts, and what the server can read.
+Without sync, the personal library remains only on this machine. [Setting up sync](/guide/sync) explains adding a second machine, resolving conflicts, and server access to skill data.
 
 ## 4. Use a skill
 
@@ -66,10 +66,10 @@ cd /path/to/project
 skl use writing-tests
 ```
 
-`skl use` writes `.agents/skills/writing-tests` and adds the name to `skills.toml`. Default is a symlink to the personal library. If the symlink fails, skl copies instead.
+`skl use` creates `.agents/skills/writing-tests` and adds the name to `skills.toml`. By default it creates a symlink to the personal library; if that fails, it copies the skill instead.
 
-Bare `skl` opens the two-pane browser. Keybindings are in [The TUI](/guide/tui). Everyday commands are in [Basic usage](/guide/basic-usage).
+Running `skl` opens the two-pane browser. See [The TUI](/guide/tui) for keybindings and [Basic usage](/guide/basic-usage) for everyday commands.
 
 ## Getting help
 
-File an issue at [github.com/x0ba/skl/issues](https://github.com/x0ba/skl/issues). Run `skl doctor` first and include that output.
+File an issue at [github.com/x0ba/skl/issues](https://github.com/x0ba/skl/issues). Run `skl doctor` first and include its output.

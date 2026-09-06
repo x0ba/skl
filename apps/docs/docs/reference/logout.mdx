@@ -5,7 +5,7 @@ description: Clears the local device token in state.db.
 
 # skl logout
 
-Clears the local device token (`state.db` meta). Does not require the OS keyring.
+Clear the local device token from `state.db`. The OS keyring is not required.
 
 ## Synopsis
 
@@ -19,7 +19,7 @@ None.
 
 ## What it writes
 
-Deletes `meta.device_token` from `state.db`. Does not edit `config.toml`. Does not revoke the device on the server. Leftover OS keyring entries, if any, are unused.
+Deletes `meta.device_token` from `state.db`. It does not edit `config.toml` or revoke the device on the server. Any leftover OS keyring entries are unused.
 
 ## Errors
 

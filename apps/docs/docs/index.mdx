@@ -6,7 +6,7 @@ slug: /
 
 # skl
 
-skl keeps a personal library of agent skills on this machine and can sync that library across machines by content hash. A skill is a directory that contains `SKILL.md`. You activate a skill into a project with `skl use`. That writes the project dest, `.agents/skills`, and records the name in `skills.toml`.
+skl keeps a personal library of agent skills and can sync it between machines by content hash. A skill is a directory that contains `SKILL.md`. Use `skl use` to make a library skill available in a project. It creates `.agents/skills/<name>` and records the skill in `skills.toml`.
 
 Sync is optional. The hosted API is [https://api.tryskl.fyi](https://api.tryskl.fyi). Skip login and the personal library stays on this machine at `~/.local/share/skl/skills`.
 
@@ -26,14 +26,14 @@ cd /path/to/project
 skl use writing-tests
 ```
 
-`skl init` is only needed if you already have skills in home agent dirs. `skl login` and `skl sync` are only needed if you want the hosted library. Bare `skl` on a TTY opens the TUI.
+Run `skl init` only when you already have skills in home agent directories. `skl login` and `skl sync` are only needed to use the hosted library. Running `skl` with an interactive terminal opens the TUI.
 
 If you want the same path with more explanation, start at [Getting started](/guide/getting-started).
 
 ## Supported platforms
 
-The installer covers Linux `x86_64` and `aarch64`, macOS Intel and Apple silicon, and Windows `x86_64` through Git Bash. It writes `~/.local/bin/skl` and does not edit `.bashrc`, `.zshrc`, or fish config. If that directory is not on `PATH`, the script prints an export you can add yourself.
+The installer supports Linux `x86_64` and `aarch64`, macOS on Intel and Apple silicon, and Windows `x86_64` through Git Bash. It installs to `~/.local/bin/skl` and does not change shell configuration files. If that directory is not on `PATH`, it prints an export command for you to add.
 
 ## Getting help
 
-File an issue at [github.com/x0ba/skl/issues](https://github.com/x0ba/skl/issues). Run `skl doctor` and include that output. It reports the resolved paths, the token store, the API health check, and whether this machine can create directory symlinks.
+File an issue at [github.com/x0ba/skl/issues](https://github.com/x0ba/skl/issues). First run `skl doctor` and include its output. It reports resolved paths, token status, API health, and whether the machine can create directory symlinks.

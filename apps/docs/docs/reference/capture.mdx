@@ -5,7 +5,7 @@ description: Promote a project skill into the personal library.
 
 # skl capture
 
-Promote a project skill into the personal library (`~/.local/share/skl/skills`).
+Copy a project skill into the personal library (`~/.local/share/skl/skills`).
 
 ## Synopsis
 
@@ -16,25 +16,25 @@ skl capture <path> --force --as <name> --keep-copy --project <dir>
 
 ## Flags
 
-- `PATH` project skill path or name, resolved under `.agents/skills` and sticky extras
-- `--force` overwrite an existing library skill of the same name
-- `--as NAME` capture under a different skill name
-- `--keep-copy` copy into the library and leave the project dir as a real copy
-- `--project DIR` project directory (default cwd)
+- `PATH` — project skill path or name, resolved from `.agents/skills` and configured extra directories
+- `--force` — overwrite a library skill with the same name
+- `--as NAME` — use a different name in the library
+- `--keep-copy` — leave the project directory as a real copy
+- `--project DIR` — project directory (default: current directory)
 
 Does not prompt.
 
 ## What it writes
 
-Copies the source tree into `{data_dir}/skills/<name>/`. Indexes `state.db`. Updates `skills.toml` with a names-only entry. Without `--keep-copy`, replaces the project dir with a symlink to the library. May piggyback auto-sync.
+Copies the source tree to `{data_dir}/skills/<name>/`, indexes it in `state.db`, and adds a name-only entry to `skills.toml`. Unless you pass `--keep-copy`, it replaces the project directory with a symlink to the library copy. It may also start automatic sync.
 
-A source that already symlinks at the library skill is a no-op after reindex.
+If the source already symlinks to the library skill, capture only reindexes it.
 
 ## Errors
 
 - `capture path is not a skill directory`
 - `skill directory … is missing SKILL.md`
 - skill already exists in the personal library (needs `--force` or `--as`)
-- `skill not found` when the argument is neither a path nor a name under project dests
+- `skill not found` when the argument is neither a path nor a name in a project skill directory
 - `invalid skill name`
 - `project skill … already links … but that library skill is missing`

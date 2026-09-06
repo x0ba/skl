@@ -5,7 +5,7 @@ description: Login, api_base, local skill count, last sync.
 
 # skl status
 
-Show login, `api_base`, local skill count, last sync.
+Show login status, `api_base`, local skill count, and the last sync.
 
 ## Synopsis
 
@@ -19,7 +19,7 @@ None.
 
 ## What it writes
 
-Nothing on disk except a possible auto-sync when due. Prints:
+Does not write to disk, apart from a possible scheduled automatic sync. Prints:
 
 - `api_base`
 - `token` (`yes` with a preview, or `no`)
@@ -31,4 +31,4 @@ Nothing on disk except a possible auto-sync when due. Prints:
 
 ## Errors
 
-Status stays successful when the config dir cannot be resolved. It prints the error on the `config` line and returns.
+If the configuration directory cannot be resolved, status still succeeds. It prints the error on the `config` line.

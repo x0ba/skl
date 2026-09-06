@@ -5,7 +5,7 @@ description: List local skills from state.db, plus remote presence when logged i
 
 # skl list
 
-List local skills from `state.db`. When logged in, also shows remote presence.
+List locally indexed skills from `state.db`. When logged in, also show whether they are present remotely.
 
 ## Synopsis
 
@@ -19,7 +19,7 @@ None.
 
 ## What it writes
 
-Nothing on disk except a possible auto-sync when due. Prints `name`, short `tree_hash`, `source`, `path`, and `remote` (`yes`, `no`, or `-`). Names that exist only on the server appear under `remote only`.
+Does not write to disk, apart from a possible scheduled automatic sync. Prints `name`, short `tree_hash`, `source`, `path`, and `remote` (`yes`, `no`, or `-`). Skills that exist only on the server appear under `remote only`.
 
 Without `state.db`, prints `no local skill index; run skl init first` and exits 0.
 

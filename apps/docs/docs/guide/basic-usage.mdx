@@ -5,7 +5,7 @@ description: Create, use, unuse, list, status, delete, and migrate skills.
 
 # Basic usage
 
-These commands assume skl is installed. Sync steps live on [Setting up sync](/guide/sync).
+These commands assume skl is installed. For sync, see [Setting up sync](/guide/sync).
 
 ## Create
 
@@ -13,9 +13,9 @@ These commands assume skl is installed. Sync steps live on [Setting up sync](/gu
 skl create writing-tests
 ```
 
-`skl new` is an alias. Create writes `~/.local/share/skl/skills/writing-tests/SKILL.md` with frontmatter `name` and `description`, then opens `$VISUAL` or `$EDITOR` (fallback `vi`).
+`skl new` is an alias. The command creates `~/.local/share/skl/skills/writing-tests/SKILL.md` with `name` and `description` frontmatter, then opens `$VISUAL` or `$EDITOR` (falling back to `vi`).
 
-The name cannot start with `.` and cannot contain `/` or `\`. A name that already exists in the library is an error. Edit that skill instead.
+Names cannot start with `.` or contain `/` or `\`. Creating a name already in the library fails; edit that skill instead.
 
 If the editor fails, the skill is still on disk.
 
@@ -25,25 +25,25 @@ If the editor fails, the skill is still on disk.
 skl use writing-tests
 ```
 
-`skl use` activates a library skill into this project. It writes `.agents/skills/writing-tests` and adds the name to `skills.toml`. Default is a symlink. If the symlink fails, skl copies.
+`skl use` makes a library skill available in the current project. It creates `.agents/skills/writing-tests` and adds the name to `skills.toml`. It uses a symlink by default and copies the skill if a symlink cannot be created.
 
 ```bash
 skl use
 ```
 
-With no arguments, `skl use` lists skills already activated in this project.
+With no arguments, `skl use` lists skills already active in the current project.
 
 ```bash
 skl use --all
 ```
 
-`--all` rematerializes every skill listed in `skills.toml` from this machine's personal library. If a listed name is missing here, sync first, then run `skl use --all` again.
+`--all` recreates every skill listed in `skills.toml` from this machine's personal library. If a listed skill is missing locally, sync first, then run `skl use --all` again.
 
 ```bash
 skl use writing-tests -a claude-code
 ```
 
-`-a` / `--agent` adds an **extra dest** for this activation. Repeat the flag for more than one id. `claude` is an alias for `claude-code`.
+`-a` / `--agent` adds an additional project directory for this activation. Repeat the flag for multiple agent IDs. `claude` is an alias for `claude-code`.
 
 Cursor and Codex already read `.agents/skills`. Do not add them as extras.
 
@@ -55,7 +55,7 @@ Cursor and Codex already read `.agents/skills`. Do not add them as extras.
 skl unuse writing-tests
 ```
 
-`skl unuse` removes the project dest for that name and drops it from `skills.toml`. The personal library copy stays.
+`skl unuse` removes the project's copy or link and removes the name from `skills.toml`. It leaves the personal library unchanged.
 
 ## List, status, delete
 
@@ -65,11 +65,11 @@ skl status
 skl delete writing-tests
 ```
 
-`skl list` prints local skills from `state.db`. When you are logged in, it also marks remote presence.
+`skl list` shows locally indexed skills from `state.db`. When you are logged in, it also shows whether each is present remotely.
 
 `skl status` prints `api_base`, whether a device token is present, config and `state.db` paths, auto-sync prefs, local skill count, and last sync.
 
-`skl delete` removes the skill from SKL and deletes the local library copy. Project dests and home agent dirs stay. Delete talks to the API, so you need to be logged in.
+`skl delete` removes the skill from SKL and deletes the local library copy. It does not change project directories or home agent directories. Because it calls the API, you must be logged in.
 
 ## Migrate old project links
 
@@ -79,4 +79,4 @@ skl migrate targets --prune-old
 skl migrate targets --project DIR
 ```
 
-`skl migrate targets` moves old `.claude` and `.cursor` project links onto `.agents/skills`. `--prune-old` removes the old links after the canonical dest exists. `skl use` never runs this. `skl doctor` warns when it sees the old layout.
+`skl migrate targets` moves old `.claude` and `.cursor` project links to `.agents/skills`. `--prune-old` removes the old links after the new destination exists. `skl use` does not run this migration. `skl doctor` warns when it finds the old layout.

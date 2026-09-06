@@ -5,7 +5,7 @@ description: Browse, edit, use, and sync skills from the two-pane terminal UI.
 
 # The TUI
 
-Bare `skl` on a TTY opens the two-pane skill browser. `skl tui` and `skl ui` do the same.
+Running `skl` in an interactive terminal opens the two-pane skill browser. `skl tui` and `skl ui` do the same.
 
 ```bash
 skl
@@ -13,7 +13,7 @@ skl tui
 skl ui
 ```
 
-`--no-tui` or `SKL_NO_TUI=1` prints help instead of entering fullscreen.
+`--no-tui` or `SKL_NO_TUI=1` prints help instead of opening the fullscreen interface.
 
 Browse works offline. Sync from the TUI needs login.
 
@@ -35,6 +35,6 @@ r              refresh
 q or Esc       quit
 ```
 
-`n` is `skl create`. `e` opens `SKILL.md` in `$VISUAL` or `$EDITOR`. `u` and `U` are `skl use` and `skl unuse` for the selected skill in the current project. `d` is `skl delete`. `s` runs a blocking `skl sync`. `r` reloads the local library and `state.db`.
+`n` runs `skl create`. `e` opens `SKILL.md` in `$VISUAL` or `$EDITOR`. `u` and `U` run `skl use` and `skl unuse` for the selected skill in the current project. `d` runs `skl delete`. `s` runs `skl sync` and waits for it to finish. `r` reloads the local library and `state.db`.
 
 Esc leaves search, help, create, or the delete confirm, then quits from the list.

@@ -5,7 +5,7 @@ description: Copy home agent skills into the personal library with init, or prom
 
 # Import existing skills
 
-Two commands bring skills into the personal library. `skl init` copies from home agent dirs. `skl capture` promotes a skill that already lives in a project.
+Use two commands to add skills to the personal library. `skl init` imports from home agent directories. `skl capture` imports a skill from a project.
 
 ## Init
 
@@ -13,7 +13,7 @@ Two commands bring skills into the personal library. `skl init` copies from home
 skl init
 ```
 
-`skl init` finds skills under home roots and copies any name that is not already in `~/.local/share/skl/skills`. Foreign trees stay in place. Init never overwrites a library skill of the same name.
+`skl init` finds skills in supported home directories and copies each one that is not already in `~/.local/share/skl/skills`. It leaves the source directories unchanged and never overwrites an existing library skill.
 
 Roots include:
 
@@ -24,7 +24,7 @@ Roots include:
 - `~/.codex/skills`
 - other catalog globals on this machine
 
-`skl doctor` lists the roots it can see. After init, the library is ready for `skl sync`. Sync still does not touch those home dirs.
+`skl doctor` lists the directories it can find. After `init`, you can sync the library. Sync does not change those home directories.
 
 Init may ask once whether you want **sticky extras** such as Claude Code. See [Extra agents](/guide/agents).
 
@@ -35,15 +35,15 @@ skl capture writing-tests
 skl capture .agents/skills/writing-tests
 ```
 
-`skl capture` copies a project skill into the personal library. The path or name is resolved under the project dest `.agents/skills` and any sticky extras.
+`skl capture` copies a project skill into the personal library. It resolves a path or name from `.agents/skills` and any configured extra agent directories.
 
-After a successful capture, the project directory becomes a symlink to the library copy. Pass `--keep-copy` to leave a real directory in the project.
+After a successful capture, the project directory is replaced with a symlink to the library copy. Use `--keep-copy` to leave the project directory as a real copy.
 
 ### Flags
 
 - `--force` overwrites an existing library skill of the same name.
 - `--as NAME` stores the skill under a different name.
-- `--keep-copy` copies into the library and leaves the project dir as a real copy.
+- `--keep-copy` copies the skill into the library and leaves the project directory as a real copy.
 - `--project DIR` sets the project root. Default is the current directory.
 
-A name clash without `--force` or `--as` is an error. The source must be a directory that contains `SKILL.md`.
+If the library already has that name, use `--force` or `--as`; otherwise capture fails. The source must be a directory containing `SKILL.md`.

@@ -5,7 +5,7 @@ description: Remove the skl binary, config, and personal library.
 
 # Uninstall
 
-Logout first if you want the local device token gone before you delete the files. Logout does not revoke the device on the server. Revoke that on the [devices page](https://www.tryskl.fyi/devices) if you care.
+Run logout first to remove the local device token before deleting files. Logout does not revoke the device on the server; revoke it from the [devices page](https://www.tryskl.fyi/devices) if needed.
 
 ```bash
 skl logout
@@ -21,4 +21,4 @@ rm -rf ~/.local/share/skl
 
 On Windows Git Bash the binary is `~/.local/bin/skl.exe`. If you set `SKL_INSTALL_DIR`, `SKL_CONFIG_DIR`, or `SKL_DATA_DIR`, delete those paths instead.
 
-Project `.agents/skills` dests and `skills.toml` stay. Delete them in each project if you want those gone too. Home agent dirs such as `~/.claude/skills` are not owned by skl. Leave them or remove them yourself.
+This does not remove project `.agents/skills` directories or `skills.toml`; delete them from each project if needed. skl does not own home agent directories such as `~/.claude/skills`, so it leaves them in place.

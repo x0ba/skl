@@ -1,11 +1,11 @@
 ---
 title: skl targets
-description: Show or edit sticky extra dests in config.toml.
+description: Show or edit extra agent directories in config.toml.
 ---
 
 # skl targets
 
-Show or edit sticky extra dests (`~/.config/skl/config.toml`).
+Show or edit extra agent directories that apply to every activation (`~/.config/skl/config.toml`).
 
 ## Synopsis
 
@@ -17,15 +17,15 @@ skl targets remove <id>…
 
 ## Subcommands
 
-- no subcommand lists canonical dest and extras
-- `add` writes extra dest ids (custom catalog ids, for example `claude-code`). Rejects universal ids.
-- `remove` deletes extra dest ids. Accepts aliases such as `claude`.
+- no subcommand — list `.agents/skills` and configured extras
+- `add` — add extra agent IDs, such as `claude-code`; rejects agents that already use `.agents/skills`
+- `remove` — remove extra agent IDs; accepts aliases such as `claude`
 
 ## What it writes
 
-`add` and `remove` rewrite `[targets].extra` in `config.toml`. List writes nothing.
+`add` and `remove` update `[targets].extra` in `config.toml`. Listing makes no changes.
 
-Printed lines are `canonical`, `extra`, `config`, and `ids`.
+Output includes `canonical`, `extra`, `config`, and `ids` lines.
 
 ## Errors
 

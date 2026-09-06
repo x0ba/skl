@@ -5,7 +5,7 @@ description: Device authorization. Stores the device token in state.db.
 
 # skl login
 
-Device authorization. Polls for approval and stores the device token in local state.
+Authorize this device, then store its token in local state.
 
 ## Synopsis
 
@@ -19,11 +19,11 @@ None.
 
 ## What it writes
 
-- Device token in `state.db` (`meta.device_token`)
-- `api_base` in `config.toml`
-- May piggyback auto-sync after a successful login
+- Stores the device token in `state.db` (`meta.device_token`)
+- Writes `api_base` to `config.toml`
+- May start automatic sync after a successful login
 
-Prints `verification_uri_complete` and `user_code`. Client name sent to the API is `skl@<hostname>`.
+Prints `verification_uri_complete` and `user_code`. The client name sent to the API is `skl@<hostname>`.
 
 ## Errors
 

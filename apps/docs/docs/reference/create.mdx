@@ -5,7 +5,7 @@ description: Create a personal-library skill and open SKILL.md in the editor.
 
 # skl create
 
-Create a personal-library skill and open `SKILL.md` in `$EDITOR`. Alias `skl new`.
+Create a skill in the personal library and open `SKILL.md` in an editor. `skl new` is an alias.
 
 ## Synopsis
 
@@ -16,9 +16,9 @@ skl new <skill>
 
 ## Flags
 
-- `SKILL` required name
+- `SKILL` — required name
 
-The name cannot be empty, cannot start with `.`, and cannot contain `/` or `\`.
+The name cannot be empty, start with `.`, or contain `/` or `\`.
 
 ## What it writes
 
@@ -31,9 +31,9 @@ description:
 ---
 ```
 
-Indexes the tree in `state.db`. Opens `$VISUAL` or `$EDITOR` (fallback `vi`). Editor failure leaves the files in place and prints a warning. May piggyback auto-sync.
+Indexes the skill in `state.db` and opens `$VISUAL` or `$EDITOR` (falling back to `vi`). If the editor fails, the files remain and skl prints a warning. The command may also start automatic sync.
 
-Does not write project dests.
+It does not change project directories.
 
 ## Errors
 

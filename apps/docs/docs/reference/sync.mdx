@@ -5,7 +5,7 @@ description: Hash-sync the personal library. Never project or home agent dirs.
 
 # skl sync
 
-Hash-sync the personal library only. Never agent or project dirs.
+Sync the personal library by content hash. It does not change agent or project directories.
 
 ## Synopsis
 
@@ -18,17 +18,17 @@ skl sync --allow-warnings
 
 ## Flags
 
-- `--keep-local` resolves every tree-hash conflict by keeping local (overwrite remote).
-- `--keep-remote` resolves every tree-hash conflict by keeping remote (overwrite local).
-- `--allow-warnings` allows warning-level secret findings. Blocks still refuse upload.
+- `--keep-local` — resolve every conflict by keeping the local version and overwriting the remote one
+- `--keep-remote` — resolve every conflict by keeping the remote version and overwriting the local one
+- `--allow-warnings` — allow warning-level secret findings; blocked findings still refuse upload
 
-`--keep-local` and `--keep-remote` are mutually exclusive. With neither flag, a TTY prompts. A non-TTY requires one of the flags.
+`--keep-local` and `--keep-remote` cannot be used together. Without either flag, an interactive terminal prompts. A non-interactive shell requires one of them.
 
 ## What it writes
 
-- Uploads and downloads blobs under `{data_dir}/skills`
-- Updates `state.db` hashes and last-sync meta
-- Does not write `.agents/skills`, `skills.toml`, or home agent dirs
+- Uploads and downloads skill data under `{data_dir}/skills`
+- Updates hashes and last-sync metadata in `state.db`
+- Does not change `.agents/skills`, `skills.toml`, or home agent directories
 
 Requires a device token and an existing `state.db`. Secret scan runs before upload.
 

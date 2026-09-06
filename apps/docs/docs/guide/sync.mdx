@@ -5,7 +5,7 @@ description: Log in with a device code, sync the personal library, and resolve t
 
 # Setting up sync
 
-Sync copies the **personal library** through the hosted API. It never writes project dests or home agent dirs. Skip this page if you want to stay local.
+Sync sends the **personal library** through the hosted API. It never changes project directories or home agent directories. You can skip this page if you want to keep the library local.
 
 ## Log in
 
@@ -13,11 +13,11 @@ Sync copies the **personal library** through the hosted API. It never writes pro
 skl login
 ```
 
-The CLI prints a verification URL like `https://tryskl.fyi/device?user_code=ABCD-2345` and a user code. Open the URL, approve the device, and wait for the poll to finish.
+The CLI prints a verification URL, such as `https://tryskl.fyi/device?user_code=ABCD-2345`, and a user code. Open the URL, approve the device, and wait for the CLI to finish polling.
 
 The **device token** is stored in `~/.local/share/skl/state.db`. Login also writes `api_base` to `~/.config/skl/config.toml`. The OS keyring is not required.
 
-If the code expires, run `skl login` again. If you deny the request, the CLI exits with "device authorization was denied".
+If the code expires, run `skl login` again. If you deny the request, the CLI exits with `device authorization was denied`.
 
 ## Second machine
 
@@ -25,7 +25,7 @@ If the code expires, run `skl login` again. If you deny the request, the CLI exi
 2. Run `skl login` and approve the new device.
 3. Run `skl sync`.
 
-The second machine pulls the personal library. Project dests are still empty until you `skl use` in each project.
+The second machine downloads the personal library. Each project remains unchanged until you run `skl use` in it.
 
 ## Sync
 
@@ -33,22 +33,22 @@ The second machine pulls the personal library. Project dests are still empty unt
 skl sync
 ```
 
-`skl sync` hash-syncs `~/.local/share/skl/skills` only. `.agents/skills` in a project does not change. Home copies under `~/.claude/skills` or `~/.cursor/skills` do not change.
+`skl sync` uses content hashes to sync only `~/.local/share/skl/skills`. It does not change a project's `.agents/skills` directory or home directories such as `~/.claude/skills` and `~/.cursor/skills`.
 
 You need a local index first. Run `skl init` or `skl create` if `state.db` does not exist yet.
 
 ## Conflicts
 
-A conflict is a tree-hash mismatch. The same skill name has different content locally and on the server. Default on a TTY is a prompt per skill.
+A conflict occurs when the same skill name has different content locally and on the server. In an interactive terminal, skl prompts for each conflict.
 
 ```bash
 skl sync --keep-local
 skl sync --keep-remote
 ```
 
-`--keep-local` overwrites the remote tree. `--keep-remote` overwrites the local library copy. There is no merge.
+`--keep-local` overwrites the remote skill. `--keep-remote` overwrites the local library copy. skl does not merge conflicts.
 
-On a non-TTY, pass one of those flags. Sync refuses to guess.
+In a non-interactive shell, you must pass one of those flags.
 
 ## Secret findings
 
@@ -56,11 +56,11 @@ Upload is scanned first. Warning-level findings block the upload unless you pass
 
 ## Auto-sync
 
-When `[sync] auto = true` (the default), login, init, use, unuse, status, create, capture, and list may run a fail-soft sync in the background. `frequency_secs` defaults to `900`. A failed attempt still counts as the throttle.
+When `[sync] auto = true` (the default), login, init, use, unuse, status, create, capture, and list may attempt a background sync. Errors from that sync do not fail the original command. `frequency_secs` defaults to `900`, and failed automatic attempts count toward that interval.
 
-Background auto-sync cannot prompt. Tree-hash conflicts there keep the remote copy. Use an explicit `skl sync` when you want the prompt or `--keep-local`.
+Background sync cannot prompt. On a conflict, it keeps the remote copy. Run `skl sync` directly when you need to choose or use `--keep-local`.
 
-Set `auto = false` to turn piggyback off. `skl sync` still works.
+Set `auto = false` to disable automatic sync. `skl sync` still works.
 
 ## Log out
 
@@ -72,4 +72,4 @@ Logout clears the local device token in `state.db`. It does not revoke the devic
 
 ## What the server can read
 
-Sync is not end-to-end encrypted. Traffic uses TLS. Skill blobs are stored at rest on the server, and the server can read them. Treat the personal library as data you are willing to give that host.
+Sync is not end-to-end encrypted. Traffic uses TLS, but the server stores and can read skill blobs. Only sync data you are comfortable providing to that host.

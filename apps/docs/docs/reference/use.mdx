@@ -5,7 +5,7 @@ description: Activate a skill, list activated skills, or restore all from skills
 
 # skl use
 
-Activate a skill, list activated skills, or restore all (`--all`).
+Make a skill available in a project, list active skills, or restore all listed skills (`--all`).
 
 ## Synopsis
 
@@ -18,21 +18,21 @@ skl use <skill> --project <dir> -a <id>
 
 ## Flags
 
-- `SKILL…` skill names. With none, list skills already activated in the project.
-- `--all` rematerializes every skill listed in `skills.toml` from this machine's library.
-- `--project DIR` project directory (default cwd).
-- `-a`, `--agent ID` extra dest for this activation. Repeatable.
+- `SKILL…` — skill names. Without names, list skills already active in the project.
+- `--all` — recreate every skill in `skills.toml` from this machine's library.
+- `--project DIR` — project directory (default: current directory).
+- `-a`, `--agent ID` — add an extra agent directory for this activation. Repeatable.
 
-`claude` is accepted as `claude-code`. `cursor` and `codex` are rejected as extras.
+`claude` is accepted as `claude-code`. `cursor` and `codex` cannot be extra destinations because they already use `.agents/skills`.
 
 `--all` cannot be combined with skill names.
 
 ## What it writes
 
-- `.agents/skills/<name>` as a symlink, or a copy when the symlink fails
-- extra dests from `-a` and sticky extras
-- `skills.toml` in the project
-- May piggyback auto-sync
+- Creates `.agents/skills/<name>` as a symlink, or as a copy when a symlink cannot be created
+- Creates extra destinations from `-a` and configured extras
+- Updates the project's `skills.toml`
+- May start automatic sync
 
 Does not run `skl migrate`.
 

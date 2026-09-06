@@ -1,11 +1,11 @@
 ---
 title: skl unuse
-description: Remove project skill dests and drop them from skills.toml.
+description: Remove project skill directories and entries from skills.toml.
 ---
 
 # skl unuse
 
-Remove project skill dests and drop them from `skills.toml`.
+Remove project skill directories and entries from `skills.toml`.
 
 ## Synopsis
 
@@ -16,14 +16,14 @@ skl unuse <skill> --project <dir>
 
 ## Flags
 
-- `SKILL…` one or more names (required)
-- `--project DIR` project directory (default cwd)
+- `SKILL…` — one or more names (required)
+- `--project DIR` — project directory (default: current directory)
 
 ## What it writes
 
-Removes the canonical dest and sticky extra dests for each name. Updates `skills.toml`. Does not delete the personal library copy. May piggyback auto-sync.
+Removes `.agents/skills` and configured extra destinations for each name, then updates `skills.toml`. It does not delete the personal library copy. The command may also start automatic sync.
 
-A dest that is a real directory and was not recorded as a copy is left in place.
+A real directory that was not recorded as a copy is left in place.
 
 ## Errors
 

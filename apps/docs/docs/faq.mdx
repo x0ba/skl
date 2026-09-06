@@ -1,37 +1,37 @@
 ---
 title: FAQ
-description: Where skills live, why Cursor needs no extra dest, and what sync and doctor actually do.
+description: Where skills live, why Cursor needs no extra directory, and what sync and doctor do.
 ---
 
 # FAQ
 
 ## Where do my skills live?
 
-The **personal library** is `~/.local/share/skl/skills` unless you set `SKL_DATA_DIR`. That is the only tree `skl sync` reads and writes.
+The **personal library** is `~/.local/share/skl/skills` unless you set `SKL_DATA_DIR`. It is the only directory that `skl sync` reads and writes.
 
-A **project dest** is `.agents/skills` inside a project, after `skl use`. An **extra dest** is an opted-in agent dir such as `.claude/skills`. Home agent dirs such as `~/.claude/skills` are import sources for `skl init`. They are not sync peers.
+A **project destination** is `.agents/skills` inside a project, created by `skl use`. An **extra destination** is an opted-in directory such as `.claude/skills`. Home agent directories such as `~/.claude/skills` are sources for `skl init`; they are not synchronized.
 
 `skl doctor` prints the resolved config and data paths for this machine.
 
 ## Why doesn't `skl use` find a skill that only lives in `~/.claude/skills`?
 
-`skl use` reads the personal library only. Run `skl init` so the skill is copied into `~/.local/share/skl/skills`, then run `skl use`.
+`skl use` reads only the personal library. Run `skl init` to copy the skill into `~/.local/share/skl/skills`, then run `skl use`.
 
-## I cloned a project that has `skills.toml`. Why are dests empty?
+## I cloned a project with `skills.toml`. Why are the skill directories missing?
 
-`skills.toml` lists names. Those names must exist in this machine's personal library. Log in, run `skl sync`, then `skl use --all`.
+`skills.toml` contains only names. Each named skill must exist in this machine's personal library. Log in, run `skl sync`, then run `skl use --all`.
 
 ## Why doesn't Cursor need `-a cursor`?
 
-Cursor already reads `.agents/skills`. Codex does too. `-a` is only for agents that use their own project directory. Claude Code is the usual one.
+Cursor and Codex already read `.agents/skills`. Use `-a` only for agents with their own project directory, such as Claude Code.
 
 ## Why didn't sync change my project?
 
-`skl sync` only syncs the personal library. Project dests change when you `skl use` or `skl use --all`. After you pull on a second machine, activate the skills in each project.
+`skl sync` handles only the personal library. Project directories change when you run `skl use` or `skl use --all`. After syncing on another machine, activate the skills in each project.
 
 ## Can the server read my skills?
 
-Yes. Sync is TLS in transit and stored at rest on the server. It is not end-to-end encrypted. If that is not acceptable, stay local and do not log in.
+Yes. Sync uses TLS in transit and stores skill data on the server. It is not end-to-end encrypted. Keep the library local if that does not meet your requirements.
 
 ## What does doctor check?
 
@@ -43,14 +43,14 @@ Yes. Sync is TLS in transit and stored at rest on the server. It is not end-to-e
 - Home skill roots and how many skills each holds
 - Whether this machine can create directory symlinks
 - `skills.toml` modes in the current project
-- Warnings for the old `.claude` / `.cursor` project layout, host-absolute paths in `skills.toml`, and dests that do not match this machine's library
+- Warnings for the old `.claude` / `.cursor` project layout, host-absolute paths in `skills.toml`, and project directories that do not match this machine's library
 
-Doctor does not mutate files. It may show the one-time extras prompt.
+Doctor does not change files, except that it may show the one-time extras prompt and write its answer.
 
 ## Why did Windows copy instead of symlink?
 
-Directory symlinks on Windows need Developer Mode or the `SeCreateSymbolicLink` privilege. When the symlink fails with a permission or unsupported error, `skl use` copies the skill tree and records `mode = "copy"` in `skills.toml`. `skl unuse` still removes a copy it created. `skl doctor` prints `symlink unavailable` when the probe fails.
+Directory symlinks on Windows require Developer Mode or the `SeCreateSymbolicLink` privilege. If a symlink fails because it is unsupported or not permitted, `skl use` copies the skill and records `mode = "copy"` in `skills.toml`. `skl unuse` removes copies it created. `skl doctor` prints `symlink unavailable` when its check fails.
 
 ## The installer did not add PATH
 
-The installer never edits `.bashrc`, `.zshrc`, or fish config. If `~/.local/bin` is not on `PATH`, add `export PATH="$HOME/.local/bin:$PATH"` yourself. The script prints that hint when it detects the gap.
+The installer does not edit `.bashrc`, `.zshrc`, or fish configuration. If `~/.local/bin` is not on `PATH`, add `export PATH="$HOME/.local/bin:$PATH"` yourself. The script prints this command when it detects the problem.
