@@ -31,9 +31,10 @@ The command:
 2. Downloads `SHA256SUMS` from the asset origin.
 3. Skips the download when the current file already matches the latest checksum, unless `--force` is set.
 4. Downloads `skl-<triple>` (or `skl-<triple>.exe` on Windows).
-5. Verifies the SHA-256 and then replaces the binary.
+5. Verifies the SHA-256, stages the download next to the current binary, and runs `--version` on the staged file.
+6. Replaces the binary only after that launch check succeeds.
 
-A checksum mismatch leaves the existing binary in place.
+A checksum mismatch, or a download that cannot start, leaves the existing binary in place. Two `skl update` processes targeting the same install use unique staging files and a lock around the replacement.
 
 ## Environment
 
@@ -44,6 +45,7 @@ A checksum mismatch leaves the existing binary in place.
 - `unsupported platform … for skl update` — this OS/arch is not in the release matrix.
 - `SHA256SUMS has no entry for …` — the asset origin is missing this triple.
 - `checksum mismatch for …` — the downloaded bytes did not match `SHA256SUMS`.
+- `downloaded update is not runnable` — SHA-256 matched but the file could not be started; the previous binary is unchanged.
 - `cannot resolve this skl binary` — `skl` could not find its own path.
 - Network or GitHub errors from the asset origin.
 

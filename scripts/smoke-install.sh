@@ -11,7 +11,8 @@
 #   6. never edits .bashrc / .zshrc / fish config
 #   7. checksum mismatch refuses the binary
 #   8. skl update skips when already current, replaces on a newer asset,
-#      and refuses a checksum mismatch without overwriting
+#      refuses a checksum mismatch without overwriting, and refuses a
+#      checksum-valid but unusable download without overwriting
 #
 # Usage:
 #   cargo build -p skl && ./scripts/smoke-install.sh
@@ -424,10 +425,49 @@ skl_assert_contains "$(cat "$UPDATE_C")" "checksum mismatch"
   exit 1
 }
 
+echo "==> skl update refuses checksum-valid unusable asset"
+UNUSABLE="$WORKDIR/unusable-release"
+mkdir -p "$UNUSABLE"
+printf 'not-an-executable\n' >"$UNUSABLE/$ASSET"
+chmod +x "$UNUSABLE/$ASSET"
+printf '{"tag_name":"v98.0.0"}\n' >"$UNUSABLE/latest.json"
+cp "$ROOT/apps/web/public/install.sh" "$UNUSABLE/install.sh"
+write_sums "$UNUSABLE" "$ASSET"
+if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+  kill "$SERVER_PID" 2>/dev/null || true
+  wait "$SERVER_PID" 2>/dev/null || true
+  SERVER_PID=""
+fi
+start_release_server "$UNUSABLE"
+BEFORE_UNUSABLE="$(file_sha "$HOME_A/.local/bin/skl")"
+UPDATE_D="$WORKDIR/update-d.log"
+set +e
+PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  SKL_DOWNLOAD_BASE="$RELEASE_URL" SKL_RELEASES_API="${RELEASE_URL}/latest.json" \
+  "$HOME_A/.local/bin/skl" update >"$UPDATE_D" 2>&1
+UPDATE_RC=$?
+set -e
+if [[ "$UPDATE_RC" -eq 0 ]]; then
+  echo "expected skl update to refuse an unusable download" >&2
+  cat "$UPDATE_D" >&2
+  exit 1
+fi
+skl_assert_contains "$(cat "$UPDATE_D")" "not runnable"
+[[ "$(file_sha "$HOME_A/.local/bin/skl")" == "$BEFORE_UNUSABLE" ]] || {
+  echo "unusable download must not replace the binary" >&2
+  cat "$UPDATE_D" >&2
+  exit 1
+}
+PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  "$HOME_A/.local/bin/skl" --help >/dev/null
+
 echo "==> skl update (newer asset)"
 NEW="$WORKDIR/new-release"
 mkdir -p "$NEW"
-printf 'new-skl-release-bytes' >"$NEW/$ASSET"
+cat >"$NEW/$ASSET" <<'EOF'
+#!/bin/sh
+echo "skl 99.0.0"
+EOF
 chmod +x "$NEW/$ASSET"
 printf '{"tag_name":"v99.0.0"}\n' >"$NEW/latest.json"
 cp "$ROOT/apps/web/public/install.sh" "$NEW/install.sh"
@@ -452,10 +492,8 @@ set -e
 }
 skl_assert_contains "$(cat "$UPDATE_B")" "updated ${HOME_A}/.local/bin/skl"
 skl_assert_contains "$(cat "$UPDATE_B")" "checksum ok ($ASSET)"
-[[ "$(cat "$HOME_A/.local/bin/skl")" == "new-skl-release-bytes" ]] || {
-  echo "skl update did not replace the binary" >&2
-  cat "$UPDATE_B" >&2
-  exit 1
-}
+NEW_VER="$(PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  "$HOME_A/.local/bin/skl" --version)"
+skl_assert_contains "$NEW_VER" "skl 99.0.0"
 
 echo "OK: curl install.sh → skl --help / skl update (clean PATH, non-interactive, no rc edits)"

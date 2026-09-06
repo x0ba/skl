@@ -1,6 +1,7 @@
 //! `skl update` — replace this binary with the latest GitHub Release asset.
 
-use std::fs;
+use std::fs::{self, File, OpenOptions};
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -215,36 +216,88 @@ fn replace_executable(dest: &Path, bytes: &[u8]) -> Result<()> {
     if !parent.exists() {
         fs::create_dir_all(parent)?;
     }
-    let tmp = sibling(dest, ".tmp");
-    if tmp.exists() {
-        fs::remove_file(&tmp)?;
-    }
-    fs::write(&tmp, bytes)?;
-    apply_exec_perms(&tmp, dest.exists().then_some(dest))?;
 
+    // Hold the lock for the whole staging + rename so two updaters cannot
+    // interleave mutations of the destination.
+    let _lock = acquire_update_lock(dest)?;
+    let tmp = write_staging_file(dest, bytes)?;
+
+    if let Err(err) = apply_exec_perms(&tmp, dest.exists().then_some(dest)) {
+        let _ = fs::remove_file(&tmp);
+        return Err(err);
+    }
+    if let Err(err) = ensure_runnable(&tmp) {
+        let _ = fs::remove_file(&tmp);
+        return Err(SklError::Config(format!(
+            "downloaded update is not runnable; left {} unchanged ({err})",
+            dest.display()
+        )));
+    }
+
+    if let Err(err) = install_staged(dest, &tmp) {
+        let _ = fs::remove_file(&tmp);
+        return Err(err);
+    }
+    Ok(())
+}
+
+fn acquire_update_lock(dest: &Path) -> Result<File> {
+    let path = sibling(dest, ".lock");
+    let file = OpenOptions::new()
+        .create(true)
+        .read(true)
+        .write(true)
+        .open(&path)?;
+    file.lock().map_err(|err| {
+        SklError::Config(format!("cannot lock {} for update: {err}", path.display()))
+    })?;
+    Ok(file)
+}
+
+fn write_staging_file(dest: &Path, bytes: &[u8]) -> Result<PathBuf> {
+    let pid = std::process::id();
+    for seq in 0u32..1024 {
+        let tmp = sibling(dest, &format!(".tmp.{pid}.{seq}"));
+        match OpenOptions::new().write(true).create_new(true).open(&tmp) {
+            Ok(mut file) => {
+                file.write_all(bytes)?;
+                file.sync_all()?;
+                return Ok(tmp);
+            }
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => continue,
+            Err(err) => return Err(err.into()),
+        }
+    }
+    Err(SklError::Config(format!(
+        "cannot create a unique staging file next to {}",
+        dest.display()
+    )))
+}
+
+fn install_staged(dest: &Path, tmp: &Path) -> Result<()> {
     #[cfg(windows)]
     {
-        let old = sibling(dest, ".old");
+        let old = sibling(dest, &format!(".old.{}", std::process::id()));
         if old.exists() {
             let _ = fs::remove_file(&old);
         }
         if dest.exists() {
             fs::rename(dest, &old)?;
         }
-        if let Err(err) = fs::rename(&tmp, dest) {
+        if let Err(err) = fs::rename(tmp, dest) {
             if old.exists() {
                 let _ = fs::rename(&old, dest);
             }
-            let _ = fs::remove_file(&tmp);
             return Err(err.into());
         }
         let _ = fs::remove_file(&old);
+        Ok(())
     }
     #[cfg(not(windows))]
     {
-        fs::rename(&tmp, dest)?;
+        fs::rename(tmp, dest)?;
+        Ok(())
     }
-    Ok(())
 }
 
 fn sibling(path: &Path, suffix: &str) -> PathBuf {
@@ -260,7 +313,8 @@ fn apply_exec_perms(path: &Path, like: Option<&Path>) -> Result<()> {
         let mode = like
             .and_then(|src| fs::metadata(src).ok())
             .map(|meta| meta.permissions().mode())
-            .unwrap_or(0o755);
+            .unwrap_or(0o755)
+            | 0o111;
         fs::set_permissions(path, fs::Permissions::from_mode(mode))?;
     }
     #[cfg(not(unix))]
@@ -313,13 +367,32 @@ async fn download_bytes(http: &Client, url: &str) -> Result<Vec<u8>> {
 }
 
 fn probe_version(dest: &Path) -> Option<String> {
-    let output = Command::new(dest).arg("--version").output().ok()?;
+    let output = ensure_runnable(dest).ok()?;
+    output
+}
+
+fn ensure_runnable(path: &Path) -> Result<Option<String>> {
+    let output = Command::new(path)
+        .arg("--version")
+        .output()
+        .map_err(|err| SklError::Config(format!("new binary could not be started: {err}")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let detail = [stderr.trim(), stdout.trim()]
+            .into_iter()
+            .find(|s| !s.is_empty())
+            .unwrap_or("no output");
+        return Err(SklError::Config(format!(
+            "new binary failed `--version` ({detail})"
+        )));
+    }
     let text = String::from_utf8_lossy(&output.stdout);
-    let line = text.lines().next()?.trim();
+    let line = text.lines().next().map(str::trim).unwrap_or_default();
     if line.is_empty() {
-        None
+        Ok(None)
     } else {
-        Some(line.to_string())
+        Ok(Some(line.to_string()))
     }
 }
 
@@ -398,14 +471,86 @@ deadbeef  *skl-aarch64-unknown-linux-musl
         assert!(asset_name_for(target).starts_with("skl-"));
     }
 
+    #[cfg(unix)]
+    fn unix_cli_shim(version: &str) -> Vec<u8> {
+        format!("#!/bin/sh\necho 'skl {version}'\n").into_bytes()
+    }
+
+    #[cfg(unix)]
+    fn write_unix_cli_shim(dest: &Path, version: &str) -> Vec<u8> {
+        use std::os::unix::fs::PermissionsExt;
+        let bytes = unix_cli_shim(version);
+        fs::write(dest, &bytes).unwrap();
+        fs::set_permissions(dest, fs::Permissions::from_mode(0o755)).unwrap();
+        bytes
+    }
+
+    #[cfg(unix)]
+    fn staging_leftovers(dest: &Path) -> Vec<PathBuf> {
+        let name = dest.file_name().unwrap().to_string_lossy();
+        let prefix = format!("{name}.tmp.");
+        fs::read_dir(dest.parent().unwrap())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .map(|n| n.to_string_lossy().starts_with(&prefix))
+                    .unwrap_or(false)
+            })
+            .collect()
+    }
+
+    #[cfg(unix)]
     #[test]
     fn replace_executable_overwrites_dest() {
         let dir = tempfile::tempdir().unwrap();
         let dest = dir.path().join("skl");
-        fs::write(&dest, b"old").unwrap();
-        replace_executable(&dest, b"new-binary").unwrap();
-        assert_eq!(fs::read(&dest).unwrap(), b"new-binary");
-        assert!(!sibling(&dest, ".tmp").exists());
+        write_unix_cli_shim(&dest, "0.1.0");
+        let next = unix_cli_shim("9.9.9");
+        replace_executable(&dest, &next).unwrap();
+        assert_eq!(fs::read(&dest).unwrap(), next);
+        assert!(staging_leftovers(&dest).is_empty());
+        assert_eq!(probe_version(&dest).as_deref(), Some("skl 9.9.9"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unusable_download_leaves_existing_binary() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("skl");
+        let current = write_unix_cli_shim(&dest, "0.1.0");
+        let err = replace_executable(&dest, b"not-an-executable").unwrap_err();
+        assert!(err.to_string().contains("not runnable"), "{err}");
+        assert_eq!(fs::read(&dest).unwrap(), current);
+        assert!(staging_leftovers(&dest).is_empty());
+        assert_eq!(probe_version(&dest).as_deref(), Some("skl 0.1.0"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn concurrent_replaces_use_unique_staging_and_keep_a_runnable_dest() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("skl");
+        write_unix_cli_shim(&dest, "0.0.0");
+        let first = unix_cli_shim("1.0.0");
+        let second = unix_cli_shim("2.0.0");
+        std::thread::scope(|scope| {
+            scope.spawn(|| replace_executable(&dest, &first).unwrap());
+            scope.spawn(|| replace_executable(&dest, &second).unwrap());
+        });
+        let got = fs::read(&dest).unwrap();
+        assert!(
+            got == first || got == second,
+            "dest was neither payload: {}",
+            String::from_utf8_lossy(&got)
+        );
+        assert!(staging_leftovers(&dest).is_empty());
+        let version = probe_version(&dest).expect("dest must still launch");
+        assert!(
+            version == "skl 1.0.0" || version == "skl 2.0.0",
+            "{version}"
+        );
     }
 
     #[tokio::test]
@@ -453,7 +598,16 @@ deadbeef  *skl-aarch64-unknown-linux-musl
     #[tokio::test]
     async fn downloads_and_replaces_when_checksum_differs() {
         let server = MockServer::start().await;
-        let payload = b"fresh-release-bytes";
+        let payload: &'static [u8] = {
+            #[cfg(unix)]
+            {
+                b"#!/bin/sh\necho 'skl 9.9.9'\n"
+            }
+            #[cfg(not(unix))]
+            {
+                b"fresh-release-bytes"
+            }
+        };
         let hash = hash_bytes(payload);
         let dest_dir = tempfile::tempdir().unwrap();
         let dest = dest_dir.path().join("skl");
@@ -468,7 +622,7 @@ deadbeef  *skl-aarch64-unknown-linux-musl
             .await;
         Mock::given(method("GET"))
             .and(path("/skl-test-triple"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.as_slice()))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload))
             .mount(&server)
             .await;
         Mock::given(method("GET"))
@@ -503,7 +657,16 @@ deadbeef  *skl-aarch64-unknown-linux-musl
     #[tokio::test]
     async fn force_redownloads_matching_checksum() {
         let server = MockServer::start().await;
-        let payload = b"reinstall-me";
+        let payload: &'static [u8] = {
+            #[cfg(unix)]
+            {
+                b"#!/bin/sh\necho 'skl 0.1.0'\n"
+            }
+            #[cfg(not(unix))]
+            {
+                b"reinstall-me"
+            }
+        };
         let hash = hash_bytes(payload);
         let dest_dir = tempfile::tempdir().unwrap();
         let dest = dest_dir.path().join("skl");
@@ -519,7 +682,7 @@ deadbeef  *skl-aarch64-unknown-linux-musl
             .await;
         Mock::given(method("GET"))
             .and(path("/skl-test-triple"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload.as_slice()))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload))
             .expect(1)
             .mount(&server)
             .await;
@@ -544,6 +707,52 @@ deadbeef  *skl-aarch64-unknown-linux-musl
 
         assert!(matches!(outcome, UpdateOutcome::Updated { .. }));
         assert_eq!(fs::read(&dest).unwrap(), payload);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn refuses_unusable_download_and_keeps_existing() {
+        let server = MockServer::start().await;
+        let payload = b"checksum-valid-but-not-a-binary";
+        let hash = hash_bytes(payload);
+        let dest_dir = tempfile::tempdir().unwrap();
+        let dest = dest_dir.path().join("skl");
+        let current = write_unix_cli_shim(&dest, "0.1.0");
+
+        Mock::given(method("GET"))
+            .and(path("/SHA256SUMS"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_string(format!("{hash}  skl-test-triple\n")),
+            )
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/skl-test-triple"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(payload))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/repos/latest"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "tag_name": "v9.9.9"
+            })))
+            .mount(&server)
+            .await;
+
+        let err = apply(UpdateRequest {
+            force: true,
+            dest: dest.clone(),
+            current_version: "0.1.0".into(),
+            download_base: server.uri(),
+            releases_api: format!("{}/repos/latest", server.uri()),
+            target: "test-triple".into(),
+        })
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("not runnable"), "{err}");
+        assert_eq!(fs::read(&dest).unwrap(), current);
+        assert_eq!(probe_version(&dest).as_deref(), Some("skl 0.1.0"));
     }
 
     #[tokio::test]
