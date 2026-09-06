@@ -28,6 +28,7 @@ on:
       - "scripts/smoke-portable-use-all.sh"
       - "scripts/smoke-tui.sh"
       - "scripts/smoke-local-token.sh"
+      - "scripts/smoke-source-reconciliation.sh"
       - "scripts/tui-pty.py"
       - "apps/api/**"
       - "docker-compose.yml"
@@ -51,6 +52,7 @@ on:
       - "scripts/smoke-portable-use-all.sh"
       - "scripts/smoke-tui.sh"
       - "scripts/smoke-local-token.sh"
+      - "scripts/smoke-source-reconciliation.sh"
       - "scripts/tui-pty.py"
       - "apps/api/**"
       - "docker-compose.yml"
@@ -112,7 +114,7 @@ jobs:
             dist/SHA256SUMS
 
   smoke-import-sync-use:
-    name: import → sync → use + clash + auto-sync + capture + portable use --all + tui + local token
+    name: import → sync → use + clash + auto-sync + capture + portable use --all + tui + local token + source reconciliation
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -153,6 +155,7 @@ jobs:
           ./scripts/smoke-portable-use-all.sh
           ./scripts/smoke-tui.sh
           ./scripts/smoke-local-token.sh
+          ./scripts/smoke-source-reconciliation.sh
 
   smoke-install:
     name: curl install.sh (no rust)

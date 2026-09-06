@@ -602,3 +602,63 @@ skl_assert_symlink_to() {
     fi
   fi
 }
+
+skl_assert_absent() {
+  local path="$1"
+  if [[ -e "$path" || -L "$path" ]]; then
+    echo "expected absent: $path" >&2
+    ls -la "$(dirname "$path")" >&2 || true
+    exit 1
+  fi
+}
+
+# Library skill must exist and must not live under a harness home.
+# Usage: skl_assert_library_only <home> <skill-name>
+skl_assert_library_only() {
+  local home="$1"
+  local name="$2"
+  local lib
+  lib="$(skl_library_of "$home" "$name")"
+  if [[ ! -d "$lib" || ! -f "$lib/SKILL.md" ]]; then
+    echo "expected personal library skill at $lib" >&2
+    exit 1
+  fi
+  case "$lib" in
+    */.agents/skills/*|*/.claude/skills/*|*/.cursor/skills/*|*/.config/agents/skills/*)
+      echo "personal library must not be a harness home: $lib" >&2
+      exit 1
+      ;;
+  esac
+  skl_assert_absent "$home/.agents/skills/$name"
+  skl_assert_absent "$home/.config/agents/skills/$name"
+}
+
+# Agent-dir merge UI must never appear (conflicts stay at library sync).
+skl_assert_no_merge_ui() {
+  local haystack="$1"
+  skl_assert_not_contains "$haystack" "keep [l]ocal"
+  skl_assert_not_contains "$haystack" "overwrite? "
+  skl_assert_not_contains "$haystack" "[y/n]"
+  skl_assert_not_contains "$haystack" "Overwrite ("
+  skl_assert_not_contains "$haystack" "three-way"
+  skl_assert_not_contains "$haystack" "merge conflict"
+  skl_assert_not_contains "$haystack" "agent-dir merge"
+}
+
+# Run doctor in a project cwd (doctor inspects cwd, not --project).
+# Usage: skl_doctor_in <home> <project-cwd>
+skl_doctor_in() {
+  local home="$1"
+  local cwd="$2"
+  (
+    cd "$cwd"
+    env -u SKL_TOKEN -u SKL_TOKEN_FILE \
+      -u DBUS_SESSION_BUS_ADDRESS \
+      HOME="$home" \
+      SKL_DATA_DIR="$home/.local/share/skl" \
+      SKL_CONFIG_DIR="$home/.config/skl" \
+      SKL_NO_PROMPT=1 \
+      API_BASE="${API:-http://localhost:8787}" \
+      "$BIN" doctor
+  )
+}

@@ -95,6 +95,7 @@ Header shows skill count, last sync age, and the cwd project name. Activated ski
 ```bash
 ./scripts/smoke-tui.sh          # no API: piped/CI help, TTY --no-tui, u == skl use, q restores
 ./scripts/smoke-local-token.sh  # no keyring: login persists, logout clears, env/file override, migrate-once
+./scripts/smoke-source-reconciliation.sh  # DAN-15: init library-only; use→library; mutate→sync B→use --all; doctor/capture/use; no harness peers
 ```
 
 ### setup
@@ -293,6 +294,7 @@ cargo build -p skl
 ./scripts/smoke-portable-use-all.sh  # two-HOME portable skills.toml → sync B → skl use --all
 ./scripts/smoke-tui.sh               # non-TTY / SKL_NO_TUI / TTY `--no-tui`; TUI `u` == `skl use`; `q` restores cooked
 ./scripts/smoke-local-token.sh       # DAN-14: login persists to state.db; logout clears; SKL_TOKEN / file override; migrate-once
+./scripts/smoke-source-reconciliation.sh  # DAN-15: init library-only; use→library; mutate→sync B→use --all; doctor/capture/use; no harness peers
 ./scripts/smoke-install.sh           # curl install.sh (fake release) → skl --help; no Rust; no prompts
 
 # Boot postgres + apps/api here
@@ -300,4 +302,5 @@ START_API=1 ./scripts/smoke-import-sync-use.sh
 START_API=1 ./scripts/smoke-auto-sync.sh
 START_API=1 ./scripts/smoke-capture.sh
 START_API=1 ./scripts/smoke-portable-use-all.sh
+START_API=1 ./scripts/smoke-source-reconciliation.sh
 ```

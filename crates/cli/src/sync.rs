@@ -346,6 +346,52 @@ mod tests {
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    fn production_sync_sources() -> [&'static str; 3] {
+        let sync = include_str!("sync.rs");
+        let sync_prod = sync
+            .split("#[cfg(test)]")
+            .next()
+            .expect("sync.rs should have a test module");
+        let auto = include_str!("auto_sync.rs");
+        let auto_prod = auto.split("#[cfg(test)]").next().unwrap_or(auto);
+        [
+            sync_prod,
+            auto_prod,
+            include_str!("commands/sync.rs"),
+        ]
+    }
+
+    #[test]
+    fn sync_code_paths_do_not_treat_harness_homes_as_peers() {
+        let sync_prod = production_sync_sources()[0];
+        assert!(
+            sync_prod.contains("library::default_pull_root"),
+            "download must use library::default_pull_root"
+        );
+        assert!(
+            sync_prod.contains("library::reindex_library_only"),
+            "refresh must reindex the library only"
+        );
+        for src in production_sync_sources() {
+            assert!(
+                !src.contains("discover_from_home"),
+                "sync must not scan harness homes"
+            );
+            assert!(!src.contains("skill_roots("), "sync must not enumerate harness roots");
+            for needle in [
+                ".agents/skills",
+                ".claude/skills",
+                ".cursor/skills",
+                ".config/agents/skills",
+            ] {
+                assert!(
+                    !src.contains(needle),
+                    "sync production must not treat {needle} as a peer"
+                );
+            }
+        }
+    }
+
     fn paths_for(tmp: &Path) -> Paths {
         Paths {
             config_dir: tmp.join("cfg"),

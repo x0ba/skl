@@ -207,4 +207,37 @@ mod tests {
             "# from home\n"
         );
     }
+
+    #[test]
+    fn reindex_does_not_index_harness_home_skills_absent_from_library() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = isolated_paths(tmp.path());
+        plant(&paths.library_skill("greeter"), "# library\n");
+        let secret = tmp.path().join("home/.agents/skills/secret");
+        let claude = tmp.path().join("home/.claude/skills/notes");
+        plant(&secret, "# harness only\n");
+        plant(&claude, "# harness only\n");
+        paths.ensure().unwrap();
+        let db = LocalDb::open(&paths.db_file).unwrap();
+        db.replace_import(&discover(&paths).unwrap()).unwrap();
+
+        reindex_library_only(&db, &paths).unwrap();
+        let listed = db.list_skills().unwrap();
+        let names: Vec<_> = listed.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["greeter"]);
+        for skill in &listed {
+            assert!(
+                is_under_library(&skill.path, &paths.library_dir()),
+                "indexed path must be library-only: {}",
+                skill.path.display()
+            );
+            let rendered = skill.path.to_string_lossy();
+            assert!(!rendered.contains(".agents/skills"), "{rendered}");
+            assert!(!rendered.contains(".claude/skills"), "{rendered}");
+        }
+        assert_eq!(
+            fs::read_to_string(secret.join("SKILL.md")).unwrap(),
+            "# harness only\n"
+        );
+    }
 }

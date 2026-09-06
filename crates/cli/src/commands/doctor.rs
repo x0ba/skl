@@ -645,5 +645,22 @@ mod tests {
             "{:?}",
             report.projection_warnings
         );
+
+        let before_copy =
+            fs::read_to_string(project.path().join(".agents/skills/greeter/SKILL.md")).unwrap();
+        let before_manifest = fs::read_to_string(project.path().join("skills.toml")).unwrap();
+        print_report(&report);
+        assert_eq!(
+            fs::read_to_string(project.path().join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            before_copy
+        );
+        assert_eq!(
+            fs::read_to_string(project.path().join("skills.toml")).unwrap(),
+            before_manifest
+        );
+        assert_eq!(
+            fs::read_to_string(paths.library_skill("greeter").join("SKILL.md")).unwrap(),
+            "# lib\n"
+        );
     }
 }
