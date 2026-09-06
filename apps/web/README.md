@@ -8,7 +8,7 @@ API calls go to `NEXT_PUBLIC_API_BASE` (default `http://localhost:8787`) and kee
 | --- | --- |
 | Dashboard (skill count + devices) | `/` |
 | Approve CLI device | `/device` (`?user_code=` prefill, matches API `verification_uri`) |
-| Clerk sign-in / sign-up | `/sign-in`, `/sign-up` |
+| Clerk sign-in / sign-up | `/sign-in`, `/sign-up` (`?redirect_url=` returns to `/device?user_code=`) |
 
 ## Run locally
 
@@ -73,9 +73,11 @@ the local `dev:<user_id>` token.
      -d '{"client_name":"laptop"}'
    ```
 
-3. Open `/device` (or the printed URI). Confirm the Bearer token is
-   `dev:local-dev` (or sign in with Clerk). Paste the `user_code` if it was
-   not prefilled. Submit **Approve device**.
+3. Open `/device` (or the printed URI). If Clerk is configured and you are
+   signed out, the page asks you to sign in or create an account, then
+   returns to `/device?user_code=…`. Locally, with Clerk unset, confirm the
+   Bearer token is `dev:local-dev`. Paste the `user_code` if it was not
+   prefilled. Submit **Approve device**.
 4. The page calls `POST /v1/auth/device/approve` with
    `{ user_code, device_name? }` and shows `{ ok, device_id }` on success.
    Invalid codes return 404; expired codes are shown as expired (API

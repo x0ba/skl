@@ -2,7 +2,7 @@
 
 import { OTPField } from "@base-ui/react/otp-field";
 import Link from "next/link";
-import { Fragment, useState, type FormEvent } from "react";
+import { Fragment, useState, type FormEvent, type ReactNode } from "react";
 import { LocalTokenField } from "@/components/local-token-field";
 import { useSession } from "@/components/providers";
 import { ActionLink } from "@/components/ui/action-link";
@@ -10,9 +10,16 @@ import { Banner } from "@/components/ui/banner";
 import { Field, Input } from "@/components/ui/field";
 import { Label } from "@/components/ui/text";
 import { ApiError, approveDevice, describeApproveError } from "@/lib/api";
+import {
+  DEVICE_USER_CODE_LENGTH,
+  deviceApproveHref,
+  formatDeviceUserCode,
+  normalizeDeviceUserCode,
+  withRedirectUrl,
+} from "@/lib/auth-redirect";
 
-/** `user_code` is 8 alphanumeric characters, shown to the user as ABCD-2345. */
-const CODE_LENGTH = 8;
+const primaryButtonClassName =
+  "inline-flex h-9 w-full items-center justify-center bg-primary px-4 font-mono text-[13px] text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-40";
 
 export function DeviceApproveForm({
   initialUserCode,
@@ -21,17 +28,21 @@ export function DeviceApproveForm({
 }) {
   const session = useSession();
   const [userCode, setUserCode] = useState(() =>
-    initialUserCode.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, CODE_LENGTH),
+    normalizeDeviceUserCode(initialUserCode),
   );
   const [deviceName, setDeviceName] = useState("");
   const [pending, setPending] = useState(false);
   const [approvedId, setApprovedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const complete = userCode.length === CODE_LENGTH;
+  const complete = userCode.length === DEVICE_USER_CODE_LENGTH;
+  const canApprove = !session.clerkEnabled || session.isSignedIn;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canApprove) {
+      return;
+    }
     setPending(true);
     setError(null);
 
@@ -64,12 +75,22 @@ export function DeviceApproveForm({
     return <Approved deviceId={approvedId} />;
   }
 
+  if (session.clerkEnabled && !session.isReady) {
+    return (
+      <DeviceChrome>
+        <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
+          Checking your session…
+        </p>
+      </DeviceChrome>
+    );
+  }
+
+  if (session.clerkEnabled && !session.isSignedIn) {
+    return <SignInToApprove userCode={userCode} />;
+  }
+
   return (
-    <div>
-      <Label className="mb-4">Device authorization</Label>
-      <h1 className="font-sans text-[27px] font-bold tracking-[-0.03em] text-foreground">
-        Approve this device
-      </h1>
+    <DeviceChrome>
       <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
         Enter the code shown by{" "}
         <code className="font-mono text-foreground">skl login</code>.
@@ -85,15 +106,15 @@ export function DeviceApproveForm({
         <div>
           <Label className="mb-3">Code</Label>
           <OTPField.Root
-            length={CODE_LENGTH}
+            length={DEVICE_USER_CODE_LENGTH}
             validationType="alphanumeric"
             value={userCode}
             onValueChange={(value) => setUserCode(value.toUpperCase())}
             className="flex items-center gap-1.5"
           >
-            {Array.from({ length: CODE_LENGTH }, (_, index) => (
+            {Array.from({ length: DEVICE_USER_CODE_LENGTH }, (_, index) => (
               <Fragment key={index}>
-                {index === CODE_LENGTH / 2 ? (
+                {index === DEVICE_USER_CODE_LENGTH / 2 ? (
                   <span aria-hidden className="mx-1 h-px w-2 bg-border" />
                 ) : null}
                 <OTPField.Input
@@ -121,7 +142,7 @@ export function DeviceApproveForm({
         <button
           type="submit"
           disabled={pending || !complete || !session.isReady}
-          className="h-9 w-full bg-primary px-4 font-mono text-[13px] text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-40"
+          className={primaryButtonClassName}
         >
           {pending ? "Approving…" : "Approve device"}
         </button>
@@ -130,7 +151,48 @@ export function DeviceApproveForm({
       <div className="mt-10 border-t border-border pt-6">
         <LocalTokenField />
       </div>
+    </DeviceChrome>
+  );
+}
+
+function DeviceChrome({ children }: { children: ReactNode }) {
+  return (
+    <div>
+      <Label className="mb-4">Device authorization</Label>
+      <h1 className="font-sans text-[27px] font-bold tracking-[-0.03em] text-foreground">
+        Approve this device
+      </h1>
+      {children}
     </div>
+  );
+}
+
+function SignInToApprove({ userCode }: { userCode: string }) {
+  const returnTo = deviceApproveHref(userCode);
+  const displayCode = formatDeviceUserCode(userCode);
+
+  return (
+    <DeviceChrome>
+      <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
+        The CLI is waiting. Sign in or create an account, then you can approve
+        this device.
+      </p>
+
+      {displayCode ? (
+        <p className="mt-6 font-mono text-[15px] tracking-[0.18em] text-foreground">
+          {displayCode}
+        </p>
+      ) : null}
+
+      <div className="mt-8 space-y-6">
+        <Link href={withRedirectUrl("/sign-in", returnTo)} className={primaryButtonClassName}>
+          Sign in
+        </Link>
+        <ActionLink href={withRedirectUrl("/sign-up", returnTo)}>
+          Create an account
+        </ActionLink>
+      </div>
+    </DeviceChrome>
   );
 }
 

@@ -5,6 +5,21 @@ canonical = ["agents"]
 extra = ["claude-code"]
 
 [[skills]]
+name = "babysit-pr"
+source = "library"
+mode = "symlink"
+
+[[skills]]
+name = "file-pr"
+source = "library"
+mode = "symlink"
+
+[[skills]]
 name = "greploop"
+source = "library"
+mode = "symlink"
+
+[[skills]]
+name = "html-communication"
 source = "library"
 mode = "symlink"

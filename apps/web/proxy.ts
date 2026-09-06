@@ -12,9 +12,10 @@ const isDashboardRoute = createRouteMatcher([
   "/settings(.*)",
 ]);
 
-// Marketing, install.sh, and /device stay public. When Clerk is configured,
-// the dashboard requires a session — local `dev:<user_id>` tokens still work
-// if keys are unset.
+// Marketing, install.sh, and /device stay public so an unsigned CLI login
+// can show a sign-in gate that returns to `/device?user_code=`. When Clerk
+// is configured, the dashboard requires a session — local `dev:<user_id>`
+// tokens still work if keys are unset.
 export default clerkEnabled
   ? clerkMiddleware(async (auth, req) => {
       if (isDashboardRoute(req)) {
