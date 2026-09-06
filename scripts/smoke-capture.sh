@@ -146,7 +146,6 @@ smoke_dual_home() {
   skl_write_sync_prefs "$MACHINE_B" false 900
   login_home "$MACHINE_A" "$TOKEN_A"
   login_home "$MACHINE_B" "$TOKEN_B"
-  # B pull root (furnace writes missing skills here; not the personal library).
   mkdir -p "$MACHINE_B/.agents/skills"
 
   plant_project_skill "$PROJECT_A" "$SKILL_NAME" "# ${SKILL_NAME}
@@ -192,8 +191,12 @@ hello from captured project
   skl_assert_contains "$b_sync" "GET /v1/blobs/"
   skl_assert_contains "$b_sync" "wrote skill $SKILL_NAME"
   skl_assert_contains "$b_sync" "sync done"
-  skl_assert_file_contains "$MACHINE_B/.agents/skills/${SKILL_NAME}/SKILL.md" \
+  skl_assert_file_contains "$(library_of "$MACHINE_B" "$SKILL_NAME")/SKILL.md" \
     "hello from captured project"
+  if [[ -e "$MACHINE_B/.agents/skills/${SKILL_NAME}" ]]; then
+    echo "sync must not write the personal library under ~/.agents/skills" >&2
+    exit 1
+  fi
 
   echo "    B: skl use in a different project"
   local b_use
@@ -202,7 +205,7 @@ hello from captured project
   skl_assert_contains "$b_use" "using $SKILL_NAME"
   skl_assert_symlink_to \
     "$PROJECT_ELSEWHERE/.agents/skills/${SKILL_NAME}" \
-    "$MACHINE_B/.agents/skills/${SKILL_NAME}"
+    "$(library_of "$MACHINE_B" "$SKILL_NAME")"
   if [[ -e "$PROJECT_ELSEWHERE/.claude" || -e "$PROJECT_ELSEWHERE/.cursor" ]]; then
     echo "default use must not create .claude/.cursor" >&2
     ls -la "$PROJECT_ELSEWHERE" >&2 || true

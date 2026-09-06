@@ -60,9 +60,9 @@ enum Command {
         #[arg(long)]
         non_interactive: bool,
     },
-    /// Import skills from unique catalog global roots plus ~/.agents/skills.
+    /// Import foreign skills into the personal library (`~/.local/share/skl/skills`).
     Init,
-    /// Hash sync: POST /v1/sync, PUT blobs, PUT trees, GET downloads.
+    /// Hash-sync the personal library only (never agent or project dirs).
     Sync {
         /// Resolve every tree-hash conflict by keeping local (overwrite remote).
         #[arg(long, group = "resolution")]
@@ -78,7 +78,7 @@ enum Command {
     Status,
     /// List local skills from state.db (and remote presence when logged in).
     List,
-    /// Diagnose agent skill paths, local token store, state.db, and GET /v1/health.
+    /// Diagnose library, projections, token store, state.db, and GET /v1/health.
     Doctor,
     /// Show or edit sticky extra dests (`~/.config/skl/config.toml`).
     Targets {

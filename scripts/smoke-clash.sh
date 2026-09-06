@@ -84,17 +84,17 @@ a_keep="$(skl_run_store "$MACHINE_A" sync --keep-remote 2>&1)"
 echo "$a_keep"
 skl_assert_contains "$a_keep" "keep-remote: $SKILL_NAME"
 skl_assert_contains "$a_keep" "re-POST conflicts: 0"
-if ! grep -q 'Machine B version of clash-demo' "$MACHINE_A/.claude/skills/${SKILL_NAME}/SKILL.md"; then
-  echo "machine A local file was not overwritten by keep-remote" >&2
-  cat "$MACHINE_A/.claude/skills/${SKILL_NAME}/SKILL.md" >&2
+if ! grep -q 'Machine B version of clash-demo' "$(skl_library_of "$MACHINE_A" "$SKILL_NAME")/SKILL.md"; then
+  echo "machine A library file was not overwritten by keep-remote" >&2
+  cat "$(skl_library_of "$MACHINE_A" "$SKILL_NAME")/SKILL.md" >&2
   exit 1
 fi
 
 echo "==> scrub: dirty blob is not PUT"
 # Split so casual secret scanners do not flag this script.
+# Mutate the personal library (canonical) — harness homes are not sync peers.
 printf '%s\n' "-----BEGIN OPENSSH PRIVATE KEY-----" "fake" "-----END OPENSSH PRIVATE KEY-----" \
-  > "$MACHINE_B/.claude/skills/${SKILL_NAME}/secret.env"
-skl_run_store "$MACHINE_B" init
+  > "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")/secret.env"
 set +e
 scrub_out="$(skl_run_store "$MACHINE_B" sync --keep-local 2>&1)"
 scrub_status=$?

@@ -10,6 +10,7 @@ use crate::config::{self, Paths, SkillRoot};
 use crate::error::Result;
 use crate::local::db::{LocalDb, SyncSummary};
 use crate::local::linker::{self, WINDOWS_SYMLINK_NOTE};
+use crate::local::projection::{self, ProjectionWarning};
 
 const HEALTH_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -61,6 +62,8 @@ pub struct DoctorReport {
     pub m0_targets_warning: Option<String>,
     /// Warn-only: `skills.toml` still lists host-absolute `path`s.
     pub absolute_paths_warning: Option<String>,
+    /// Warn-only projection issues vs this machine's library (never mutates).
+    pub projection_warnings: Vec<ProjectionWarning>,
 }
 
 pub async fn run(api_base: String) -> Result<()> {
@@ -75,6 +78,16 @@ pub async fn run(api_base: String) -> Result<()> {
 }
 
 pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> DoctorReport {
+    let cwd = std::env::current_dir().ok();
+    collect_at(api_base, home, paths, cwd.as_deref()).await
+}
+
+pub async fn collect_at(
+    api_base: &str,
+    home: &Path,
+    paths: Option<&Paths>,
+    project: Option<&Path>,
+) -> DoctorReport {
     let health = probe_health(api_base).await;
     let token = auth::token_presence();
     let token_env_set = std::env::var(TOKEN_ENV)
@@ -115,7 +128,11 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         None
     };
     let (project_manifest, project_modes, m0_targets_warning, absolute_paths_warning) =
-        project_link_modes();
+        project_link_modes(project);
+    let projection_warnings = match project {
+        Some(project) => projection::inspect(project, home, paths),
+        None => Vec::new(),
+    };
 
     DoctorReport {
         api_base: api_base.to_string(),
@@ -137,6 +154,7 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         project_modes,
         m0_targets_warning,
         absolute_paths_warning,
+        projection_warnings,
     }
 }
 
@@ -173,22 +191,24 @@ fn inspect_root(root: SkillRoot) -> RootStatus {
     }
 }
 
-fn project_link_modes() -> (
+fn project_link_modes(
+    project: Option<&Path>,
+) -> (
     Option<PathBuf>,
     Vec<(String, String)>,
     Option<String>,
     Option<String>,
 ) {
-    let Ok(cwd) = std::env::current_dir() else {
+    let Some(cwd) = project else {
         return (None, Vec::new(), None, None);
     };
-    let warning = linker::m0_targets_warning(&cwd);
-    let abs_warning = linker::absolute_paths_warning(&cwd);
-    let path = linker::manifest_path(&cwd);
+    let warning = linker::m0_targets_warning(cwd);
+    let abs_warning = linker::absolute_paths_warning(cwd);
+    let path = linker::manifest_path(cwd);
     if !path.exists() {
         return (None, Vec::new(), warning, abs_warning);
     }
-    let Ok(manifest) = linker::load_manifest(&cwd) else {
+    let Ok(manifest) = linker::load_manifest(cwd) else {
         return (Some(path), Vec::new(), warning, abs_warning);
     };
     let modes = manifest
@@ -393,6 +413,9 @@ fn print_report(report: &DoctorReport) {
 
     println!();
     println!("== Linking");
+    println!(
+        "roles        personal library is canonical; init/capture import into it; use / use --all project from it"
+    );
     if report.symlink {
         println!("symlink      ok");
     } else {
@@ -422,6 +445,9 @@ fn print_report(report: &DoctorReport) {
     }
     if let Some(warning) = &report.absolute_paths_warning {
         println!("warn         {warning}");
+    }
+    for warning in &report.projection_warnings {
+        println!("warn         {}", warning.message);
     }
 }
 
@@ -568,5 +594,56 @@ mod tests {
         }
         assert!(report.roots.len() > 5);
         assert!(report.roots.iter().any(|r| r.source == "windsurf"));
+    }
+
+    #[tokio::test]
+    async fn projection_warnings_are_warn_only() {
+        let home = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        let project = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: data.path().join("cfg"),
+            config_file: data.path().join("cfg/config.toml"),
+            data_dir: data.path().join("data"),
+            db_file: data.path().join("data/state.db"),
+        };
+        paths.ensure().unwrap();
+        fs::create_dir_all(paths.library_skill("greeter")).unwrap();
+        fs::write(paths.library_skill("greeter").join("SKILL.md"), "# lib\n").unwrap();
+        fs::create_dir_all(project.path().join(".agents/skills/greeter")).unwrap();
+        fs::write(
+            project.path().join(".agents/skills/greeter/SKILL.md"),
+            "# copy\n",
+        )
+        .unwrap();
+        fs::write(
+            project.path().join("skills.toml"),
+            "[[skills]]\nname = \"greeter\"\nmode = \"copy\"\n\n[[skills]]\nname = \"ghost\"\nmode = \"symlink\"\n",
+        )
+        .unwrap();
+
+        let report = collect_at(
+            "http://127.0.0.1:1",
+            home.path(),
+            Some(&paths),
+            Some(project.path()),
+        )
+        .await;
+        assert!(
+            report
+                .projection_warnings
+                .iter()
+                .any(|w| w.message.contains("not a sync peer")),
+            "{:?}",
+            report.projection_warnings
+        );
+        assert!(
+            report
+                .projection_warnings
+                .iter()
+                .any(|w| w.message.contains("ghost") && w.message.contains("manifest")),
+            "{:?}",
+            report.projection_warnings
+        );
     }
 }

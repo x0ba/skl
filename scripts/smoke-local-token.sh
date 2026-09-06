@@ -93,7 +93,7 @@ if [[ "${START_API:-}" == "1" ]]; then
   echo "$b_sync"
   skl_assert_contains "$b_sync" "wrote skill $SKILL_NAME"
   skl_assert_file_contains \
-    "$HOME_B/.agents/skills/${SKILL_NAME}/SKILL.md" \
+    "$(skl_library_of "$HOME_B" "$SKILL_NAME")/SKILL.md" \
     "hello from local store"
 fi
 

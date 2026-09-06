@@ -243,14 +243,17 @@ fn init_discovers_skill_under_openclaw_catalog_global() {
 }
 
 #[test]
-fn default_pull_root_prefers_home_agents_over_claude() {
-    let home = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(home.path().join(".claude/skills")).unwrap();
-    std::fs::create_dir_all(home.path().join(".agents/skills")).unwrap();
-    assert_eq!(
-        skills::default_pull_root(home.path()),
-        home.path().join(".agents/skills")
-    );
+fn sync_pull_root_is_library_not_home_agents() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(home.join(".claude/skills")).unwrap();
+    std::fs::create_dir_all(home.join(".agents/skills")).unwrap();
+    let paths = isolated_paths(tmp.path());
+    let pull = crate::local::library::default_pull_root(&paths);
+    assert_eq!(pull, paths.library_dir());
+    let rendered = pull.to_string_lossy();
+    assert!(!rendered.contains(".agents/skills"), "{rendered}");
+    assert!(!rendered.contains(".claude/skills"), "{rendered}");
 }
 
 #[test]

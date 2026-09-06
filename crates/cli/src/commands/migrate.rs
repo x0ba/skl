@@ -201,7 +201,7 @@ fn resolve_migrating_skill(
     }
 
     Err(SklError::LocalState(format!(
-        "skill `{name}` is linked in the project but not found in the home library"
+        "skill `{name}` is linked in the project but not found in the personal library"
     )))
 }
 

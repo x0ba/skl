@@ -96,7 +96,7 @@ hello from machine A
   echo "$b_init"
   skl_assert_contains "$b_init" "Imported 0 skill"
   skl_assert_contains "$b_init" "POST $API/v1/sync"
-  skl_assert_file_contains "$MACHINE_B/.agents/skills/${SKILL_NAME}/SKILL.md" \
+  skl_assert_file_contains "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")/SKILL.md" \
     "hello from machine A"
 
   echo "    A: mutate library (new skill, not a same-slug overwrite)"
@@ -122,9 +122,9 @@ second skill from machine A
   skl_assert_contains "$b_status" "auto_sync    on"
   skl_assert_contains "$b_status" "sync_frequency 900s"
   skl_assert_contains "$b_status" "last_sync"
-  skl_assert_file_contains "$MACHINE_B/.agents/skills/${SKILL_NAME}/SKILL.md" \
+  skl_assert_file_contains "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")/SKILL.md" \
     "hello from machine A"
-  skl_assert_file_contains "$MACHINE_B/.agents/skills/${skill_more}/SKILL.md" \
+  skl_assert_file_contains "$(skl_library_of "$MACHINE_B" "$skill_more")/SKILL.md" \
     "second skill from machine A"
 
   echo "    B: use links the pulled library (agents-only)"
@@ -135,7 +135,7 @@ second skill from machine A
   skl_assert_contains "$b_use" "using $SKILL_NAME"
   skl_assert_symlink_to \
     "$PROJECT_B/.agents/skills/${SKILL_NAME}" \
-    "$MACHINE_B/.agents/skills/${SKILL_NAME}"
+    "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")"
   if [[ -e "$PROJECT_B/.claude" || -e "$PROJECT_B/.cursor" ]]; then
     echo "default use must not create .claude/.cursor" >&2
     ls -la "$PROJECT_B" >&2 || true
@@ -191,7 +191,7 @@ throttle seed
   skl_assert_contains "$third" "using $skill"
   skl_assert_symlink_to \
     "$project/.agents/skills/${skill}" \
-    "$home/.claude/skills/${skill}"
+    "$(skl_library_of "$home" "$skill")"
 
   echo "    doctor → no POST /v1/sync; display last_sync only"
   local doctor
@@ -243,7 +243,7 @@ fail-soft local skill
   skl_assert_contains "$use_out" "(ignored)"
   skl_assert_symlink_to \
     "$project/.agents/skills/${skill}" \
-    "$home/.claude/skills/${skill}"
+    "$(skl_library_of "$home" "$skill")"
   skl_assert_file_contains \
     "$project/.agents/skills/${skill}/SKILL.md" \
     "fail-soft local skill"

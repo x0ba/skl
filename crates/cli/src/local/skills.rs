@@ -76,10 +76,6 @@ pub fn write_blob_file(skill_dir: &Path, rel: &str, bytes: &[u8]) -> Result<()> 
     Ok(())
 }
 
-pub fn default_pull_root(home: &Path) -> PathBuf {
-    crate::catalog::agents_home_path(home)
-}
-
 pub fn hash_skill_dir(dir: &Path) -> Result<SkillTree> {
     let mut files = BTreeMap::new();
     if dir.is_dir() {
@@ -256,12 +252,6 @@ mod tests {
         assert_eq!(listed[0].source, "agents");
         assert_eq!(listed[0].name, "greeter");
         assert_eq!(listed[0].path, agents);
-    }
-
-    #[test]
-    fn default_pull_root_prefers_home_agents_skills() {
-        let home = Path::new("/tmp/skl-home");
-        assert_eq!(default_pull_root(home), home.join(".agents").join("skills"));
     }
 
     #[test]

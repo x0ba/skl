@@ -139,6 +139,12 @@ skl_state_db() {
   printf '%s' "$1/.local/share/skl/state.db"
 }
 
+# Canonical personal library skill dir (never ~/.agents/skills).
+# Usage: skl_library_of <home> <skill-name>
+skl_library_of() {
+  printf '%s' "$1/.local/share/skl/skills/$2"
+}
+
 # Drop Secret Service / DBus + token env so the local store is the path.
 skl_clean_secret_service_env() {
   unset DBUS_SESSION_BUS_ADDRESS

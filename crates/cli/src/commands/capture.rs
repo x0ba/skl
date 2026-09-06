@@ -4,7 +4,8 @@
 //! (default `~/.local/share/skl/skills/`, override with `SKL_DATA_DIR`).
 //!
 //! `.agents/skills` is the project link destination (and a home discovery
-//! root for `skl init`). It is **not** the personal library.
+//! root for `skl init`). It is **not** the personal library and is **not**
+//! a sync peer.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -13,13 +14,14 @@ use std::path::{Path, PathBuf};
 use crate::config::{self, Paths};
 use crate::error::{Result, SklError};
 use crate::local::db::LocalDb;
+use crate::local::library;
 use crate::local::linker;
 use crate::local::skills::{self, DiscoveredSkill};
 
 use super::use_cmd::{resolve_activation_extras, resolve_project};
 
 /// Indexed `source` for skills stored in the personal library.
-pub const LIBRARY_SOURCE: &str = "agents";
+pub const LIBRARY_SOURCE: &str = library::LIBRARY_SOURCE;
 
 #[derive(Debug, Clone, Default)]
 pub struct CaptureOpts {

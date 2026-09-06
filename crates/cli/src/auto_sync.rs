@@ -289,18 +289,18 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let project = tmp.path().join("proj");
-        let skill_dir = home.join(".claude/skills/greeter");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
         std::fs::create_dir_all(&project).unwrap();
 
         let (paths, db) = open_db(tmp.path());
         paths.ensure().unwrap();
         config::save(&paths, &Config::default()).unwrap();
+        let skill_dir = paths.library_skill("greeter");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
         let tree = hash_skill_dir(&skill_dir).unwrap();
         db.replace_import(&[DiscoveredSkill {
             name: "greeter".into(),
-            source: "claude".into(),
+            source: "agents".into(),
             path: skill_dir.clone(),
             tree,
         }])

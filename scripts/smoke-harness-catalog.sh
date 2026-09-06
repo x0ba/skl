@@ -155,7 +155,7 @@ EOF
 PROJ_ALONE="$WORKDIR/proj-alone"
 PROJ_CLAUDE="$WORKDIR/proj-claude"
 mkdir -p "$PROJ_ALONE" "$PROJ_CLAUDE"
-home_skill="$HOME_DIR/.agents/skills/${SKILL_NAME}"
+home_skill="$(skl_library_of "$HOME_DIR" "$SKILL_NAME")"
 
 echo "==> use ${SKILL_NAME} alone → .agents/skills only"
 use_out="$(run_home use "$SKILL_NAME" --project "$PROJ_ALONE" 2>&1)"
