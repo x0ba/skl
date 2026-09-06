@@ -2,6 +2,8 @@
 
 Atuin-style personal agent skill sync.
 
+The personal library (`~/.local/share/skl/skills/` + local index) is canonical; `skl init` / `skl capture` import foreign skills into it; `skl use` / `skl use --all` project from it. `skl sync` is library-only (content-addressed) — never agent homes or project dests.
+
 ## Install
 
 ```bash
