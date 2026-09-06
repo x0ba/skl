@@ -5,6 +5,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
+use unicode_width::UnicodeWidthStr;
 
 use super::app::{help_text, now_secs, App, Overlay};
 
@@ -30,6 +31,10 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
     draw_panes(frame, chunks[1], app);
     draw_footer(frame, chunks[2], app);
 
+    // Toasts sit under modal overlays so Help/Create/Delete stay readable.
+    if let Some(message) = app.visible_toast() {
+        draw_toast(frame, area, message);
+    }
     if app.overlay == Overlay::Help {
         draw_help(frame, area);
     }
@@ -38,9 +43,6 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
     }
     if app.overlay == Overlay::ConfirmDelete {
         draw_confirm(frame, area, app);
-    }
-    if let Some(message) = app.visible_toast() {
-        draw_toast(frame, area, message);
     }
 }
 
@@ -257,7 +259,7 @@ fn join_hints(hints: &[KeyHint], with_labels: bool) -> String {
 }
 
 fn display_len(s: &str) -> usize {
-    s.chars().count()
+    s.width()
 }
 
 fn truncate_chars(s: &str, width: usize) -> String {
@@ -286,8 +288,10 @@ fn draw_confirm(frame: &mut Frame<'_>, area: Rect, app: &App) {
         .unwrap_or("skill");
     let heading = format!("Delete {name}?");
     let body = format!("{heading}\n\nRemoves the library copy.");
-    let width =
-        ((heading.chars().count() as u16) + 4).clamp(36, area.width.saturating_sub(4).max(20));
+    let max_width = area.width.saturating_sub(4).max(1);
+    let min_width = 36u16.min(max_width);
+    let desired = (heading.width() as u16).saturating_add(4);
+    let width = desired.clamp(min_width, max_width);
     let popup = popup_sized(area, width, 6);
     let para = Paragraph::new(body)
         .block(Block::default().borders(Borders::ALL).title(" delete "))
@@ -317,9 +321,9 @@ fn draw_toast(frame: &mut Frame<'_>, area: Rect, message: &str) {
 
 fn toast_dims(message: &str, area: Rect) -> (u16, u16) {
     let max_inner = (area.width / 2).clamp(20, 56);
-    let chars = message.chars().count() as u16;
-    let inner = chars.min(max_inner).max(8);
-    let text_lines = chars.div_ceil(inner).max(1);
+    let cells = message.width() as u16;
+    let inner = cells.min(max_inner).max(8);
+    let text_lines = cells.div_ceil(inner).max(1);
     let height = (text_lines + 2).min(6);
     (inner.saturating_add(2), height)
 }
@@ -447,5 +451,15 @@ mod tests {
         assert!(line.contains('/'), "{line}");
         assert!(!line.contains("search"), "{line}");
         assert!(!line.contains('q'), "{line}");
+    }
+
+    #[test]
+    fn toast_dims_use_display_width_for_wide_glyphs() {
+        let area = Rect::new(0, 0, 80, 24);
+        let cjk = "界".repeat(32);
+        let emoji = "🚀".repeat(32);
+        assert_eq!(toast_dims(&cjk, area), (42, 4));
+        assert_eq!(toast_dims(&emoji, area), (42, 4));
+        assert_eq!(toast_dims("deleted alpha", area), (15, 3));
     }
 }

@@ -1113,6 +1113,45 @@ mod tests {
     }
 
     #[test]
+    fn delete_confirm_renders_on_narrow_terminals() {
+        let mut app = app_with(sample_catalog());
+        app.handle_key(key(KeyCode::Char('d')));
+        for width in [35u16, 39] {
+            let lines = screen_lines(&app, width, 16);
+            let joined = lines.join("\n");
+            assert!(
+                joined.contains("Delete"),
+                "width {width} missing confirm:\n{joined}"
+            );
+        }
+    }
+
+    #[test]
+    fn help_stays_readable_when_toast_is_active() {
+        let mut app = app_with(sample_catalog());
+        app.set_status("edited /tmp/alpha/SKILL.md");
+        app.handle_key(key(KeyCode::Char('?')));
+        let lines = screen_lines(&app, 100, 24);
+        let joined = lines.join("\n");
+        assert!(joined.contains("skl — local skill browser"), "{joined}");
+        assert!(joined.contains("Browse works offline"), "{joined}");
+        assert!(
+            joined.contains("this help"),
+            "help body overwritten:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn wide_glyph_toast_keeps_full_message() {
+        let mut app = app_with(sample_catalog());
+        let message = "界".repeat(32);
+        app.set_status(message.clone());
+        let lines = screen_lines(&app, 80, 24);
+        let visible = lines.join("").matches('界').count();
+        assert_eq!(visible, 32, "{}", lines.join("\n"));
+    }
+
+    #[test]
     fn narrow_footer_drops_labels() {
         let app = app_with(sample_catalog());
         let lines = screen_lines(&app, 40, 16);
