@@ -1134,10 +1134,14 @@ mod tests {
         let lines = screen_lines(&app, 100, 24);
         let joined = lines.join("\n");
         assert!(joined.contains("skl — local skill browser"), "{joined}");
-        assert!(joined.contains("Browse works offline"), "{joined}");
+        assert!(joined.contains("this help"), "{joined}");
         assert!(
-            joined.contains("this help"),
-            "help body overwritten:\n{joined}"
+            !joined.contains("edited /tmp/alpha/SKILL.md"),
+            "toast covered help:\n{joined}"
+        );
+        assert!(
+            !joined.contains("lpha/SKILL.md"),
+            "toast remnant on help:\n{joined}"
         );
     }
 

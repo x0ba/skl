@@ -31,18 +31,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
     draw_panes(frame, chunks[1], app);
     draw_footer(frame, chunks[2], app);
 
-    // Toasts sit under modal overlays so Help/Create/Delete stay readable.
-    if let Some(message) = app.visible_toast() {
-        draw_toast(frame, area, message);
-    }
-    if app.overlay == Overlay::Help {
-        draw_help(frame, area);
-    }
-    if app.overlay == Overlay::Create {
-        draw_create(frame, area, app);
-    }
-    if app.overlay == Overlay::ConfirmDelete {
-        draw_confirm(frame, area, app);
+    match app.overlay {
+        Overlay::Help => draw_help(frame, area),
+        Overlay::Create => draw_create(frame, area, app),
+        Overlay::ConfirmDelete => draw_confirm(frame, area, app),
+        Overlay::None | Overlay::Search => {
+            if let Some(message) = app.visible_toast() {
+                draw_toast(frame, area, message);
+            }
+        }
     }
 }
 
