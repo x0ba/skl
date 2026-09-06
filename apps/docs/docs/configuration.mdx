@@ -33,7 +33,7 @@ Unset fields use the defaults below.
 
 **`[targets] extra`.** Extra agent IDs to use for every activation. When empty, `skl use` writes only `.agents/skills`. `claude` is stored as `claude-code`. IDs such as `cursor` and `codex` are removed because those agents already use `.agents/skills`.
 
-**`[project] projection`.** Default `skl use` projection. `copy` (default) materializes a real directory under `.agents/skills`. `link` creates a symlink for local live-edit. `--link` on the command line overrides this. Remote agents such as Cursor Cloud cannot follow `$HOME` symlinks.
+**`[project] projection`.** Default `skl use` projection. `copy` (default) materializes a real directory under `.agents/skills`. `link` creates a symlink for local live-edit. `--link` on the command line overrides this. Remote agents such as Cursor Cloud cannot follow `$HOME` symlinks. Unknown values are an error; they are not treated as `copy`.
 
 `[targets] prompted` records that the one-time extras prompt has been shown. Do not set it manually.
 
