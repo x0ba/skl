@@ -2,7 +2,7 @@
 # does not match cli-binaries path filters. Reuses that workflow as-is
 # (same cross-compile.sh + matrix + SHA256SUMS + install.sh).
 # cli-binaries.yml ignores tag pushes so this is the only publisher.
-name: release
+name: Release
 
 on:
   push:
@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   binaries:
+    name: CLI
     uses: ./.github/workflows/cli-binaries.yml
     permissions:
       contents: write
