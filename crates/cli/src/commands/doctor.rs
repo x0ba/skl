@@ -62,6 +62,8 @@ pub struct DoctorReport {
     pub m0_targets_warning: Option<String>,
     /// Warn-only: `skills.toml` still lists host-absolute `path`s.
     pub absolute_paths_warning: Option<String>,
+    /// Warn-only: link projections that Cursor Cloud cannot follow.
+    pub cloud_hostile_warning: Option<String>,
     /// Warn-only projection issues vs this machine's library (never mutates).
     pub projection_warnings: Vec<ProjectionWarning>,
 }
@@ -129,6 +131,7 @@ pub async fn collect_at(
     };
     let (project_manifest, project_modes, m0_targets_warning, absolute_paths_warning) =
         project_link_modes(project);
+    let cloud_hostile_warning = project.and_then(|p| linker::cloud_hostile_links_warning(p, home));
     let projection_warnings = match project {
         Some(project) => projection::inspect(project, home, paths),
         None => Vec::new(),
@@ -154,6 +157,7 @@ pub async fn collect_at(
         project_modes,
         m0_targets_warning,
         absolute_paths_warning,
+        cloud_hostile_warning,
         projection_warnings,
     }
 }
@@ -414,7 +418,7 @@ fn print_report(report: &DoctorReport) {
     println!();
     println!("== Linking");
     println!(
-        "roles        personal library is canonical; init/capture import into it; use / use --all project from it"
+        "roles        personal library is canonical; use materializes (copy) into .agents/skills; --link for local symlinks"
     );
     if report.symlink {
         println!("symlink      ok");
@@ -446,7 +450,13 @@ fn print_report(report: &DoctorReport) {
     if let Some(warning) = &report.absolute_paths_warning {
         println!("warn         {warning}");
     }
+    if let Some(warning) = &report.cloud_hostile_warning {
+        println!("warn         {warning}");
+    }
     for warning in &report.projection_warnings {
+        if warning.kind == crate::local::projection::ProjectionKind::CloudHostileLink {
+            continue;
+        }
         println!("warn         {}", warning.message);
     }
 }
@@ -633,7 +643,7 @@ mod tests {
             report
                 .projection_warnings
                 .iter()
-                .any(|w| w.message.contains("not a sync peer")),
+                .any(|w| w.message.contains("skl use --all") && w.message.contains("skl capture")),
             "{:?}",
             report.projection_warnings
         );
@@ -644,6 +654,14 @@ mod tests {
                 .any(|w| w.message.contains("ghost") && w.message.contains("manifest")),
             "{:?}",
             report.projection_warnings
+        );
+        assert!(
+            report
+                .cloud_hostile_warning
+                .as_deref()
+                .is_some_and(|w| w.contains("ghost") && w.contains("skl use --all")),
+            "{:?}",
+            report.cloud_hostile_warning
         );
     }
 }

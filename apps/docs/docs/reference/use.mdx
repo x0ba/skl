@@ -13,13 +13,16 @@ Make a skill available in a project, list active skills, or restore all listed s
 skl use
 skl use <skill>…
 skl use --all
+skl use --link <skill>
 skl use <skill> --project <dir> -a <id>
 ```
 
 ## Flags
 
 - `SKILL…` — skill names. Without names, list skills already active in the project.
-- `--all` — recreate every skill in `skills.toml` from this machine's library.
+- `--all` — rematerialize every skill in `skills.toml` from this machine's library (default: copy).
+- `--link` — symlink instead of copying. Local live-edit only; Cursor Cloud cannot follow `$HOME` links.
+- `--force` — overwrite an unmanaged real directory at the destination.
 - `--project DIR` — project directory (default: current directory).
 - `-a`, `--agent ID` — add an extra agent directory for this activation. Repeatable.
 
@@ -27,19 +30,23 @@ skl use <skill> --project <dir> -a <id>
 
 `--all` cannot be combined with skill names.
 
+Default projection is **copy** (materialize). `project.projection = "link"` in `~/.config/skl/config.toml` makes symlink the default; `--link` still wins on one command.
+
 ## What it writes
 
-- Creates `.agents/skills/<name>` as a symlink, or as a copy when a symlink cannot be created
+- Creates `.agents/skills/<name>` as a real directory (copy). `--link` creates a symlink, with a copy fallback if the symlink cannot be created
 - Creates extra destinations from `-a` and configured extras
-- Updates the project's `skills.toml`
+- Updates the project's `skills.toml` (`mode = "copy"` or `mode = "symlink"`)
 - May start automatic sync
 
-Does not run `skl migrate`.
+Does not run `skl migrate`. Does not `git add`.
+
+For Cursor Cloud, commit `.agents/skills/<name>/` and `skills.toml`. See the README section "Using skills with Cursor Cloud agents".
 
 ## Errors
 
 - `use either skl use --all or skl use <skill>`
 - skill is not in the personal library on this machine
 - skill listed in `skills.toml` but not found in the personal library
-- dest exists and is not a symlink (refuses to overwrite a real directory)
+- dest exists and is not a managed projection (refuses to overwrite a real directory unless `--force`)
 - invalid skill name (leading `.`, `/`, or `\`)

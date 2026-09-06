@@ -615,7 +615,7 @@ mod tests {
         assert!(
             warns
                 .iter()
-                .any(|w| w.message.contains("not a sync peer") && w.message.contains("skl capture")),
+                .any(|w| w.message.contains("skl use --all") && w.message.contains("skl capture")),
             "{warns:?}"
         );
         assert!(!is_symlink(&skill));
@@ -634,14 +634,19 @@ mod tests {
         );
 
         let resolved =
-            crate::commands::use_cmd::resolve_skill("greeter", &home, Some(&paths.db_file)).unwrap();
+            crate::commands::use_cmd::resolve_skill("greeter", &home, Some(&paths.db_file))
+                .unwrap();
         assert_eq!(resolved.path, paths.library_skill("greeter"));
         linker::activate(&project, &home, &resolved).unwrap();
-        assert!(is_symlink(&skill));
-        assert!(points_at(&skill, &paths.library_skill("greeter")));
+        assert!(!is_symlink(&skill));
+        assert!(skill.is_dir());
         assert_eq!(
             fs::read_to_string(skill.join("SKILL.md")).unwrap(),
             "# divergent\n"
+        );
+        assert_eq!(
+            linker::load_manifest(&project).unwrap().skills[0].mode,
+            linker::COPY_MODE
         );
     }
 

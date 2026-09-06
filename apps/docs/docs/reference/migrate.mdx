@@ -1,11 +1,11 @@
 ---
 title: skl migrate
-description: Move old .claude and .cursor project links onto .agents/skills.
+description: Move old .claude and .cursor project links onto .agents/skills, or rematerialize projections.
 ---
 
 # skl migrate
 
-Move old project layouts to `.agents/skills`. This migration is never run by `skl use`.
+Move old project layouts to `.agents/skills`, or convert link projections to copies. This migration is never run by `skl use`.
 
 ## Synopsis
 
@@ -13,25 +13,32 @@ Move old project layouts to `.agents/skills`. This migration is never run by `sk
 skl migrate targets
 skl migrate targets --prune-old
 skl migrate targets --project <dir>
+skl migrate projections --materialize
 ```
 
 ## Subcommands
 
 `targets` moves old `.claude` and `.cursor` project links to `.agents/skills`.
 
+`projections --materialize` rematerializes every skill listed in `skills.toml` as a copy. Same effect as `skl use --all` with the default copy projection. Use it to convert existing symlink activations so Cursor Cloud can see the files.
+
 ## Flags
 
 - `--project DIR` — project directory (default: current directory)
 - `--prune-old` — remove old `.claude`, `.cursor`, and `.codex` links after `.agents/skills` exists
+- `--materialize` — required for `projections`; write real directories instead of symlinks
 
 ## What it writes
 
-Creates or refreshes `.agents/skills/<name>` for every project skill and rewrites `skills.toml` to use that directory. With `--prune-old`, it deletes the old managed links. Without it, detected extra agent directories may remain.
+`targets` creates or refreshes `.agents/skills/<name>` for every project skill and rewrites `skills.toml` to use that directory. With `--prune-old`, it deletes the old managed links. Without it, detected extra agent directories may remain.
 
-`skl use` does not run this migration. `skl doctor` warns when it finds the old layout.
+`projections --materialize` overwrites managed copies and replaces managed symlinks. It will not clobber an unrelated real directory.
+
+`skl use` does not run this migration. `skl doctor` warns when it finds the old layout or a link projection.
 
 ## Errors
 
 - no project skills to migrate (no old `.claude` or `.cursor` links, and nothing in `skills.toml`)
 - dest conflict when a real unmanaged directory is in the way
 - skill name or path resolution failures
+- `projections` without `--materialize`

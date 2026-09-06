@@ -31,6 +31,9 @@ pub struct Config {
     /// Sticky extra dests for `skl use` (`~/.config/skl/config.toml`).
     #[serde(default, skip_serializing_if = "TargetPrefs::is_unset")]
     pub targets: TargetPrefs,
+    /// Default project projection (`copy` / materialize, or `link`).
+    #[serde(default, skip_serializing_if = "ProjectPrefs::is_unset")]
+    pub project: ProjectPrefs,
 }
 
 /// `[sync]` — piggyback hash-sync on login/init/use/unuse/status.
@@ -78,6 +81,36 @@ impl TargetPrefs {
     }
 }
 
+/// `[project]` — default `skl use` projection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectPrefs {
+    /// `copy` (materialize, default) or `link` (symlink).
+    #[serde(default = "default_projection")]
+    pub projection: String,
+}
+
+impl Default for ProjectPrefs {
+    fn default() -> Self {
+        Self {
+            projection: default_projection(),
+        }
+    }
+}
+
+impl ProjectPrefs {
+    fn is_unset(&self) -> bool {
+        self.projection == default_projection()
+    }
+
+    pub fn mode(&self) -> linker::ProjectionMode {
+        linker::ProjectionMode::parse(&self.projection).unwrap_or(linker::ProjectionMode::Copy)
+    }
+}
+
+fn default_projection() -> String {
+    linker::COPY_MODE.to_string()
+}
+
 impl Config {
     pub fn api_base(&self) -> String {
         self.api_base
@@ -87,6 +120,10 @@ impl Config {
 
     pub fn sticky_extras(&self) -> Vec<String> {
         linker::filter_extra_ids(&self.targets.extra)
+    }
+
+    pub fn projection_mode(&self) -> linker::ProjectionMode {
+        self.project.mode()
     }
 }
 
@@ -307,6 +344,16 @@ mod tests {
         assert!(!cfg.targets.prompted);
         assert!(cfg.sync.auto);
         assert_eq!(cfg.sync.frequency_secs, DEFAULT_SYNC_FREQUENCY_SECS);
+        assert_eq!(cfg.projection_mode(), linker::ProjectionMode::Copy);
+    }
+
+    #[test]
+    fn project_projection_link_overrides_default() {
+        let cfg: Config = toml::from_str("[project]\nprojection = \"link\"\n").unwrap();
+        assert_eq!(cfg.projection_mode(), linker::ProjectionMode::Link);
+        let materialize: Config =
+            toml::from_str("[project]\nprojection = \"materialize\"\n").unwrap();
+        assert_eq!(materialize.projection_mode(), linker::ProjectionMode::Copy);
     }
 
     #[test]

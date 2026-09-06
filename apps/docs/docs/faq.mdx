@@ -19,7 +19,9 @@ A **project destination** is `.agents/skills` inside a project, created by `skl 
 
 ## I cloned a project with `skills.toml`. Why are the skill directories missing?
 
-`skills.toml` contains only names. Each named skill must exist in this machine's personal library. Log in, run `skl sync`, then run `skl use --all`.
+`skills.toml` contains only names. For a laptop checkout, each named skill must exist in this machine's personal library: log in, run `skl sync`, then `skl use --all`.
+
+For Cursor Cloud, commit the materialized `.agents/skills/<name>/` trees. Names alone are not enough; the remote VM has no home library.
 
 ## Why doesn't Cursor need `-a cursor`?
 
@@ -27,7 +29,7 @@ Cursor and Codex already read `.agents/skills`. Use `-a` only for agents with th
 
 ## Why didn't sync change my project?
 
-`skl sync` handles only the personal library. Project directories change when you run `skl use` or `skl use --all`. After syncing on another machine, activate the skills in each project.
+`skl sync` handles only the personal library. Project directories change when you run `skl use` or `skl use --all`. After syncing on another machine, rematerialize with `skl use --all` and commit `.agents/skills` if remote agents should see the files.
 
 ## Can the server read my skills?
 
@@ -43,13 +45,13 @@ Yes. Sync uses TLS in transit and stores skill data on the server. It is not end
 - Home skill roots and how many skills each holds
 - Whether this machine can create directory symlinks
 - `skills.toml` modes in the current project
-- Warnings for the old `.claude` / `.cursor` project layout, host-absolute paths in `skills.toml`, and project directories that do not match this machine's library
+- Warnings for the old `.claude` / `.cursor` project layout, host-absolute paths in `skills.toml`, link projections that Cloud agents cannot follow, and project copies that differ from this machine's library
 
 Doctor does not change files, except that it may show the one-time extras prompt and write its answer.
 
 ## Why did Windows copy instead of symlink?
 
-Directory symlinks on Windows require Developer Mode or the `SeCreateSymbolicLink` privilege. If a symlink fails because it is unsupported or not permitted, `skl use` copies the skill and records `mode = "copy"` in `skills.toml`. `skl unuse` removes copies it created. `skl doctor` prints `symlink unavailable` when its check fails.
+`skl use` copies by default on every platform so remote agents can see the files. `--link` still tries a symlink. Directory symlinks on Windows require Developer Mode or the `SeCreateSymbolicLink` privilege. If that fails, skl copies and records `mode = "copy"`. `skl doctor` prints `symlink unavailable` when its check fails.
 
 ## The installer did not add PATH
 

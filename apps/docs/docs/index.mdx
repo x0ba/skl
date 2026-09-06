@@ -6,7 +6,7 @@ slug: /
 
 # skl
 
-skl keeps a personal library of agent skills and can sync it between machines by content hash. A skill is a directory that contains `SKILL.md`. Use `skl use` to make a library skill available in a project. It creates `.agents/skills/<name>` and records the skill in `skills.toml`.
+skl keeps a personal library of agent skills and can sync it between machines by content hash. A skill is a directory that contains `SKILL.md`. Use `skl use` to make a library skill available in a project. It copies the skill into `.agents/skills/<name>` (so Cursor Cloud can see it) and records the name in `skills.toml`.
 
 Sync is optional. The hosted API is [https://api.tryskl.fyi](https://api.tryskl.fyi). Skip login and the personal library stays on this machine at `~/.local/share/skl/skills`.
 

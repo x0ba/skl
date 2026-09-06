@@ -1,4 +1,5 @@
 //! `skl migrate targets` — explicit M0 → canonical `.agents/skills`.
+//! `skl migrate projections --materialize` — convert link projections to copies.
 //!
 //! Doctor warns; `skl use` does not call this. Destination paths come from
 //! `project_link_targets` / `ensure_link` / `remove_managed_link`.
@@ -6,7 +7,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::commands::use_cmd::{resolve_project, resolve_skill};
+use crate::commands::use_cmd::{resolve_project, resolve_skill, restore_all};
 use crate::config::{self, Paths};
 use crate::error::{Result, SklError};
 use crate::local::linker::{
@@ -27,7 +28,7 @@ pub struct MigrateOutcome {
     pub already_canonical: bool,
 }
 
-pub fn run(project: Option<PathBuf>, prune_old: bool) -> Result<()> {
+pub fn run_targets(project: Option<PathBuf>, prune_old: bool) -> Result<()> {
     let project = resolve_project(project)?;
     let home = config::home_dir()?;
     let paths = Paths::resolve().ok();
@@ -35,6 +36,59 @@ pub fn run(project: Option<PathBuf>, prune_old: bool) -> Result<()> {
     let out = migrate_targets(&project, &home, db_file, prune_old)?;
     print_outcome(&out);
     Ok(())
+}
+
+pub fn run_projections(project: Option<PathBuf>, materialize: bool) -> Result<()> {
+    if !materialize {
+        return Err(SklError::LocalState(
+            "specify `--materialize` to convert link projections to copies (or `skl use --all`)"
+                .into(),
+        ));
+    }
+    let project = resolve_project(project)?;
+    let home = config::home_dir()?;
+    let paths = Paths::resolve().ok();
+    let db_file = paths.as_ref().map(|p| p.db_file.as_path());
+    let extras = crate::commands::use_cmd::resolve_activation_extras(paths.as_ref(), &[])?;
+    let outs = migrate_projections_materialize(&project, &home, db_file, &extras)?;
+    if outs.is_empty() {
+        eprintln!(
+            "(no skills listed in {}; nothing to rematerialize)",
+            linker::manifest_path(&project).display()
+        );
+    } else {
+        eprintln!("rematerializing {} skill(s) as copy", outs.len());
+        for out in &outs {
+            eprintln!("  copy     {}  {}", out.skill, out.mode);
+            for link in &out.links {
+                eprintln!(
+                    "  {:<8} {:<8} {}",
+                    action_label(link.action),
+                    link.agent,
+                    link.path.display()
+                );
+            }
+        }
+        eprintln!("  updated  {}", linker::manifest_path(&project).display());
+    }
+    Ok(())
+}
+
+/// Convert every listed skill to a materialized copy from this machine's library.
+pub fn migrate_projections_materialize(
+    project: &Path,
+    home: &Path,
+    db_file: Option<&Path>,
+    extras: &[String],
+) -> Result<Vec<linker::ActivateOutcome>> {
+    restore_all(
+        project,
+        home,
+        db_file,
+        extras,
+        linker::ProjectionMode::Copy,
+        false,
+    )
 }
 
 pub fn migrate_targets(
@@ -258,7 +312,7 @@ fn print_outcome(out: &MigrateOutcome) {
 
 fn action_label(action: LinkAction) -> &'static str {
     match action {
-        LinkAction::Created => "symlink",
+        LinkAction::Created => "link",
         LinkAction::Copied => "copy",
         LinkAction::Replaced => "replace",
         LinkAction::CopyReplaced => "copy*",
@@ -500,5 +554,47 @@ mode = "symlink"
                 .map(|t| t.id)
                 .collect();
         assert_eq!(pruned, ["agents"]);
+    }
+
+    #[test]
+    fn migrate_projections_materialize_converts_symlink_to_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let data = tmp.path().join("data");
+        let skill_dir = data.join("skills/greeter");
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), "# greeter\n").unwrap();
+        let db_file = data.join("state.db");
+        let skill =
+            crate::commands::use_cmd::resolve_skill("greeter", &home, Some(&db_file)).unwrap();
+        linker::activate_with(
+            &project,
+            &home,
+            &skill,
+            linker::ActivateOpts {
+                extras: &[],
+                mode: linker::ProjectionMode::Link,
+                force: false,
+            },
+        )
+        .unwrap();
+        let dest = project.join(".agents/skills/greeter");
+        assert!(dest.symlink_metadata().unwrap().file_type().is_symlink());
+
+        let outs = migrate_projections_materialize(&project, &home, Some(&db_file), &[]).unwrap();
+        assert_eq!(outs.len(), 1);
+        assert_eq!(outs[0].mode, linker::COPY_MODE);
+        assert!(dest.is_dir());
+        assert!(!dest.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "# greeter\n"
+        );
+        assert_eq!(
+            load_manifest(&project).unwrap().skills[0].mode,
+            linker::COPY_MODE
+        );
     }
 }
