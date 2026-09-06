@@ -1,0 +1,37 @@
+---
+title: skl migrate
+description: Move old .claude and .cursor project links onto .agents/skills.
+---
+
+# skl migrate
+
+Explicit layout rewrites. Never run from `skl use`.
+
+## Synopsis
+
+```bash
+skl migrate targets
+skl migrate targets --prune-old
+skl migrate targets --project <dir>
+```
+
+## Subcommands
+
+`targets` moves old `.claude` and `.cursor` project links onto canonical `.agents/skills`.
+
+## Flags
+
+- `--project DIR` project directory (default cwd)
+- `--prune-old` remove old `.claude`, `.cursor`, and `.codex` links after the canonical dest exists
+
+## What it writes
+
+Creates or refreshes `.agents/skills/<name>` for each project skill. Rewrites `skills.toml` onto the canonical dest. With `--prune-old`, deletes the old managed links. Without `--prune-old`, detected extra dests may stay.
+
+Does not run on `skl use`. Doctor warns when it sees the old layout.
+
+## Errors
+
+- no project skills to migrate (no old `.claude` or `.cursor` links, and nothing in `skills.toml`)
+- dest conflict when a real unmanaged directory is in the way
+- skill name or path resolution failures

@@ -1,0 +1,34 @@
+---
+title: skl status
+description: Login, api_base, local skill count, last sync.
+---
+
+# skl status
+
+Show login, `api_base`, local skill count, last sync.
+
+## Synopsis
+
+```bash
+skl status
+```
+
+## Flags
+
+None.
+
+## What it writes
+
+Nothing on disk except a possible auto-sync when due. Prints:
+
+- `api_base`
+- `token` (`yes` with a preview, or `no`)
+- `config` and `state.db` paths
+- `auto_sync` on or off, and `sync_frequency`
+- `local_skills`
+- `last_sync` summary, or `(none)`
+- `sync_issue` when the last attempt failed
+
+## Errors
+
+Status stays successful when the config dir cannot be resolved. It prints the error on the `config` line and returns.

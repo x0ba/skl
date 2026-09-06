@@ -20,6 +20,12 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
             >
               Source
             </a>
+            <a
+              href="https://docs.skl.sh"
+              className="text-muted-foreground underline decoration-from-font underline-offset-2 hover:text-foreground"
+            >
+              Docs
+            </a>
             <Link
               href="/skills"
               className="text-primary underline decoration-from-font underline-offset-2 hover:decoration-2"

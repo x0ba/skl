@@ -1,0 +1,40 @@
+---
+title: skl capture
+description: Promote a project skill into the personal library.
+---
+
+# skl capture
+
+Promote a project skill into the personal library (`~/.local/share/skl/skills`).
+
+## Synopsis
+
+```bash
+skl capture <path>
+skl capture <path> --force --as <name> --keep-copy --project <dir>
+```
+
+## Flags
+
+- `PATH` project skill path or name, resolved under `.agents/skills` and sticky extras
+- `--force` overwrite an existing library skill of the same name
+- `--as NAME` capture under a different skill name
+- `--keep-copy` copy into the library and leave the project dir as a real copy
+- `--project DIR` project directory (default cwd)
+
+Does not prompt.
+
+## What it writes
+
+Copies the source tree into `{data_dir}/skills/<name>/`. Indexes `state.db`. Updates `skills.toml` with a names-only entry. Without `--keep-copy`, replaces the project dir with a symlink to the library. May piggyback auto-sync.
+
+A source that already symlinks at the library skill is a no-op after reindex.
+
+## Errors
+
+- `capture path is not a skill directory`
+- `skill directory … is missing SKILL.md`
+- skill already exists in the personal library (needs `--force` or `--as`)
+- `skill not found` when the argument is neither a path nor a name under project dests
+- `invalid skill name`
+- `project skill … already links … but that library skill is missing`

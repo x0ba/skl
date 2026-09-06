@@ -1,0 +1,33 @@
+---
+title: skl tui
+description: Interactive two-pane skill browser. Also opened by bare skl on a TTY.
+---
+
+# skl tui
+
+Interactive two-pane skill browser. Also opened by bare `skl` on a TTY. `skl ui` is an alias.
+
+## Synopsis
+
+```bash
+skl
+skl tui
+skl ui
+skl --no-tui
+```
+
+## Flags
+
+- `--no-tui` (global) print help instead of opening the TUI. Also `SKL_NO_TUI=1`.
+
+A non-TTY, piped stdin, or `CI` does not enter fullscreen.
+
+## What it writes
+
+Same disk effects as the matching CLI verbs when you press the keys. `n` creates, `e` edits, `u` uses, `U` unuses, `d` deletes, `s` syncs. Browse and preview read the local library only.
+
+Keybindings are listed in [The TUI](/guide/tui).
+
+## Errors
+
+Unsupported terminals print a reason and stay in the shell. Sync and delete errors from those keys surface as status-line text.

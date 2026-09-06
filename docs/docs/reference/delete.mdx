@@ -1,0 +1,33 @@
+---
+title: skl delete
+description: Remove a skill from SKL and delete the local library copy.
+---
+
+# skl delete
+
+Remove a skill from SKL and delete the local library copy.
+
+## Synopsis
+
+```bash
+skl delete <skill>…
+```
+
+## Flags
+
+- `SKILL…` one or more names (required)
+
+## What it writes
+
+Calls `DELETE /v1/skills/:name` on the API, then deletes `{data_dir}/skills/<name>/` and drops every `state.db` row for that name. Project dests and home agent dirs stay.
+
+Requires a device token.
+
+## Errors
+
+- `specify at least one skill: skl delete <skill>`
+- `not logged in; run skl login`
+- skill is not managed by SKL (API 404 and nothing local changed)
+- `refusing to delete … (not under the personal library)`
+- `invalid skill name`
+- `API error <status>`

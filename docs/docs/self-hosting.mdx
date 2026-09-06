@@ -1,0 +1,71 @@
+---
+title: Self hosting
+description: Run Postgres, the API, and the web app from a source checkout.
+---
+
+# Self hosting
+
+skl is hosted-first. Self-host today means a source checkout, not a packaged appliance. There is no published app image and no Helm chart.
+
+You need Docker for Postgres, Node for `apps/api` and `apps/web`, and a skl binary that points at your API.
+
+## 1. Postgres
+
+From the repo root:
+
+```bash
+docker compose up -d postgres
+```
+
+That starts `postgres:16-alpine` on `localhost:5432` with user `skl`, password `skl`, database `skl`.
+
+## 2. API
+
+`apps/api/.env.example` is the env template.
+
+```bash
+cd apps/api
+cp .env.example .env
+pnpm install
+pnpm migrate
+pnpm dev
+```
+
+The API listens on `http://localhost:8787`. Health is `http://localhost:8787/v1/health`.
+
+Set these in `.env`:
+
+- `DATABASE_URL` (default `postgres://skl:skl@localhost:5432/skl`)
+- `PORT` (default `8787`)
+- `SKL_WEB_ORIGIN` (default `http://localhost:3000`, used for the device URL and CORS)
+- `SKL_API_ORIGIN` (default `http://localhost:8787`)
+- `CLERK_SECRET_KEY` and related Clerk keys when you want real browser auth
+
+Leave `CLERK_SECRET_KEY` empty for a local bypass. The API then accepts `Authorization: Bearer dev:<user_id>`.
+
+## 3. Web
+
+The web app serves `/device`, which is where you approve a CLI login.
+
+```bash
+cd apps/web
+cp .env.example .env.local
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:3000`. Device approval is `/device?user_code=…`.
+
+## 4. Point the CLI at your API
+
+```bash
+skl --api-base http://localhost:8787 login
+```
+
+You can also set `API_BASE=http://localhost:8787` or `api_base` in `config.toml`. Debug builds already default to `http://localhost:8787`.
+
+When Clerk is unset on the API, `skl login --dev-user <id>` stores `Authorization: Bearer dev:<id>` and skips the device poll. That flag is a local bypass, not a hosted login path.
+
+## What you do not get
+
+This checkout is not a turnkey host. You run Postgres, the API, and the web app yourself. TLS, backups, and Clerk are yours to set up. Skill blobs in Postgres are readable by whoever holds the database.

@@ -1,0 +1,30 @@
+---
+title: skl doctor
+description: Diagnose library, projections, token store, state.db, and API health.
+---
+
+# skl doctor
+
+Diagnose library, projections, token store, `state.db`, and `GET /v1/health`.
+
+## Synopsis
+
+```bash
+skl doctor
+```
+
+## Flags
+
+None.
+
+## What it writes
+
+Does not mutate skills, dests, or `state.db`. May show the one-time sticky extras prompt and then write `[targets]` if you accept.
+
+Prints `api_base`, health, token presence and source, config and `state.db` status, home roots, symlink probe, current-project `skills.toml` modes, and warn-only notes for old project layouts, host-absolute manifest paths, and dests that do not match this machine's library.
+
+Health probe times out after 3 seconds.
+
+## Errors
+
+Doctor itself returns success after printing. Prompt skip conditions match setup (`CI`, `SKL_NO_PROMPT`, `SKL_YES`, non-TTY).

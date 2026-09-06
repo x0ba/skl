@@ -1,0 +1,36 @@
+---
+title: skl setup
+description: First-run prompts for login and init.
+---
+
+# skl setup
+
+First-run after install. Asks login, then init.
+
+## Synopsis
+
+```bash
+skl setup
+skl setup --non-interactive
+```
+
+## Flags
+
+- `--non-interactive` skips login, init, and extras prompts. Prints `skl login && skl init` as the next step.
+
+Prompts are also skipped when `CI`, `SKL_NO_PROMPT`, or `SKL_YES` is set, or when stdin is not a TTY.
+
+## What it writes
+
+If `config.toml` has no `api_base`, setup writes the process `api_base` so a skipped login still remembers the hosted API.
+
+Interactive answers run `skl login` and `skl init` in that order. Each step is optional. Default on the prompt is yes.
+
+```text
+Log in now? [Y/n]
+Import existing skills (skl init)? [Y/n]
+```
+
+## Errors
+
+Whatever `skl login` or `skl init` returns, if you accepted that step.
