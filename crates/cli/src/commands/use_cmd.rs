@@ -404,6 +404,44 @@ mode = "symlink"
     }
 
     #[test]
+    fn restore_all_after_library_mutation_uses_new_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let data_dir = tmp.path().join("data");
+        let skill_dir = data_dir.join("skills/greeter");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "original\n").unwrap();
+        let db_file = data_dir.join("state.db");
+
+        let skill = resolve_skill("greeter", &home, Some(&db_file)).unwrap();
+        linker::activate(&project, &home, &skill).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            "original\n"
+        );
+
+        std::fs::write(skill_dir.join("SKILL.md"), "mutated library\n").unwrap();
+        let outs = restore_all(&project, &home, Some(&db_file), &[]).unwrap();
+        assert_eq!(outs.len(), 1);
+        let dest = project.join(".agents/skills/greeter");
+        assert!(dest.exists());
+        assert_eq!(
+            std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "mutated library\n"
+        );
+        #[cfg(unix)]
+        {
+            assert!(dest.symlink_metadata().unwrap().file_type().is_symlink());
+            assert_eq!(
+                std::fs::canonicalize(&dest).unwrap(),
+                std::fs::canonicalize(&skill_dir).unwrap()
+            );
+        }
+    }
+
+    #[test]
     fn restore_all_missing_skill_suggests_sync() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");

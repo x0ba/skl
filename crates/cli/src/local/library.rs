@@ -207,4 +207,35 @@ mod tests {
             "# from home\n"
         );
     }
+
+    #[test]
+    fn reindex_does_not_scan_unindexed_harness_or_project_peers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = isolated_paths(tmp.path());
+        plant(
+            &tmp.path().join("home/.agents/skills/decoy"),
+            "# agents home\n",
+        );
+        plant(
+            &tmp.path().join("home/.claude/skills/claude-decoy"),
+            "# claude home\n",
+        );
+        plant(
+            &tmp.path().join("proj/.agents/skills/proj-decoy"),
+            "# project dest\n",
+        );
+        paths.ensure().unwrap();
+        let db = LocalDb::open(&paths.db_file).unwrap();
+        db.replace_import(&[]).unwrap();
+
+        reindex_library_only(&db, &paths).unwrap();
+        let listed = db.list_skills().unwrap();
+        assert!(
+            listed.is_empty(),
+            "unindexed harness/project trees must not become sync peers: {listed:?}"
+        );
+        assert!(!paths.library_skill("decoy").join("SKILL.md").is_file());
+        assert!(!paths.library_skill("claude-decoy").join("SKILL.md").is_file());
+        assert!(!paths.library_skill("proj-decoy").join("SKILL.md").is_file());
+    }
 }

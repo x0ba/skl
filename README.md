@@ -284,13 +284,13 @@ Same `ALLOW_DEV_AUTH` user, two `HOME`s, API on `:8787`. Shared helpers live in 
 ```bash
 # API already up (ALLOW_DEV_AUTH=true)
 cargo build -p skl
-./scripts/smoke-import-sync-use.sh   # init → library; sync library; use links to library
+./scripts/smoke-import-sync-use.sh   # DAN-15: init → library; use → library link; mutate → sync B → use --all; no harness peers
 ./scripts/smoke-clash.sh             # keep-local / keep-remote + scrub
 ./scripts/smoke-migrate-targets.sh   # M0 fixture → doctor warn → migrate (no API)
-./scripts/smoke-init-home-agents.sh  # init from ~/.agents/skills + ~/.config/agents/skills (no API)
+./scripts/smoke-init-home-agents.sh  # DAN-15: init from harness homes → personal library (foreign trees stay)
 ./scripts/smoke-auto-sync.sh         # dual-HOME + throttle + fail-soft (no `skl sync`)
-./scripts/smoke-capture.sh           # project skill → capture → sync B → use; clash / --force / --as / --keep-copy / fail-soft / non-TTY
-./scripts/smoke-portable-use-all.sh  # two-HOME portable skills.toml → sync B → skl use --all
+./scripts/smoke-capture.sh           # capture → sync B → use; clash / --force / --as / --keep-copy; DAN-15 divergent doctor → capture → use
+./scripts/smoke-portable-use-all.sh  # DAN-15: names-only skills.toml → sync B → skl use --all
 ./scripts/smoke-tui.sh               # non-TTY / SKL_NO_TUI / TTY `--no-tui`; TUI `u` == `skl use`; `q` restores cooked
 ./scripts/smoke-local-token.sh       # DAN-14: login persists to state.db; logout clears; SKL_TOKEN / file override; migrate-once
 ./scripts/smoke-install.sh           # curl install.sh (fake release) → skl --help; no Rust; no prompts

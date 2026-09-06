@@ -362,6 +362,44 @@ mod tests {
         skill_dir
     }
 
+    #[test]
+    fn production_sync_does_not_treat_harness_homes_as_peers() {
+        let src = include_str!("sync.rs");
+        let production = src.split("#[cfg(test)]").next().expect("sync.rs tests");
+        assert!(
+            production.contains("library::default_pull_root"),
+            "sync pull dest must be the personal library"
+        );
+        assert!(
+            production.contains("library::reindex_library_only"),
+            "sync must reindex the library only"
+        );
+        assert!(
+            production.contains("library::is_under_library"),
+            "downloads must stay under the library"
+        );
+        assert!(
+            !production.contains("discover_from_home"),
+            "sync must not scan harness homes"
+        );
+        assert!(
+            !production.contains("skill_roots"),
+            "sync must not iterate catalog/harness roots as peers"
+        );
+        assert!(
+            !production.contains(".agents/skills"),
+            "sync production must not name ~/.agents/skills as a dest:\n{production}"
+        );
+        assert!(
+            !production.contains(".claude/skills"),
+            "sync production must not name ~/.claude/skills as a dest"
+        );
+        assert!(
+            !production.contains(".cursor/skills"),
+            "sync production must not name ~/.cursor/skills as a dest"
+        );
+    }
+
     #[tokio::test]
     async fn push_then_pull_loop() {
         let server = MockServer::start().await;

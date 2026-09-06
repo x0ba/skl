@@ -11,6 +11,7 @@
 #   4. --keep-copy
 #   5. fail-soft: API down still promotes+links
 #   6. non-TTY: no prompts; clash needs --force / --as
+#   7. divergent real copy → doctor warns (exit 0); capture imports; use re-projects
 #
 # Usage:
 #   cargo build -p skl
@@ -461,6 +462,73 @@ ntty project
   echo "OK: non-TTY clash failed cleanly (flags required, no prompt)"
 }
 
+# --- 7. Divergent copy → doctor / capture / use ----------------------------
+
+smoke_divergent_doctor_capture_use() {
+  echo "==> [7] divergent real copy → doctor warns; capture imports; use re-projects"
+
+  local home="$WORKDIR/machine-divergent"
+  local project="$WORKDIR/project-divergent"
+  local name="${SKILL_NAME}-div"
+  mkdir -p "$home" "$project"
+  skl_write_sync_prefs "$home" false 900
+  login_home "$home" "$TOKEN_A"
+  plant_library_skill "$home" "$name" "# library
+
+library body
+"
+  plant_project_skill "$project" "$name" "# project
+
+divergent project body
+"
+  cat >"$project/skills.toml" <<EOF
+[[skills]]
+name = "${name}"
+mode = "copy"
+EOF
+
+  echo "    doctor warns (exit 0) and does not mutate"
+  local doc rc
+  set +e
+  doc="$(skl_doctor_in "$home" "$project" 2>&1)"
+  rc=$?
+  set -e
+  echo "$doc"
+  if [[ "$rc" -ne 0 ]]; then
+    echo "doctor must be warn-only (exit 0), got $rc" >&2
+    exit 1
+  fi
+  skl_assert_contains "$doc" "not a sync peer"
+  skl_assert_contains "$doc" "skl capture"
+  skl_assert_contains "$doc" "personal library is canonical"
+  skl_assert_no_agent_dir_merge_ui "$doc"
+  skl_assert_file_contains "$project/.agents/skills/${name}/SKILL.md" "divergent project body"
+  skl_assert_file_contains "$(library_of "$home" "$name")/SKILL.md" "library body"
+  assert_real_dir "$project/.agents/skills/${name}"
+
+  echo "    capture --force imports the project copy into the library"
+  local cap
+  cap="$(
+    run_home "$home" "$TOKEN_A" capture ".agents/skills/${name}" --force --project "$project" 2>&1
+  )"
+  echo "$cap"
+  skl_assert_contains "$cap" "captured $name"
+  skl_assert_no_agent_dir_merge_ui "$cap"
+  assert_library_not_home_agents "$home" "$name"
+  skl_assert_file_contains "$(library_of "$home" "$name")/SKILL.md" "divergent project body"
+
+  echo "    use re-projects from the library (no agent-dir merge UI)"
+  local use_out
+  use_out="$(run_home "$home" "$TOKEN_A" use "$name" --project "$project" 2>&1)"
+  echo "$use_out"
+  skl_assert_contains "$use_out" "using $name"
+  skl_assert_no_agent_dir_merge_ui "$use_out"
+  skl_assert_symlink_to "$project/.agents/skills/${name}" "$(library_of "$home" "$name")"
+  skl_assert_file_contains "$project/.agents/skills/${name}/SKILL.md" "divergent project body"
+
+  echo "OK: doctor warn-only; capture imported; use re-projected"
+}
+
 # --- run -------------------------------------------------------------------
 
 skl_start_api
@@ -475,5 +543,6 @@ smoke_clash_force_as
 smoke_keep_copy
 smoke_fail_soft
 smoke_non_tty
+smoke_divergent_doctor_capture_use
 
-echo "OK: capture Dual-HOME + no-op + clash/force/as + keep-copy + fail-soft + non-TTY against $API"
+echo "OK: capture Dual-HOME + no-op + clash/force/as + keep-copy + fail-soft + non-TTY + divergent doctor/capture/use against $API"
