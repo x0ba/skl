@@ -5,8 +5,16 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
+use unicode_width::UnicodeWidthStr;
 
 use super::app::{help_text, now_secs, App, Overlay};
+
+/// One footer binding. Labels drop first when the terminal is too narrow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyHint {
+    pub key: &'static str,
+    pub label: &'static str,
+}
 
 pub fn draw(frame: &mut Frame<'_>, app: &App) {
     let area = frame.area();
@@ -23,11 +31,15 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
     draw_panes(frame, chunks[1], app);
     draw_footer(frame, chunks[2], app);
 
-    if app.overlay == Overlay::Help {
-        draw_help(frame, area);
-    }
-    if app.overlay == Overlay::Create {
-        draw_create(frame, area, app);
+    match app.overlay {
+        Overlay::Help => draw_help(frame, area),
+        Overlay::Create => draw_create(frame, area, app),
+        Overlay::ConfirmDelete => draw_confirm(frame, area, app),
+        Overlay::None | Overlay::Search => {
+            if let Some(message) = app.visible_toast() {
+                draw_toast(frame, area, message);
+            }
+        }
     }
 }
 
@@ -116,28 +128,139 @@ fn draw_preview(frame: &mut Frame<'_>, area: Rect, app: &App) {
 }
 
 fn draw_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
-    let keys = match app.overlay {
-        Overlay::Search => "type to filter  ↑↓ move  Enter done  Esc clear".to_string(),
-        Overlay::Create => "type a skill name  Enter create  Esc cancel".to_string(),
-        Overlay::ConfirmDelete => {
-            let name = app
-                .selected_row()
-                .map(|row| row.name.as_str())
-                .unwrap_or("skill");
-            format!("delete {name}? removes library copy   y confirm  n/Esc cancel")
-        }
-        Overlay::None | Overlay::Help => {
-            "/ search  n new  ↑↓/jk move  [] scroll  e edit  u/U use  d delete  s sync  r refresh  ? help  q quit"
-                .to_string()
-        }
-    };
-    let status = if app.status.is_empty() {
-        keys.to_string()
-    } else {
-        format!("{}   ·  {}", app.status, keys)
-    };
-    let para = Paragraph::new(status).block(Block::default().borders(Borders::ALL));
+    let inner = area.width.saturating_sub(2) as usize;
+    let keys = fit_hints(footer_hints(app.overlay), inner);
+    let para = Paragraph::new(keys).block(Block::default().borders(Borders::ALL));
     frame.render_widget(para, area);
+}
+
+fn footer_hints(overlay: Overlay) -> &'static [KeyHint] {
+    match overlay {
+        Overlay::Search => &[
+            KeyHint {
+                key: "↑↓",
+                label: "move",
+            },
+            KeyHint {
+                key: "Enter",
+                label: "done",
+            },
+            KeyHint {
+                key: "Esc",
+                label: "clear",
+            },
+        ],
+        Overlay::Create => &[
+            KeyHint {
+                key: "Enter",
+                label: "create",
+            },
+            KeyHint {
+                key: "Esc",
+                label: "cancel",
+            },
+        ],
+        Overlay::ConfirmDelete => &[
+            KeyHint {
+                key: "y",
+                label: "confirm",
+            },
+            KeyHint {
+                key: "n/Esc",
+                label: "cancel",
+            },
+        ],
+        Overlay::None | Overlay::Help => &[
+            KeyHint {
+                key: "/",
+                label: "search",
+            },
+            KeyHint {
+                key: "n",
+                label: "new",
+            },
+            KeyHint {
+                key: "↑↓/jk",
+                label: "move",
+            },
+            KeyHint {
+                key: "[]",
+                label: "scroll",
+            },
+            KeyHint {
+                key: "e",
+                label: "edit",
+            },
+            KeyHint {
+                key: "u/U",
+                label: "use",
+            },
+            KeyHint {
+                key: "d",
+                label: "delete",
+            },
+            KeyHint {
+                key: "s",
+                label: "sync",
+            },
+            KeyHint {
+                key: "r",
+                label: "refresh",
+            },
+            KeyHint {
+                key: "?",
+                label: "help",
+            },
+            KeyHint {
+                key: "q",
+                label: "quit",
+            },
+        ],
+    }
+}
+
+/// Prefer `key label` pairs. If they overflow, drop labels, then drop trailing keys.
+pub fn fit_hints(hints: &[KeyHint], width: usize) -> String {
+    if width == 0 || hints.is_empty() {
+        return String::new();
+    }
+    let labeled = join_hints(hints, true);
+    if display_len(&labeled) <= width {
+        return labeled;
+    }
+    let compact = join_hints(hints, false);
+    if display_len(&compact) <= width {
+        return compact;
+    }
+    for take in (1..hints.len()).rev() {
+        let line = join_hints(&hints[..take], false);
+        if display_len(&line) <= width {
+            return line;
+        }
+    }
+    truncate_chars(hints[0].key, width)
+}
+
+fn join_hints(hints: &[KeyHint], with_labels: bool) -> String {
+    hints
+        .iter()
+        .map(|hint| {
+            if with_labels {
+                format!("{} {}", hint.key, hint.label)
+            } else {
+                hint.key.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("  ")
+}
+
+fn display_len(s: &str) -> usize {
+    s.width()
+}
+
+fn truncate_chars(s: &str, width: usize) -> String {
+    s.chars().take(width).collect()
 }
 
 fn draw_create(frame: &mut Frame<'_>, area: Rect, app: &App) {
@@ -147,9 +270,33 @@ fn draw_create(frame: &mut Frame<'_>, area: Rect, app: &App) {
     } else {
         format!("{}_", app.create_name)
     };
-    let body = format!("name: {name}\n\nEnter opens $EDITOR with name + description frontmatter.");
+    let hint = if app.status.is_empty() {
+        "Enter opens $EDITOR with name + description frontmatter."
+    } else {
+        app.status.as_str()
+    };
+    let body = format!("name: {name}\n\n{hint}");
     let para = Paragraph::new(body)
         .block(Block::default().borders(Borders::ALL).title(" new skill "))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(Clear, popup);
+    frame.render_widget(para, popup);
+}
+
+fn draw_confirm(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let name = app
+        .selected_row()
+        .map(|row| row.name.as_str())
+        .unwrap_or("skill");
+    let heading = format!("Delete {name}?");
+    let body = format!("{heading}\n\nRemoves the library copy.");
+    let max_width = area.width.saturating_sub(4).max(1);
+    let min_width = 36u16.min(max_width);
+    let desired = (heading.width() as u16).saturating_add(4);
+    let width = desired.clamp(min_width, max_width);
+    let popup = popup_sized(area, width, 6);
+    let para = Paragraph::new(body)
+        .block(Block::default().borders(Borders::ALL).title(" delete "))
         .wrap(Wrap { trim: false });
     frame.render_widget(Clear, popup);
     frame.render_widget(para, popup);
@@ -162,6 +309,52 @@ fn draw_help(frame: &mut Frame<'_>, area: Rect) {
         .wrap(Wrap { trim: false });
     frame.render_widget(Clear, popup);
     frame.render_widget(para, popup);
+}
+
+fn draw_toast(frame: &mut Frame<'_>, area: Rect, message: &str) {
+    let (width, height) = toast_dims(message, area);
+    let popup = toast_rect(area, width, height);
+    let para = Paragraph::new(message)
+        .block(Block::default().borders(Borders::ALL))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(Clear, popup);
+    frame.render_widget(para, popup);
+}
+
+fn toast_dims(message: &str, area: Rect) -> (u16, u16) {
+    let max_inner = (area.width / 2).clamp(20, 56);
+    let cells = message.width() as u16;
+    let inner = cells.min(max_inner).max(8);
+    let text_lines = cells.div_ceil(inner).max(1);
+    let height = (text_lines + 2).min(6);
+    (inner.saturating_add(2), height)
+}
+
+/// Bottom-right of the preview pane, above the pane border and footer.
+fn toast_rect(area: Rect, width: u16, height: u16) -> Rect {
+    let footer = 3;
+    let pane_border = 1;
+    let width = width.min(area.width.saturating_sub(2)).max(1);
+    let height = height
+        .min(area.height.saturating_sub(footer + pane_border))
+        .max(1);
+    Rect {
+        x: area.x + area.width.saturating_sub(width + 1),
+        y: area.y + area.height.saturating_sub(footer + pane_border + height),
+        width,
+        height,
+    }
+}
+
+fn popup_sized(area: Rect, width: u16, height: u16) -> Rect {
+    let width = width.min(area.width).max(1);
+    let height = height.min(area.height).max(1);
+    Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    }
 }
 
 fn centered(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
@@ -181,4 +374,94 @@ fn centered(area: Rect, pct_x: u16, pct_y: u16) -> Rect {
             Constraint::Percentage((100 - pct_x) / 2),
         ])
         .split(v[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BROWSE: &[KeyHint] = &[
+        KeyHint {
+            key: "/",
+            label: "search",
+        },
+        KeyHint {
+            key: "n",
+            label: "new",
+        },
+        KeyHint {
+            key: "↑↓/jk",
+            label: "move",
+        },
+        KeyHint {
+            key: "[]",
+            label: "scroll",
+        },
+        KeyHint {
+            key: "e",
+            label: "edit",
+        },
+        KeyHint {
+            key: "u/U",
+            label: "use",
+        },
+        KeyHint {
+            key: "d",
+            label: "delete",
+        },
+        KeyHint {
+            key: "s",
+            label: "sync",
+        },
+        KeyHint {
+            key: "r",
+            label: "refresh",
+        },
+        KeyHint {
+            key: "?",
+            label: "help",
+        },
+        KeyHint {
+            key: "q",
+            label: "quit",
+        },
+    ];
+
+    #[test]
+    fn wide_footer_keeps_labels() {
+        let line = fit_hints(BROWSE, 120);
+        assert!(line.contains("/ search"), "{line}");
+        assert!(line.contains("q quit"), "{line}");
+        assert!(line.contains("refresh"), "{line}");
+    }
+
+    #[test]
+    fn mid_footer_drops_labels_not_keys() {
+        let line = fit_hints(BROWSE, 40);
+        assert!(!line.contains("search"), "{line}");
+        assert!(!line.contains("refresh"), "{line}");
+        assert!(line.contains("/"), "{line}");
+        assert!(line.contains("q"), "{line}");
+        assert!(line.contains("↑↓/jk"), "{line}");
+        assert!(display_len(&line) <= 40, "{line}");
+    }
+
+    #[test]
+    fn narrow_footer_drops_trailing_keys() {
+        let line = fit_hints(BROWSE, 16);
+        assert!(display_len(&line) <= 16, "{line}");
+        assert!(line.contains('/'), "{line}");
+        assert!(!line.contains("search"), "{line}");
+        assert!(!line.contains('q'), "{line}");
+    }
+
+    #[test]
+    fn toast_dims_use_display_width_for_wide_glyphs() {
+        let area = Rect::new(0, 0, 80, 24);
+        let cjk = "界".repeat(32);
+        let emoji = "🚀".repeat(32);
+        assert_eq!(toast_dims(&cjk, area), (42, 4));
+        assert_eq!(toast_dims(&emoji, area), (42, 4));
+        assert_eq!(toast_dims("deleted alpha", area), (15, 3));
+    }
 }
