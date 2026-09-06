@@ -45,20 +45,22 @@ mkdir -p "$MACHINE_A" "$MACHINE_B"
 # Explicit `skl sync` harness — keep-local / keep-remote stay on the verb.
 skl_write_sync_prefs "$MACHINE_A" false 900
 skl_write_sync_prefs "$MACHINE_B" false 900
+skl_login_store "$MACHINE_A" "$TOKEN" >/dev/null
+skl_login_store "$MACHINE_B" "$TOKEN" >/dev/null
 seed_skill "$MACHINE_A" $'# Clash demo\n\nMachine A version of clash-demo.\n'
 seed_skill "$MACHINE_B" $'# Clash demo\n\nMachine B version of clash-demo.\n'
 
 echo "==> machine A: init + sync (first upload)"
-skl_run "$MACHINE_A" init
-a_out="$(skl_run "$MACHINE_A" sync 2>&1)"
+skl_run_store "$MACHINE_A" init
+a_out="$(skl_run_store "$MACHINE_A" sync 2>&1)"
 echo "$a_out"
 skl_assert_contains "$a_out" "POST $API/v1/sync"
 skl_assert_contains "$a_out" "sync done"
 
 echo "==> machine B: init + sync (non-interactive clash must fail)"
-skl_run "$MACHINE_B" init
+skl_run_store "$MACHINE_B" init
 set +e
-b_clash="$(skl_run "$MACHINE_B" sync 2>&1)"
+b_clash="$(skl_run_store "$MACHINE_B" sync 2>&1)"
 b_status=$?
 set -e
 echo "$b_clash"
@@ -70,7 +72,7 @@ skl_assert_contains "$b_clash" "conflict:"
 skl_assert_contains "$b_clash" "non-interactive sync needs --keep-local or --keep-remote"
 
 echo "==> machine B: --keep-local (PUT local tree, re-POST /v1/sync)"
-b_keep="$(skl_run "$MACHINE_B" sync --keep-local 2>&1)"
+b_keep="$(skl_run_store "$MACHINE_B" sync --keep-local 2>&1)"
 echo "$b_keep"
 skl_assert_contains "$b_keep" "keep-local: $SKILL_NAME"
 skl_assert_contains "$b_keep" "PUT /v1/skills/${SKILL_NAME}/tree"
@@ -78,7 +80,7 @@ skl_assert_contains "$b_keep" "re-POST $API/v1/sync"
 skl_assert_contains "$b_keep" "re-POST conflicts: 0"
 
 echo "==> machine A: --keep-remote (overwrite local from remote, re-POST /v1/sync)"
-a_keep="$(skl_run "$MACHINE_A" sync --keep-remote 2>&1)"
+a_keep="$(skl_run_store "$MACHINE_A" sync --keep-remote 2>&1)"
 echo "$a_keep"
 skl_assert_contains "$a_keep" "keep-remote: $SKILL_NAME"
 skl_assert_contains "$a_keep" "re-POST conflicts: 0"
@@ -92,9 +94,9 @@ echo "==> scrub: dirty blob is not PUT"
 # Split so casual secret scanners do not flag this script.
 printf '%s\n' "-----BEGIN OPENSSH PRIVATE KEY-----" "fake" "-----END OPENSSH PRIVATE KEY-----" \
   > "$MACHINE_B/.claude/skills/${SKILL_NAME}/secret.env"
-skl_run "$MACHINE_B" init
+skl_run_store "$MACHINE_B" init
 set +e
-scrub_out="$(skl_run "$MACHINE_B" sync --keep-local 2>&1)"
+scrub_out="$(skl_run_store "$MACHINE_B" sync --keep-local 2>&1)"
 scrub_status=$?
 set -e
 echo "$scrub_out"

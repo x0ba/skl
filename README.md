@@ -91,7 +91,8 @@ Non-TTY, `SKL_NO_TUI=1`, or `--no-tui` prints help and never enters raw mode (sa
 Header shows skill count, last sync age, and the cwd project name. Activated skills are marked `✓`, others `·`. Capture, init, collections, and mouse are not in this TUI.
 
 ```bash
-./scripts/smoke-tui.sh   # no API: piped/CI help, TTY --no-tui, u == skl use, q restores
+./scripts/smoke-tui.sh          # no API: piped/CI help, TTY --no-tui, u == skl use, q restores
+./scripts/smoke-local-token.sh  # no keyring: login persists, logout clears, env/file override, migrate-once
 ```
 
 ### setup
@@ -288,6 +289,7 @@ cargo build -p skl
 ./scripts/smoke-capture.sh           # project skill → capture → sync B → use; clash / --force / --as / --keep-copy / fail-soft / non-TTY
 ./scripts/smoke-portable-use-all.sh  # two-HOME portable skills.toml → sync B → skl use --all
 ./scripts/smoke-tui.sh               # non-TTY / SKL_NO_TUI / TTY `--no-tui`; TUI `u` == `skl use`; `q` restores cooked
+./scripts/smoke-local-token.sh       # DAN-14: login persists to state.db; logout clears; SKL_TOKEN / file override; migrate-once
 ./scripts/smoke-install.sh           # curl install.sh (fake release) → skl --help; no Rust; no prompts
 
 # Boot postgres + apps/api here

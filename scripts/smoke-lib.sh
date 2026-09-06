@@ -7,9 +7,10 @@
 # (scripts/smoke-clash.sh on the conflict/scrub PR) uses the same HOME /
 # SKL_TOKEN / ALLOW_DEV_AUTH=true pattern.
 #
-# CI / headless: export SKL_TOKEN (or SKL_TOKEN_FILE). Env overrides the
-# local `state.db` token store. `skl login` no longer needs DBus / OS
-# keyring; existing smokes still set SKL_TOKEN so they stay isolated.
+# DAN-14: `skl login` persists to local `state.db` (no DBus / OS keyring).
+# Prefer `skl_login_store` + `skl_run_store` so CI exercises that path.
+# Belt-and-suspenders: SKL_SMOKE_TOKEN_ENV=1 (or skl_run) still exports
+# SKL_TOKEN / SKL_TOKEN_FILE, which override the store.
 #
 # Env:
 #   API_BASE      default http://localhost:8787
@@ -127,7 +128,216 @@ skl_require_bin() {
   fi
 }
 
-# Run skl as one machine: isolated HOME + XDG dirs + SKL_TOKEN.
+# Strip an optional `dev:` prefix (`login --dev-user` accepts either).
+skl_dev_user() {
+  local token="${1:-}"
+  token="${token#dev:}"
+  printf '%s' "$token"
+}
+
+skl_state_db() {
+  printf '%s' "$1/.local/share/skl/state.db"
+}
+
+# Drop Secret Service / DBus + token env so the local store is the path.
+skl_clean_secret_service_env() {
+  unset DBUS_SESSION_BUS_ADDRESS
+  unset GNOME_KEYRING_CONTROL
+  unset GNOME_KEYRING_PID
+  unset KDE_FULL_SESSION
+}
+
+skl_meta_get() {
+  local db="$1"
+  local key="$2"
+  if [[ ! -f "$db" ]]; then
+    return 0
+  fi
+  python3 - "$db" "$key" <<'PY'
+import sqlite3, sys
+
+db, key = sys.argv[1], sys.argv[2]
+con = sqlite3.connect(db)
+try:
+    row = con.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+except sqlite3.OperationalError:
+    row = None
+print("" if row is None else row[0])
+PY
+}
+
+skl_assert_state_token() {
+  local home="$1"
+  local expected="$2"
+  local db got
+  db="$(skl_state_db "$home")"
+  if [[ ! -f "$db" ]]; then
+    echo "missing state.db (login did not persist): $db" >&2
+    exit 1
+  fi
+  got="$(skl_meta_get "$db" "device_token")"
+  if [[ "$got" != "$expected" ]]; then
+    echo "state.db device_token expected '$expected', got '$got'" >&2
+    exit 1
+  fi
+}
+
+skl_assert_no_state_token() {
+  local home="$1"
+  local db got
+  db="$(skl_state_db "$home")"
+  if [[ ! -f "$db" ]]; then
+    return 0
+  fi
+  got="$(skl_meta_get "$db" "device_token")"
+  if [[ -n "$got" ]]; then
+    echo "expected no device_token in $db, got '$got'" >&2
+    exit 1
+  fi
+}
+
+skl_assert_unix_mode() {
+  local path="$1"
+  local expected="$2"
+  local got
+  if [[ ! -e "$path" ]]; then
+    echo "missing path for mode check: $path" >&2
+    exit 1
+  fi
+  got="$(stat -c '%a' "$path")"
+  if [[ "$got" != "$expected" ]]; then
+    echo "expected mode $expected on $path, got $got" >&2
+    exit 1
+  fi
+}
+
+# Seed `meta.device_token` the same way migrate-once / adopt writes it.
+# Usage: skl_seed_local_token <home> <token>
+skl_seed_local_token() {
+  local home="$1"
+  local token="$2"
+  local db
+  db="$(skl_state_db "$home")"
+  mkdir -p "$(dirname "$db")"
+  python3 - "$db" "$token" <<'PY'
+import sqlite3, sys
+
+db, token = sys.argv[1], sys.argv[2]
+con = sqlite3.connect(db)
+con.execute(
+    "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+)
+con.execute(
+    "INSERT INTO meta (key, value) VALUES (?, ?) "
+    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ("device_token", token),
+)
+con.commit()
+PY
+}
+
+# Plant a leftover native keyring token (linux-keyutils, no DBus).
+# keyring 3 `linux-native` default description is `keyring:{service}@{user}`.
+# Prints the description that was written, or returns 1 if none worked.
+skl_plant_legacy_keyring() {
+  local token="$1"
+  local desc
+  if ! command -v keyctl >/dev/null 2>&1 && ! python3 -c 'import ctypes.util; raise SystemExit(0 if ctypes.util.find_library("keyutils") else 1)' 2>/dev/null; then
+    return 1
+  fi
+  # Clear first so a stale description does not shadow the plant.
+  skl_clear_legacy_keyring || true
+  for desc in "keyring:skl@device_token" "skl:device_token" "skl"; do
+    if python3 - "$token" "$desc" <<'PY'
+import ctypes
+import ctypes.util
+import sys
+
+token, desc = sys.argv[1], sys.argv[2]
+libname = ctypes.util.find_library("keyutils") or "libkeyutils.so.1"
+try:
+    lib = ctypes.CDLL(libname)
+except OSError:
+    raise SystemExit(2)
+add_key = lib.add_key
+add_key.argtypes = [
+    ctypes.c_char_p,
+    ctypes.c_char_p,
+    ctypes.c_void_p,
+    ctypes.c_size_t,
+    ctypes.c_int,
+]
+add_key.restype = ctypes.c_int
+KEY_SPEC_USER_KEYRING = -4
+payload = token.encode()
+serial = add_key(
+    b"user",
+    desc.encode(),
+    payload,
+    len(payload),
+    KEY_SPEC_USER_KEYRING,
+)
+raise SystemExit(0 if serial > 0 else 1)
+PY
+    then
+      printf '%s' "$desc"
+      return 0
+    fi
+    if command -v keyctl >/dev/null 2>&1; then
+      if keyctl add user "$desc" "$token" @u >/dev/null 2>&1; then
+        printf '%s' "$desc"
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+skl_clear_legacy_keyring() {
+  python3 - <<'PY' || true
+import ctypes
+import ctypes.util
+import subprocess
+
+descs = ("keyring:skl@device_token", "skl:device_token", "skl")
+libname = ctypes.util.find_library("keyutils")
+if libname:
+    try:
+        lib = ctypes.CDLL(libname)
+        request = lib.request_key
+        request.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_int]
+        request.restype = ctypes.c_int
+        invalidate = lib.keyctl_invalidate
+        invalidate.argtypes = [ctypes.c_int]
+        invalidate.restype = ctypes.c_int
+        KEY_SPEC_USER_KEYRING = -4
+        for desc in descs:
+            serial = request(b"user", desc.encode(), None, KEY_SPEC_USER_KEYRING)
+            if serial > 0:
+                invalidate(serial)
+    except OSError:
+        pass
+for desc in descs:
+    try:
+        found = subprocess.run(
+            ["keyctl", "search", "@u", "user", desc],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        serial = found.stdout.strip()
+        if found.returncode == 0 and serial:
+            subprocess.run(
+                ["keyctl", "unlink", serial, "@u"],
+                check=False,
+                capture_output=True,
+            )
+    except FileNotFoundError:
+        break
+PY
+}
+
+# Run skl as one machine: isolated HOME + XDG dirs + SKL_TOKEN override.
 # Usage: skl_run <home-dir> [skl args...]
 skl_run() {
   local home="$1"
@@ -142,8 +352,59 @@ skl_run() {
     "$BIN" "$@"
 }
 
-# Isolated HOME for a smoke machine. SKL_TOKEN overrides the local store
-# so machines stay isolated even if a leftover token exists.
+# Run skl against the local `state.db` store (no SKL_TOKEN / no DBus secrets).
+# Belt-and-suspenders: SKL_SMOKE_TOKEN_ENV=1 keeps the env override path.
+# Usage: skl_run_store <home-dir> [skl args...]
+skl_run_store() {
+  local home="$1"
+  shift
+  if [[ "${SKL_SMOKE_TOKEN_ENV:-}" == "1" ]]; then
+    skl_run "$home" "$@"
+    return
+  fi
+  skl_clean_secret_service_env
+  env -u SKL_TOKEN -u SKL_TOKEN_FILE \
+    -u DBUS_SESSION_BUS_ADDRESS \
+    -u GNOME_KEYRING_CONTROL \
+    -u GNOME_KEYRING_PID \
+    HOME="$home" \
+    SKL_DATA_DIR="$home/.local/share/skl" \
+    SKL_CONFIG_DIR="$home/.config/skl" \
+    SKL_NO_PROMPT=1 \
+    API_BASE="$API" \
+    "$BIN" "$@"
+}
+
+# Persist a dev token into the local store (`skl login --dev-user`).
+# Usage: skl_login_store <home-dir> [token]
+skl_login_store() {
+  local home="$1"
+  local token="${2:-${SKL_TOKEN:-$TOKEN}}"
+  local user out
+  user="$(skl_dev_user "$token")"
+  if [[ -z "${user// }" ]]; then
+    echo "skl_login_store: empty token (set SKL_TOKEN or pass a token)" >&2
+    exit 1
+  fi
+  mkdir -p "$home/.claude/skills" "$home/.config/skl" "$home/.local/share/skl"
+  printf '%s\n' "dev:${user}" >"$home/.config/skl/ci-token"
+  out="$(skl_run_store "$home" login --dev-user "$user" 2>&1)" || {
+    echo "$out" >&2
+    echo "skl_login_store failed for $home" >&2
+    exit 1
+  }
+  echo "$out"
+  skl_assert_contains "$out" "store"
+  if echo "$out" | grep -qi 'keyring'; then
+    echo "login must not require the OS keyring:" >&2
+    echo "$out" >&2
+    exit 1
+  fi
+  skl_assert_state_token "$home" "dev:${user}"
+}
+
+# Isolated HOME for a smoke machine. Writes a ci-token file only
+# (env-override belt). Prefer skl_login_store for the local store path.
 # Usage: skl_prepare_home <home-dir> [token]
 skl_prepare_home() {
   local home="$1"

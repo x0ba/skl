@@ -46,14 +46,14 @@ run_home() {
   local home="$1"
   local token="$2"
   shift 2
-  SKL_TOKEN="$token" skl_run "$home" "$@"
+  SKL_TOKEN="$token" skl_run_store "$home" "$@"
 }
 
 run_a() { run_home "$MACHINE_A" "$TOKEN_A" "$@"; }
 run_b() { run_home "$MACHINE_B" "$TOKEN_B" "$@"; }
 
 run_legacy() {
-  SKL_TOKEN="$TOKEN" skl_run "$HOME_LEGACY" "$@"
+  skl_run_store "$HOME_LEGACY" "$@"
 }
 
 doctor_in() {
@@ -105,6 +105,9 @@ mkdir -p "$MACHINE_B/.agents/skills"
 skl_write_sync_prefs "$MACHINE_A" false 900
 skl_write_sync_prefs "$MACHINE_B" false 900
 skl_write_sync_prefs "$HOME_LEGACY" false 900
+skl_login_store "$MACHINE_A" "$TOKEN_A" >/dev/null
+skl_login_store "$MACHINE_B" "$TOKEN_B" >/dev/null
+skl_login_store "$HOME_LEGACY" "$TOKEN" >/dev/null
 seed_skill "$MACHINE_A" "$SKILL_NAME" "$SKILL_BODY"
 seed_skill "$HOME_LEGACY" "$SKILL_NAME" "$SKILL_BODY"
 plant_legacy_manifest "$PROJECT_LEGACY" "$SKILL_NAME"

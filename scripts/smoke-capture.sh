@@ -44,7 +44,7 @@ run_home() {
   local home="$1"
   local token="$2"
   shift 2
-  SKL_TOKEN="$token" skl_run "$home" "$@"
+  SKL_TOKEN="$token" skl_run_store "$home" "$@"
 }
 
 run_a() { run_home "$MACHINE_A" "$TOKEN_A" "$@"; }
@@ -53,8 +53,8 @@ run_b() { run_home "$MACHINE_B" "$TOKEN_B" "$@"; }
 login_home() {
   local home="$1"
   local token="$2"
-  # SKL_TOKEN only — env override; machines stay isolated from local store.
-  skl_prepare_home "$home" "$token"
+  # Local store path: login persists; later verbs omit SKL_TOKEN.
+  skl_login_store "$home" "$token" >/dev/null
 }
 
 library_of() {
@@ -225,6 +225,7 @@ smoke_noop() {
   local name="${SKILL_NAME}-noop"
   mkdir -p "$home" "$project"
   skl_write_sync_prefs "$home" false 900
+  login_home "$home" "$TOKEN_A"
   plant_project_skill "$project" "$name" "# ${name}
 
 noop seed
@@ -262,6 +263,7 @@ smoke_clash_force_as() {
   local name="${SKILL_NAME}-clash"
   mkdir -p "$home" "$project"
   skl_write_sync_prefs "$home" false 900
+  login_home "$home" "$TOKEN_A"
   plant_library_skill "$home" "$name" "# library
 
 old library body
@@ -341,6 +343,7 @@ smoke_keep_copy() {
   local name="${SKILL_NAME}-keep"
   mkdir -p "$home" "$project"
   skl_write_sync_prefs "$home" false 900
+  login_home "$home" "$TOKEN_A"
   plant_project_skill "$project" "$name" "# ${name}
 
 keep-copy body
@@ -379,14 +382,14 @@ smoke_fail_soft() {
 
 fail-soft capture
 "
-  login_home "$home" "$TOKEN_A"
   skl_write_sync_prefs "$home" true 900
+  login_home "$home" "$TOKEN_A"
 
   echo "    capture against dead API (due) — verb must succeed"
   local cap_out cap_rc
   set +e
   cap_out="$(
-    API="$DEAD_API" SKL_TOKEN="$TOKEN_A" skl_run "$home" \
+    API="$DEAD_API" skl_run_store "$home" \
       --api-base "$DEAD_API" capture ".agents/skills/${name}" --project "$project" 2>&1
   )"
   cap_rc=$?
@@ -421,6 +424,7 @@ smoke_non_tty() {
   local name="${SKILL_NAME}-ntty"
   mkdir -p "$home" "$project"
   skl_write_sync_prefs "$home" false 900
+  login_home "$home" "$TOKEN_A"
   plant_library_skill "$home" "$name" "# library
 
 ntty library
@@ -433,7 +437,7 @@ ntty project
   local out rc
   set +e
   out="$(
-    SKL_TOKEN="$TOKEN_A" skl_run "$home" \
+    skl_run_store "$home" \
       capture ".agents/skills/${name}" --project "$project" </dev/null 2>&1
   )"
   rc=$?

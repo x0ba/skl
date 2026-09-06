@@ -50,7 +50,7 @@ run_home() {
   local home="$1"
   local token="$2"
   shift 2
-  SKL_TOKEN="$token" skl_run "$home" "$@"
+  SKL_TOKEN="$token" skl_run_store "$home" "$@"
 }
 
 run_a() { run_home "$MACHINE_A" "$TOKEN_A" "$@"; }
@@ -59,9 +59,9 @@ run_b() { run_home "$MACHINE_B" "$TOKEN_B" "$@"; }
 prepare_machine() {
   local home="$1"
   local token="$2"
-  # SKL_TOKEN only — env override; machines stay isolated from local store.
-  skl_prepare_home "$home" "$token"
+  # Local store path: login persists the token; verbs do not set SKL_TOKEN.
   skl_write_sync_prefs "$home" true 900
+  skl_login_store "$home" "$token" >/dev/null
 }
 
 # --- 1. Dual-HOME ----------------------------------------------------------
@@ -226,7 +226,7 @@ fail-soft local skill
   local use_out use_status
   set +e
   use_out="$(
-    API="$DEAD_API" SKL_TOKEN="$TOKEN_A" skl_run "$home" \
+    API="$DEAD_API" skl_run_store "$home" \
       --api-base "$DEAD_API" use "$skill" --project "$project" 2>&1
   )"
   use_status=$?
@@ -250,7 +250,7 @@ fail-soft local skill
   local status_out status_rc
   set +e
   status_out="$(
-    API="$DEAD_API" SKL_TOKEN="$TOKEN_A" skl_run "$home" \
+    API="$DEAD_API" skl_run_store "$home" \
       --api-base "$DEAD_API" status 2>&1
   )"
   status_rc=$?
