@@ -53,6 +53,14 @@ Doctor does not change files, except that it may show the one-time extras prompt
 
 `skl use` copies by default on every platform so remote agents can see the files. `--link` still tries a symlink. Directory symlinks on Windows require Developer Mode or the `SeCreateSymbolicLink` privilege. If that fails, skl copies and records `mode = "copy"`. `skl doctor` prints `symlink unavailable` when its check fails.
 
+## How do I update skl?
+
+```bash
+skl update
+```
+
+That replaces the invoked binary with the latest GitHub Release after checking `SHA256SUMS`. You can also rerun the [install script](/guide/installation).
+
 ## The installer did not add PATH
 
 The installer does not edit `.bashrc`, `.zshrc`, or fish configuration. If `~/.local/bin` is not on `PATH`, add `export PATH="$HOME/.local/bin:$PATH"` yourself. The script prints this command when it detects the problem.

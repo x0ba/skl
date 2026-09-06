@@ -1,6 +1,6 @@
 ---
 title: Basic usage
-description: Create, use, unuse, list, status, delete, and migrate skills.
+description: Create, use, unuse, list, status, delete, migrate, and update skills.
 ---
 
 # Basic usage
@@ -80,3 +80,11 @@ skl migrate targets --project DIR
 ```
 
 `skl migrate targets` moves old `.claude` and `.cursor` project links to `.agents/skills`. `--prune-old` removes the old links after the new destination exists. `skl migrate projections --materialize` converts symlink activations to copies. `skl use` does not run these migrations. `skl doctor` warns when it finds the old layout or a link projection.
+
+## Update the CLI
+
+```bash
+skl update
+```
+
+`skl update` replaces this `skl` binary with the latest GitHub Release. See [Installation](/guide/installation) and [skl update](/reference/update).

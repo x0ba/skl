@@ -14,6 +14,7 @@ You can self host the web interface and API if you want to! ATM this option is k
 - Supports all major harnesses.
 - Interactive TUI to search, preview, edit, activate, and sync without memorizing flags.
 - Secret scrubbing that warns/blocks obvious secrets in skills before uploading them to the sync server (still check your skills manually though!)
+- `skl update` to replace the CLI with the latest GitHub Release.
 
 ## Using skills with Cursor Cloud agents
 

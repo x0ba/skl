@@ -12,4 +12,5 @@ pub mod status;
 pub mod sync;
 pub mod targets;
 pub mod unuse;
+pub mod update;
 pub mod use_cmd;

@@ -10,6 +10,9 @@
 #   5. skl setup --non-interactive skips login / init / checklist
 #   6. never edits .bashrc / .zshrc / fish config
 #   7. checksum mismatch refuses the binary
+#   8. skl update skips when already current, replaces on a newer asset,
+#      refuses a checksum mismatch without overwriting, and refuses a
+#      checksum-valid but unusable download without overwriting
 #
 # Usage:
 #   cargo build -p skl && ./scripts/smoke-install.sh
@@ -69,6 +72,28 @@ plant_rc() {
   printf 'keep-bashrc\n' >"$home/.bashrc"
   printf 'keep-zshrc\n' >"$home/.zshrc"
   printf 'keep-fish\n' >"$home/.config/fish/config.fish"
+}
+
+file_sha() {
+  local file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{ print $1 }'
+  else
+    shasum -a 256 "$file" | awk '{ print $1 }'
+  fi
+}
+
+write_sums() {
+  local dir="$1"
+  shift
+  (
+    cd "$dir"
+    if command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "$@"
+    else
+      shasum -a 256 "$@"
+    fi
+  ) >"$dir/SHA256SUMS"
 }
 
 # PATH with curl/sh/coreutils but no rustc/cargo — the install path is curl-only.
@@ -234,6 +259,7 @@ fi
 cp "$BIN" "$WORKDIR/release/$ASSET"
 chmod +x "$WORKDIR/release/$ASSET"
 cp "$ROOT/apps/web/public/install.sh" "$WORKDIR/release/install.sh"
+printf '{"tag_name":"v0.1.0"}\n' >"$WORKDIR/release/latest.json"
 (
   cd "$WORKDIR/release"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -273,6 +299,7 @@ HELP="$(PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" env -u CARGO_HOME -
   "$HOME_A/.local/bin/skl" --help)"
 skl_assert_contains "$HELP" "Personal agent skill sync"
 skl_assert_contains "$HELP" "setup"
+skl_assert_contains "$HELP" "update"
 
 echo "==> skl setup --non-interactive (no prompts)"
 SETUP="$(PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
@@ -283,6 +310,27 @@ SETUP="$(PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
 }
 skl_assert_contains "$SETUP" "Skipping first-run prompts"
 assert_no_prompt "$SETUP" "skl setup --non-interactive"
+
+echo "==> skl update (already current checksum)"
+UPDATE_A="$WORKDIR/update-a.log"
+HASH_BEFORE="$(file_sha "$HOME_A/.local/bin/skl")"
+set +e
+PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  SKL_DOWNLOAD_BASE="$RELEASE_URL" SKL_RELEASES_API="${RELEASE_URL}/latest.json" \
+  "$HOME_A/.local/bin/skl" update >"$UPDATE_A" 2>&1
+UPDATE_RC=$?
+set -e
+[[ "$UPDATE_RC" -eq 0 ]] || {
+  echo "skl update (already current) failed ($UPDATE_RC)" >&2
+  cat "$UPDATE_A" >&2
+  exit 1
+}
+skl_assert_contains "$(cat "$UPDATE_A")" "already up to date"
+[[ "$(file_sha "$HOME_A/.local/bin/skl")" == "$HASH_BEFORE" ]] || {
+  echo "skl update rewrote a current binary" >&2
+  cat "$UPDATE_A" >&2
+  exit 1
+}
 
 # --- 2. SKL_NON_INTERACTIVE=1 ---------------------------------------------
 echo "==> curl install.sh | SKL_NON_INTERACTIVE=1 sh"
@@ -342,4 +390,110 @@ skl_assert_contains "$(cat "$LOG_D")" "checksum mismatch"
   exit 1
 }
 
-echo "OK: curl install.sh → skl --help (clean PATH, non-interactive, no rc edits)"
+# --- 5. skl update refuses a bad checksum, then upgrades ------------------
+echo "==> skl update --force refuses checksum mismatch"
+BAD_UPDATE="$WORKDIR/bad-update"
+mkdir -p "$BAD_UPDATE"
+printf 'tampered-bytes\n' >"$BAD_UPDATE/$ASSET"
+printf '{"tag_name":"v99.0.0"}\n' >"$BAD_UPDATE/latest.json"
+cp "$ROOT/apps/web/public/install.sh" "$BAD_UPDATE/install.sh"
+printf '0000000000000000000000000000000000000000000000000000000000000000  %s\n' "$ASSET" \
+  >"$BAD_UPDATE/SHA256SUMS"
+if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+  kill "$SERVER_PID" 2>/dev/null || true
+  wait "$SERVER_PID" 2>/dev/null || true
+  SERVER_PID=""
+fi
+start_release_server "$BAD_UPDATE"
+BEFORE="$(file_sha "$HOME_A/.local/bin/skl")"
+UPDATE_C="$WORKDIR/update-c.log"
+set +e
+PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  SKL_DOWNLOAD_BASE="$RELEASE_URL" SKL_RELEASES_API="${RELEASE_URL}/latest.json" \
+  "$HOME_A/.local/bin/skl" update --force >"$UPDATE_C" 2>&1
+UPDATE_RC=$?
+set -e
+if [[ "$UPDATE_RC" -eq 0 ]]; then
+  echo "expected skl update --force checksum mismatch to fail" >&2
+  cat "$UPDATE_C" >&2
+  exit 1
+fi
+skl_assert_contains "$(cat "$UPDATE_C")" "checksum mismatch"
+[[ "$(file_sha "$HOME_A/.local/bin/skl")" == "$BEFORE" ]] || {
+  echo "checksum mismatch must not replace the binary" >&2
+  cat "$UPDATE_C" >&2
+  exit 1
+}
+
+echo "==> skl update refuses checksum-valid unusable asset"
+UNUSABLE="$WORKDIR/unusable-release"
+mkdir -p "$UNUSABLE"
+printf 'not-an-executable\n' >"$UNUSABLE/$ASSET"
+chmod +x "$UNUSABLE/$ASSET"
+printf '{"tag_name":"v98.0.0"}\n' >"$UNUSABLE/latest.json"
+cp "$ROOT/apps/web/public/install.sh" "$UNUSABLE/install.sh"
+write_sums "$UNUSABLE" "$ASSET"
+if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+  kill "$SERVER_PID" 2>/dev/null || true
+  wait "$SERVER_PID" 2>/dev/null || true
+  SERVER_PID=""
+fi
+start_release_server "$UNUSABLE"
+BEFORE_UNUSABLE="$(file_sha "$HOME_A/.local/bin/skl")"
+UPDATE_D="$WORKDIR/update-d.log"
+set +e
+PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  SKL_DOWNLOAD_BASE="$RELEASE_URL" SKL_RELEASES_API="${RELEASE_URL}/latest.json" \
+  "$HOME_A/.local/bin/skl" update >"$UPDATE_D" 2>&1
+UPDATE_RC=$?
+set -e
+if [[ "$UPDATE_RC" -eq 0 ]]; then
+  echo "expected skl update to refuse an unusable download" >&2
+  cat "$UPDATE_D" >&2
+  exit 1
+fi
+skl_assert_contains "$(cat "$UPDATE_D")" "not runnable"
+[[ "$(file_sha "$HOME_A/.local/bin/skl")" == "$BEFORE_UNUSABLE" ]] || {
+  echo "unusable download must not replace the binary" >&2
+  cat "$UPDATE_D" >&2
+  exit 1
+}
+PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  "$HOME_A/.local/bin/skl" --help >/dev/null
+
+echo "==> skl update (newer asset)"
+NEW="$WORKDIR/new-release"
+mkdir -p "$NEW"
+cat >"$NEW/$ASSET" <<'EOF'
+#!/bin/sh
+echo "skl 99.0.0"
+EOF
+chmod +x "$NEW/$ASSET"
+printf '{"tag_name":"v99.0.0"}\n' >"$NEW/latest.json"
+cp "$ROOT/apps/web/public/install.sh" "$NEW/install.sh"
+write_sums "$NEW" "$ASSET"
+if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
+  kill "$SERVER_PID" 2>/dev/null || true
+  wait "$SERVER_PID" 2>/dev/null || true
+  SERVER_PID=""
+fi
+start_release_server "$NEW"
+UPDATE_B="$WORKDIR/update-b.log"
+set +e
+PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  SKL_DOWNLOAD_BASE="$RELEASE_URL" SKL_RELEASES_API="${RELEASE_URL}/latest.json" \
+  "$HOME_A/.local/bin/skl" update >"$UPDATE_B" 2>&1
+UPDATE_RC=$?
+set -e
+[[ "$UPDATE_RC" -eq 0 ]] || {
+  echo "skl update (newer asset) failed ($UPDATE_RC)" >&2
+  cat "$UPDATE_B" >&2
+  exit 1
+}
+skl_assert_contains "$(cat "$UPDATE_B")" "updated ${HOME_A}/.local/bin/skl"
+skl_assert_contains "$(cat "$UPDATE_B")" "checksum ok ($ASSET)"
+NEW_VER="$(PATH="$HOME_A/.local/bin:$CLEAN_PATH" HOME="$HOME_A" \
+  "$HOME_A/.local/bin/skl" --version)"
+skl_assert_contains "$NEW_VER" "skl 99.0.0"
+
+echo "OK: curl install.sh → skl --help / skl update (clean PATH, non-interactive, no rc edits)"
