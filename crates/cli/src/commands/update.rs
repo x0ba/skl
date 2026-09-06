@@ -1,7 +1,7 @@
 //! `skl update` — replace this binary with the latest GitHub Release asset.
 
 use std::fs::{self, File, OpenOptions};
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -226,6 +226,10 @@ fn replace_executable(dest: &Path, bytes: &[u8]) -> Result<()> {
         let _ = fs::remove_file(&tmp);
         return Err(err);
     }
+    if let Err(err) = persist_file(&tmp) {
+        let _ = fs::remove_file(&tmp);
+        return Err(err);
+    }
     if let Err(err) = ensure_runnable(&tmp) {
         let _ = fs::remove_file(&tmp);
         return Err(SklError::Config(format!(
@@ -259,11 +263,11 @@ fn write_staging_file(dest: &Path, bytes: &[u8]) -> Result<PathBuf> {
     for seq in 0u32..1024 {
         let tmp = sibling(dest, &format!(".tmp.{pid}.{seq}"));
         match OpenOptions::new().write(true).create_new(true).open(&tmp) {
-            Ok(file) => {
-                // Close the create handle before writing so Linux execve of the
-                // staged file cannot fail with ETXTBSY (text file busy).
+            Ok(mut file) => {
+                file.write_all(bytes)?;
+                file.sync_all()?;
+                // Close before execve so Linux does not return ETXTBSY.
                 drop(file);
-                fs::write(&tmp, bytes)?;
                 return Ok(tmp);
             }
             Err(err) if err.kind() == ErrorKind::AlreadyExists => continue,
@@ -277,6 +281,9 @@ fn write_staging_file(dest: &Path, bytes: &[u8]) -> Result<PathBuf> {
 }
 
 fn install_staged(dest: &Path, tmp: &Path) -> Result<()> {
+    let parent = dest
+        .parent()
+        .ok_or_else(|| SklError::Config(format!("cannot update {}", dest.display())))?;
     #[cfg(windows)]
     {
         let old = sibling(dest, &format!(".old.{}", std::process::id()));
@@ -293,13 +300,31 @@ fn install_staged(dest: &Path, tmp: &Path) -> Result<()> {
             return Err(err.into());
         }
         let _ = fs::remove_file(&old);
+        persist_dir(parent)?;
         Ok(())
     }
     #[cfg(not(windows))]
     {
         fs::rename(tmp, dest)?;
+        persist_dir(parent)?;
         Ok(())
     }
+}
+
+fn persist_file(path: &Path) -> Result<()> {
+    File::open(path)?.sync_all()?;
+    Ok(())
+}
+
+fn persist_dir(path: &Path) -> Result<()> {
+    let dir = File::open(path)?;
+    if let Err(err) = dir.sync_all() {
+        // Windows cannot fsync a directory.
+        if err.kind() != ErrorKind::InvalidInput {
+            return Err(err.into());
+        }
+    }
+    Ok(())
 }
 
 fn sibling(path: &Path, suffix: &str) -> PathBuf {
