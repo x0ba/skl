@@ -56,11 +56,41 @@ export const env = {
     allowDevAuthEnv === "true" || (allowDevAuthEnv !== "false" && !clerkSecret),
 };
 
+function parseOrigins(value: string): string[] {
+  return value
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/$/, ""))
+    .filter((origin) => origin.length > 0);
+}
+
+/** Allow both apex and www so `tryskl.fyi` and `www.tryskl.fyi` both pass CORS. */
+export function originVariants(origin: string): string[] {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return [origin];
+  }
+  const { protocol, hostname, port } = parsed;
+  const suffix = port ? `:${port}` : "";
+  const hosts = new Set<string>([hostname]);
+  if (hostname.startsWith("www.")) {
+    hosts.add(hostname.slice("www.".length));
+  } else if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+    hosts.add(`www.${hostname}`);
+  }
+  return [...hosts].map((host) => `${protocol}//${host}${suffix}`);
+}
+
 export function corsOrigins(): string[] {
   const origins = new Set<string>([
-    env.SKL_WEB_ORIGIN,
     "http://localhost:3000",
     "http://127.0.0.1:3000",
   ]);
+  for (const origin of parseOrigins(env.SKL_WEB_ORIGIN)) {
+    for (const variant of originVariants(origin)) {
+      origins.add(variant);
+    }
+  }
   return [...origins];
 }

@@ -49,7 +49,7 @@ API listens on `http://localhost:8787`. Health: `http://localhost:8787/v1/health
 | --- | --- | --- |
 | `DATABASE_URL` | yes (prod) | default `postgres://skl:skl@localhost:5432/skl` |
 | `PORT` | no | default `8787` |
-| `SKL_WEB_ORIGIN` | no | default `http://localhost:3000` — `verification_uri` + CORS |
+| `SKL_WEB_ORIGIN` | no | default `http://localhost:3000` — `verification_uri` + CORS. Apex/www variants are both allowed. Comma-separate extra origins. |
 | `SKL_API_ORIGIN` | no | default `http://localhost:8787` |
 | `CLERK_SECRET_KEY` | prod | verifies Clerk session JWTs |
 | `CLERK_PUBLISHABLE_KEY` | prod (web) | not consumed by the API |
