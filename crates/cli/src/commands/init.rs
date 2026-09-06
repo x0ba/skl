@@ -3,6 +3,7 @@ use std::path::Path;
 use crate::config::{self, Paths};
 use crate::error::Result;
 use crate::local::db::LocalDb;
+use crate::local::library;
 use crate::local::skills;
 
 pub async fn run(api_base: String) -> Result<()> {
@@ -14,13 +15,15 @@ pub async fn run(api_base: String) -> Result<()> {
     Ok(())
 }
 
-/// Discover `skill_roots` under `home` and replace the local import index.
+/// Discover foreign home roots, copy missing skills into the personal library,
+/// and index the library only. Foreign trees stay in place (importer).
 fn import_from_home(home: &Path, paths: &Paths) -> Result<usize> {
     paths.ensure()?;
+    std::fs::create_dir_all(paths.library_dir())?;
 
-    let discovered = skills::discover_from_home(home)?;
+    let foreign = skills::discover_from_home(home)?;
 
-    if discovered.is_empty() {
+    if foreign.is_empty() {
         eprintln!("No skills found under:");
         for root in config::skill_roots(home) {
             let mark = if root.path.is_dir() {
@@ -31,8 +34,8 @@ fn import_from_home(home: &Path, paths: &Paths) -> Result<usize> {
             eprintln!("  {:<8} {} ({mark})", root.source, root.path.display());
         }
     } else {
-        eprintln!("Discovered {} skill(s):", discovered.len());
-        for skill in &discovered {
+        eprintln!("Discovered {} skill(s):", foreign.len());
+        for skill in &foreign {
             eprintln!(
                 "  {:<8} {:<24} {}  files={}  tree={}",
                 skill.source,
@@ -44,22 +47,35 @@ fn import_from_home(home: &Path, paths: &Paths) -> Result<usize> {
         }
     }
 
+    let copied = library::import_foreign(&foreign, &paths.library_dir())?;
+    if copied > 0 {
+        eprintln!(
+            "Copied {copied} skill(s) into the personal library ({})",
+            paths.library_dir().display()
+        );
+    }
+
+    let discovered = library::discover(paths)?;
     let db = LocalDb::open(&paths.db_file)?;
     db.replace_import(&discovered)?;
 
     eprintln!();
     eprintln!(
-        "Imported {} skill(s) into {}",
+        "Imported {} skill(s) into {} and {}",
         discovered.len(),
+        paths.library_dir().display(),
         paths.db_file.display()
     );
-    eprintln!("Local state is ready for `skl sync` (POST /v1/sync).");
+    eprintln!(
+        "Local state is ready for `skl sync` (personal library only — not agent or project dirs)."
+    );
     Ok(discovered.len())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::local::library;
     use std::fs;
 
     fn isolated_paths(tmp: &Path) -> Paths {
@@ -94,10 +110,18 @@ mod tests {
             .list_skills()
             .unwrap();
         assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].source, "agents");
+        assert_eq!(listed[0].source, library::LIBRARY_SOURCE);
         assert_eq!(listed[0].name, "greeter");
-        assert_eq!(listed[0].path, skill_dir);
+        assert_eq!(listed[0].path, paths.library_skill("greeter"));
         assert!(listed[0].tree.files.contains_key("SKILL.md"));
+        assert_eq!(
+            fs::read_to_string(skill_dir.join("SKILL.md")).unwrap(),
+            "hi from agents"
+        );
+        assert_eq!(
+            fs::read_to_string(paths.library_skill("greeter").join("SKILL.md")).unwrap(),
+            "hi from agents"
+        );
     }
 
     #[test]
@@ -116,9 +140,10 @@ mod tests {
             .list_skills()
             .unwrap();
         assert_eq!(listed.len(), 1);
-        assert_eq!(listed[0].source, "xdg-agents");
+        assert_eq!(listed[0].source, library::LIBRARY_SOURCE);
         assert_eq!(listed[0].name, "notes");
-        assert_eq!(listed[0].path, skill_dir);
+        assert_eq!(listed[0].path, paths.library_skill("notes"));
+        assert!(skill_dir.join("SKILL.md").is_file());
     }
 
     #[test]
@@ -138,12 +163,14 @@ mod tests {
             .unwrap()
             .list_skills()
             .unwrap();
-        let pairs: Vec<_> = listed
-            .iter()
-            .map(|skill| (skill.source.as_str(), skill.name.as_str()))
-            .collect();
-        assert!(pairs.contains(&("agents", "greeter")));
-        assert!(pairs.contains(&("xdg-agents", "notes")));
-        assert!(!pairs.iter().any(|(src, _)| *src == "claude"));
+        let names: Vec<_> = listed.iter().map(|skill| skill.name.as_str()).collect();
+        assert!(names.contains(&"greeter"));
+        assert!(names.contains(&"notes"));
+        for skill in &listed {
+            assert_eq!(skill.source, library::LIBRARY_SOURCE);
+            assert_eq!(skill.path, paths.library_skill(&skill.name));
+        }
+        assert!(agents.join("SKILL.md").is_file());
+        assert!(xdg.join("SKILL.md").is_file());
     }
 }

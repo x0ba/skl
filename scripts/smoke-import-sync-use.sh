@@ -71,7 +71,6 @@ skl_require_bin
 skl_wait_for_api
 
 mkdir -p "$MACHINE_A" "$MACHINE_B" "$PROJECT_B"
-# Machine B needs an existing pull root so sync writes into ~/.agents/skills.
 mkdir -p "$MACHINE_B/.agents/skills"
 # Explicit `skl sync` harness — do not let furnace maybe_run steal the first PUT.
 skl_write_sync_prefs "$MACHINE_A" false 900
@@ -112,7 +111,12 @@ skl_assert_contains "$b_sync" "POST $API/v1/sync"
 skl_assert_contains "$b_sync" "GET /v1/blobs/"
 skl_assert_contains "$b_sync" "wrote skill $SKILL_NAME"
 skl_assert_contains "$b_sync" "sync done"
-skl_assert_file_contains "$MACHINE_B/.agents/skills/${SKILL_NAME}/SKILL.md" "hello from machine A"
+skl_assert_file_contains "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")/SKILL.md" "hello from machine A"
+if [[ -e "$MACHINE_B/.agents/skills/${SKILL_NAME}" ]]; then
+  echo "sync must not write the personal library under ~/.agents/skills" >&2
+  ls -la "$MACHINE_B/.agents/skills" >&2 || true
+  exit 1
+fi
 
 echo "==> machine B: list after pull"
 b_list="$(run_b list 2>&1)"
@@ -129,7 +133,7 @@ skl_assert_contains "$b_use" "updated"
 agents_link="$PROJECT_B/.agents/skills/${SKILL_NAME}"
 claude_link="$PROJECT_B/.claude/skills/${SKILL_NAME}"
 cursor_link="$PROJECT_B/.cursor/skills/${SKILL_NAME}"
-home_skill="$MACHINE_B/.agents/skills/${SKILL_NAME}"
+home_skill="$(skl_library_of "$MACHINE_B" "$SKILL_NAME")"
 skl_assert_symlink_to "$agents_link" "$home_skill"
 if [[ -e "$claude_link" || -L "$claude_link" || -d "$PROJECT_B/.claude" ]]; then
   echo "default use must not create .claude" >&2

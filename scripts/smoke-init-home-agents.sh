@@ -52,13 +52,18 @@ if [[ "$init_out" == *"claude"* ]]; then
   exit 1
 fi
 
-echo "==> skl list shows imported sources"
+echo "==> skl list shows imported library copies"
 list_out="$(run_home list 2>&1)"
 echo "$list_out"
 skl_assert_contains "$list_out" "$AGENTS_NAME"
-skl_assert_contains "$list_out" "agents"
 skl_assert_contains "$list_out" "$XDG_NAME"
-skl_assert_contains "$list_out" "xdg-agents"
+skl_assert_file_contains "$(skl_library_of "$HOME_DIR" "$AGENTS_NAME")/SKILL.md" \
+  "hello from ~/.agents/skills"
+skl_assert_file_contains "$(skl_library_of "$HOME_DIR" "$XDG_NAME")/SKILL.md" \
+  "hello from ~/.config/agents/skills"
+# Foreign trees stay in place (importer, not a projection).
+skl_assert_file_contains "$HOME_DIR/.agents/skills/${AGENTS_NAME}/SKILL.md" \
+  "hello from ~/.agents/skills"
 
 echo "==> skl doctor reports both furnace home roots"
 doc_out="$(run_home doctor 2>&1)"

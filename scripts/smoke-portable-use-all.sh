@@ -123,13 +123,15 @@ if [[ -e "$PROJECT_LEGACY/.agents" ]]; then
   exit 1
 fi
 
-echo "==> legacy absolute path still activates by name"
+echo "==> legacy absolute path still activates by name (after init imports to library)"
+legacy_init="$(run_legacy init 2>&1)"
+echo "$legacy_init"
 legacy_use="$(run_legacy use "$SKILL_NAME" --project "$PROJECT_LEGACY" 2>&1)"
 echo "$legacy_use"
 skl_assert_contains "$legacy_use" "using $SKILL_NAME"
 skl_assert_symlink_to \
   "$PROJECT_LEGACY/.agents/skills/${SKILL_NAME}" \
-  "$HOME_LEGACY/.claude/skills/${SKILL_NAME}"
+  "$(skl_library_of "$HOME_LEGACY" "$SKILL_NAME")"
 skl_assert_file_contains "$PROJECT_LEGACY/.agents/skills/${SKILL_NAME}/SKILL.md" "hello from machine A"
 skl_assert_portable_manifest "$PROJECT_LEGACY/skills.toml" \
   "$HOME_LEGACY" \
@@ -156,7 +158,7 @@ echo "$a_use"
 skl_assert_contains "$a_use" "using $SKILL_NAME"
 skl_assert_symlink_to \
   "$PROJECT_A/.agents/skills/${SKILL_NAME}" \
-  "$MACHINE_A/.claude/skills/${SKILL_NAME}"
+  "$(skl_library_of "$MACHINE_A" "$SKILL_NAME")"
 skl_assert_portable_manifest "$PROJECT_A/skills.toml" "$MACHINE_A" '$HOME'
 
 echo "==> clone committed skills.toml only onto project B (no dests)"
@@ -176,7 +178,11 @@ b_sync="$(run_b sync 2>&1)"
 echo "$b_sync"
 skl_assert_contains "$b_sync" "wrote skill $SKILL_NAME"
 skl_assert_contains "$b_sync" "sync done"
-skl_assert_file_contains "$MACHINE_B/.agents/skills/${SKILL_NAME}/SKILL.md" "hello from machine A"
+skl_assert_file_contains "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")/SKILL.md" "hello from machine A"
+if [[ -e "$MACHINE_B/.agents/skills/${SKILL_NAME}" ]]; then
+  echo "sync must not write the personal library under ~/.agents/skills" >&2
+  exit 1
+fi
 if [[ -e "$PROJECT_B/.agents" ]]; then
   echo "sync must not auto-restore project dests" >&2
   ls -la "$PROJECT_B" >&2 || true
@@ -199,7 +205,7 @@ echo "$b_all"
 skl_assert_contains "$b_all" "using $SKILL_NAME"
 skl_assert_symlink_to \
   "$PROJECT_B/.agents/skills/${SKILL_NAME}" \
-  "$MACHINE_B/.agents/skills/${SKILL_NAME}"
+  "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")"
 skl_assert_file_contains "$PROJECT_B/.agents/skills/${SKILL_NAME}/SKILL.md" "hello from machine A"
 skl_assert_portable_manifest "$PROJECT_B/skills.toml" \
   "$MACHINE_A" \

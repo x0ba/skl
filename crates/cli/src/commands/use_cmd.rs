@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::config::{self, Paths};
 use crate::error::{Result, SklError};
 use crate::local::db::LocalDb;
+use crate::local::library;
 use crate::local::linker::{self, LinkAction};
 use crate::local::skills::{self, DiscoveredSkill};
 
@@ -177,22 +178,18 @@ fn list_activated(project: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<DiscoveredSkill> {
+pub fn resolve_skill(name: &str, _home: &Path, db_file: Option<&Path>) -> Result<DiscoveredSkill> {
     linker::validate_skill_name(name)?;
-
-    let discovered = skills::discover_from_home(home)?;
-    if let Some(skill) = discovered.into_iter().find(|skill| skill.name == name) {
-        return Ok(skill);
-    }
 
     if let Some(db_file) = db_file {
         if let Some(data_dir) = db_file.parent() {
-            let lib = data_dir.join("skills").join(name);
-            if lib.is_dir() {
+            let library_dir = data_dir.join("skills");
+            let lib = library_dir.join(name);
+            if lib.is_dir() && lib.join("SKILL.md").is_file() {
                 let tree = skills::hash_skill_dir(&lib)?;
                 return Ok(DiscoveredSkill {
                     name: name.to_string(),
-                    source: "agents".into(),
+                    source: library::LIBRARY_SOURCE.into(),
                     path: lib,
                     tree,
                 });
@@ -202,33 +199,20 @@ pub fn resolve_skill(name: &str, home: &Path, db_file: Option<&Path>) -> Result<
 
     if let Some(db_file) = db_file {
         if db_file.exists() {
-            let db = LocalDb::open(db_file)?;
-            let mut matches: Vec<_> = db
-                .list_skills()?
-                .into_iter()
-                .filter(|skill| skill.name == name)
-                .collect();
-            let order = ["agents", "xdg-agents", "claude-code", "cursor", "codex"];
-            matches.sort_by_key(|skill| {
-                order
-                    .iter()
-                    .position(|src| *src == skill.source.as_str())
-                    .unwrap_or(99)
-            });
-            if let Some(skill) = matches.into_iter().next() {
-                if skill.path.is_dir() {
-                    return Ok(skill);
+            if let Some(data_dir) = db_file.parent() {
+                let library_dir = data_dir.join("skills");
+                let db = LocalDb::open(db_file)?;
+                if let Some(skill) = db.find_skill(name)? {
+                    if library::is_under_library(&skill.path, &library_dir) && skill.path.is_dir() {
+                        return Ok(skill);
+                    }
                 }
-                return Err(SklError::LocalState(format!(
-                    "skill `{name}` is indexed at {} but that directory is missing",
-                    skill.path.display()
-                )));
             }
         }
     }
 
     Err(SklError::LocalState(format!(
-        "skill `{name}` not found under catalog home roots (e.g. ~/.agents/skills, ~/.claude/skills, ~/.cursor/skills) or the personal library. If it is listed in skills.toml, run `skl sync` then `skl use --all`"
+        "skill `{name}` is not in the personal library on this machine. Run `skl init` or `skl capture` to import it, or `skl sync` to pull the library, then `skl use --all`."
     )))
 }
 
@@ -269,34 +253,36 @@ mod tests {
     use crate::local::skills::hash_skill_dir;
 
     #[test]
-    fn resolves_from_home_before_db() {
+    fn home_agent_dir_is_not_a_use_source() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let skill_dir = home.join(".claude/skills/greeter");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
 
-        let found = resolve_skill("greeter", &home, None).unwrap();
-        assert_eq!(found.source, "claude-code");
-        assert_eq!(found.name, "greeter");
+        let err = resolve_skill("greeter", &home, None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("personal library"), "{err}");
+        assert!(!err.contains("syncing"), "{err}");
     }
 
     #[test]
-    fn resolves_from_home_agents_skills() {
+    fn home_agents_skills_is_not_a_use_source() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         let skill_dir = home.join(".agents/skills/greeter");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
 
-        let found = resolve_skill("greeter", &home, None).unwrap();
-        assert_eq!(found.source, "agents");
-        assert_eq!(found.name, "greeter");
-        assert_eq!(found.path, skill_dir);
+        let err = resolve_skill("greeter", &home, None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("personal library"), "{err}");
     }
 
     #[test]
-    fn resolves_from_db_when_home_empty() {
+    fn harness_indexed_path_is_not_resolved() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         std::fs::create_dir_all(&home).unwrap();
@@ -304,7 +290,9 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
         let tree = hash_skill_dir(&skill_dir).unwrap();
-        let db_file = tmp.path().join("state.db");
+        let data_dir = tmp.path().join("data");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let db_file = data_dir.join("state.db");
         let db = LocalDb::open(&db_file).unwrap();
         db.replace_import(&[DiscoveredSkill {
             name: "greeter".into(),
@@ -314,9 +302,10 @@ mod tests {
         }])
         .unwrap();
 
-        let found = resolve_skill("greeter", &home, Some(&db_file)).unwrap();
-        assert_eq!(found.source, "cursor");
-        assert_eq!(found.path, skill_dir);
+        let err = resolve_skill("greeter", &home, Some(&db_file))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("personal library"), "{err}");
     }
 
     #[test]
@@ -387,9 +376,11 @@ mod tests {
         let home = tmp.path().join("home");
         let project = tmp.path().join("proj");
         std::fs::create_dir_all(&project).unwrap();
-        let skill_dir = home.join(".claude/skills/greeter");
+        let data_dir = tmp.path().join("data");
+        let skill_dir = data_dir.join("skills/greeter");
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), "hi").unwrap();
+        let db_file = data_dir.join("state.db");
         std::fs::write(
             linker::manifest_path(&project),
             r#"
@@ -402,7 +393,7 @@ mode = "symlink"
         )
         .unwrap();
 
-        let outs = restore_all(&project, &home, None, &[]).unwrap();
+        let outs = restore_all(&project, &home, Some(&db_file), &[]).unwrap();
         assert_eq!(outs.len(), 1);
         assert_eq!(outs[0].skill, "greeter");
         assert!(project.join(".agents/skills/greeter").exists());
@@ -449,10 +440,12 @@ mode = "symlink"
         std::fs::create_dir_all(&project_a).unwrap();
         std::fs::create_dir_all(&project_b).unwrap();
 
-        let skill_a = home_a.join(".claude/skills/greeter");
+        let data_a = tmp.path().join("data-a");
+        let skill_a = data_a.join("skills/greeter");
         std::fs::create_dir_all(&skill_a).unwrap();
         std::fs::write(skill_a.join("SKILL.md"), "from A").unwrap();
-        let discovered_a = resolve_skill("greeter", &home_a, None).unwrap();
+        let db_a = data_a.join("state.db");
+        let discovered_a = resolve_skill("greeter", &home_a, Some(&db_a)).unwrap();
         linker::activate(&project_a, &home_a, &discovered_a).unwrap();
 
         let raw_a = std::fs::read_to_string(linker::manifest_path(&project_a)).unwrap();
@@ -468,11 +461,13 @@ mode = "symlink"
         )
         .unwrap();
 
-        let skill_b = home_b.join(".agents/skills/greeter");
+        let data_b = tmp.path().join("data-b");
+        let skill_b = data_b.join("skills/greeter");
         std::fs::create_dir_all(&skill_b).unwrap();
         std::fs::write(skill_b.join("SKILL.md"), "from B after sync").unwrap();
+        let db_b = data_b.join("state.db");
 
-        let outs = restore_all(&project_b, &home_b, None, &[]).unwrap();
+        let outs = restore_all(&project_b, &home_b, Some(&db_b), &[]).unwrap();
         assert_eq!(outs.len(), 1);
         assert_eq!(outs[0].skill, "greeter");
         let dest = project_b.join(".agents/skills/greeter");
@@ -511,9 +506,11 @@ mode = "symlink"
         std::fs::create_dir_all(&foreign).unwrap();
         std::fs::write(foreign.join("SKILL.md"), "foreign machine").unwrap();
 
-        let local = home_b.join(".claude/skills/greeter");
+        let data_b = tmp.path().join("data-b");
+        let local = data_b.join("skills/greeter");
         std::fs::create_dir_all(&local).unwrap();
         std::fs::write(local.join("SKILL.md"), "this machine").unwrap();
+        let db_b = data_b.join("state.db");
 
         std::fs::write(
             linker::manifest_path(&project),
@@ -530,7 +527,7 @@ mode = "symlink"
         )
         .unwrap();
 
-        let outs = restore_all(&project, &home_b, None, &[]).unwrap();
+        let outs = restore_all(&project, &home_b, Some(&db_b), &[]).unwrap();
         assert_eq!(outs.len(), 1);
         assert_eq!(
             std::fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),

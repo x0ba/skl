@@ -13,7 +13,8 @@ use crate::error::{Result, SklError};
 use crate::hooks::conflict::{ConflictChoice, ConflictMode, ConflictResolution};
 use crate::hooks::{conflict, scrub};
 use crate::local::db::{LocalDb, SyncSummary};
-use crate::local::skills::{default_pull_root, hash_bytes, write_blob_file};
+use crate::local::library;
+use crate::local::skills::{hash_bytes, write_blob_file};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncOptions {
@@ -60,7 +61,7 @@ pub async fn run_with_opts(
     api_base: &str,
     token: &str,
     paths: &Paths,
-    home: &Path,
+    _home: &Path,
     opts: SyncOptions,
 ) -> Result<SyncOutcome> {
     if !paths.db_file.exists() {
@@ -70,6 +71,8 @@ pub async fn run_with_opts(
     }
 
     let db = LocalDb::open(&paths.db_file)?;
+    // Heal leftover harness-home index rows, then sync the library only.
+    library::reindex_library_only(&db, paths)?;
     let body = db.sync_request()?;
 
     scrub::scrub_before_upload(&db, &body, opts.allow_warnings)?;
@@ -107,7 +110,7 @@ pub async fn run_with_opts(
 
     let uploaded = upload_blobs(&client, &db, &plan, &keep_remote, opts.allow_warnings).await?;
     let pushed = push_trees(&client, &body, &plan, &keep_local).await?;
-    let downloaded = download_blobs(&client, &db, home, &plan, &keep_remote).await?;
+    let downloaded = download_blobs(&client, &db, paths, &plan, &keep_remote).await?;
 
     let mut remaining_conflicts = plan
         .conflicts
@@ -116,7 +119,7 @@ pub async fn run_with_opts(
         .count();
 
     if !keep_local.is_empty() || !keep_remote.is_empty() {
-        refresh_local_index(&db, home)?;
+        refresh_local_index(&db, paths)?;
         let retry = db.sync_request()?;
         eprintln!(
             "re-POST {api_base}/v1/sync  ({} skill(s) after keep-local/keep-remote)",
@@ -127,7 +130,7 @@ pub async fn run_with_opts(
         eprintln!("re-POST conflicts: {}", plan2.conflicts.len());
     }
 
-    refresh_local_index(&db, home)?;
+    refresh_local_index(&db, paths)?;
     let summary = SyncSummary {
         uploaded: uploaded.len(),
         downloaded: downloaded.len(),
@@ -264,7 +267,7 @@ async fn push_trees(
 async fn download_blobs(
     client: &ApiClient,
     db: &LocalDb,
-    home: &Path,
+    paths: &Paths,
     plan: &SyncResponse,
     keep_remote: &BTreeSet<String>,
 ) -> Result<Vec<String>> {
@@ -293,7 +296,7 @@ async fn download_blobs(
     skill_names.extend(plan.missing_skills.iter().cloned());
     skill_names.extend(keep_remote.iter().cloned());
 
-    let pull_root = default_pull_root(home);
+    let pull_root = library::default_pull_root(paths);
     for name in &skill_names {
         let conflicted = plan.conflicts.iter().any(|c| c.skill == *name);
         if conflicted && !keep_remote.contains(name) {
@@ -301,8 +304,10 @@ async fn download_blobs(
         }
         let detail = client.get_skill(name).await?;
         let dest = match db.find_skill(name)? {
-            Some(existing) => existing.path,
-            None => pull_root.join(name),
+            Some(existing) if library::is_under_library(&existing.path, &pull_root) => {
+                existing.path
+            }
+            _ => pull_root.join(name),
         };
         std::fs::create_dir_all(&dest)?;
         for (rel, hash) in &detail.files {
@@ -326,10 +331,8 @@ async fn download_blobs(
     Ok(blob_cache.keys().cloned().collect())
 }
 
-fn refresh_local_index(db: &LocalDb, home: &Path) -> Result<()> {
-    let discovered = crate::local::skills::discover_from_home(home)?;
-    db.replace_import(&discovered)?;
-    Ok(())
+fn refresh_local_index(db: &LocalDb, paths: &Paths) -> Result<()> {
+    library::reindex_library_only(db, paths)
 }
 
 #[cfg(test)]
@@ -352,14 +355,21 @@ mod tests {
         }
     }
 
+    fn plant_library(paths: &Paths, name: &str, body: &[u8]) -> std::path::PathBuf {
+        let skill_dir = paths.library_skill(name);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), body).unwrap();
+        skill_dir
+    }
+
     #[tokio::test]
     async fn push_then_pull_loop() {
         let server = MockServer::start().await;
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
-        let skill_dir = home.join(".claude/skills/greeter");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "# hello\n").unwrap();
+        let paths = paths_for(tmp.path());
+        std::fs::create_dir_all(&paths.data_dir).unwrap();
+        let skill_dir = plant_library(&paths, "greeter", b"# hello\n");
 
         let bytes = b"# hello\n".to_vec();
         let blob_hash = hash_bytes(&bytes);
@@ -367,12 +377,10 @@ mod tests {
         files.insert("SKILL.md".into(), blob_hash.clone());
         let tree = tree_hash(&files);
 
-        let paths = paths_for(tmp.path());
-        std::fs::create_dir_all(&paths.data_dir).unwrap();
         let db = LocalDb::open(&paths.db_file).unwrap();
         db.replace_import(&[DiscoveredSkill {
             name: "greeter".into(),
-            source: "claude".into(),
+            source: library::LIBRARY_SOURCE.into(),
             path: skill_dir.clone(),
             tree: SkillTree {
                 tree_hash: tree.clone(),
@@ -427,6 +435,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
         std::fs::create_dir_all(home.join(".agents/skills")).unwrap();
+        // Harness home exists so we can assert sync does *not* write there.
 
         let bytes = b"# remote\n".to_vec();
         let blob_hash = hash_bytes(&bytes);
@@ -482,8 +491,12 @@ mod tests {
             .unwrap();
         assert_eq!(outcome.downloaded, vec![blob_hash]);
         assert_eq!(outcome.missing_skills, vec!["greeter".to_string()]);
-        let written = home.join(".agents/skills/greeter/SKILL.md");
+        let written = paths.library_skill("greeter").join("SKILL.md");
         assert_eq!(std::fs::read(written).unwrap(), b"# remote\n");
+        assert!(
+            !home.join(".agents/skills/greeter").exists(),
+            "sync must not write pulled skills into ~/.agents/skills"
+        );
     }
 
     #[tokio::test]
@@ -491,20 +504,18 @@ mod tests {
         let server = MockServer::start().await;
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
-        let skill_dir = home.join(".claude/skills/greeter");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "local").unwrap();
+        let paths = paths_for(tmp.path());
+        std::fs::create_dir_all(&paths.data_dir).unwrap();
+        let skill_dir = plant_library(&paths, "greeter", b"local");
 
         let mut files = BTreeMap::new();
         files.insert("SKILL.md".into(), hash_bytes(b"local"));
         let tree = tree_hash(&files);
 
-        let paths = paths_for(tmp.path());
-        std::fs::create_dir_all(&paths.data_dir).unwrap();
         let db = LocalDb::open(&paths.db_file).unwrap();
         db.replace_import(&[DiscoveredSkill {
             name: "greeter".into(),
-            source: "claude".into(),
+            source: library::LIBRARY_SOURCE.into(),
             path: skill_dir,
             tree: SkillTree {
                 tree_hash: tree.clone(),
@@ -547,20 +558,18 @@ mod tests {
         let server = MockServer::start().await;
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
-        let skill_dir = home.join(".claude/skills/greeter");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "local").unwrap();
+        let paths = paths_for(tmp.path());
+        std::fs::create_dir_all(&paths.data_dir).unwrap();
+        let skill_dir = plant_library(&paths, "greeter", b"local");
 
         let mut files = BTreeMap::new();
         files.insert("SKILL.md".into(), hash_bytes(b"local"));
         let tree = tree_hash(&files);
 
-        let paths = paths_for(tmp.path());
-        std::fs::create_dir_all(&paths.data_dir).unwrap();
         let db = LocalDb::open(&paths.db_file).unwrap();
         db.replace_import(&[DiscoveredSkill {
             name: "greeter".into(),
-            source: "claude".into(),
+            source: library::LIBRARY_SOURCE.into(),
             path: skill_dir,
             tree: SkillTree {
                 tree_hash: tree.clone(),
@@ -628,9 +637,9 @@ mod tests {
         let server = MockServer::start().await;
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
-        let skill_dir = home.join(".claude/skills/greeter");
-        std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "local").unwrap();
+        let paths = paths_for(tmp.path());
+        std::fs::create_dir_all(&paths.data_dir).unwrap();
+        let skill_dir = plant_library(&paths, "greeter", b"local");
 
         let local_hash = hash_bytes(b"local");
         let remote_bytes = b"# remote clash\n".to_vec();
@@ -642,12 +651,10 @@ mod tests {
         remote_files.insert("SKILL.md".into(), remote_hash.clone());
         let remote_tree = tree_hash(&remote_files);
 
-        let paths = paths_for(tmp.path());
-        std::fs::create_dir_all(&paths.data_dir).unwrap();
         let db = LocalDb::open(&paths.db_file).unwrap();
         db.replace_import(&[DiscoveredSkill {
             name: "greeter".into(),
-            source: "claude".into(),
+            source: library::LIBRARY_SOURCE.into(),
             path: skill_dir.clone(),
             tree: SkillTree {
                 tree_hash: local_tree.clone(),
@@ -729,22 +736,20 @@ mod tests {
         let server = MockServer::start().await;
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");
-        let skill_dir = home.join(".claude/skills/greeter");
-        std::fs::create_dir_all(&skill_dir).unwrap();
+        let paths = paths_for(tmp.path());
+        std::fs::create_dir_all(&paths.data_dir).unwrap();
         let pem = b"-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n-----END OPENSSH PRIVATE KEY-----\n";
-        std::fs::write(skill_dir.join("SKILL.md"), pem).unwrap();
+        let skill_dir = plant_library(&paths, "greeter", pem);
 
         let blob_hash = hash_bytes(pem);
         let mut files = BTreeMap::new();
         files.insert("SKILL.md".into(), blob_hash.clone());
         let tree = tree_hash(&files);
 
-        let paths = paths_for(tmp.path());
-        std::fs::create_dir_all(&paths.data_dir).unwrap();
         let db = LocalDb::open(&paths.db_file).unwrap();
         db.replace_import(&[DiscoveredSkill {
             name: "greeter".into(),
-            source: "claude".into(),
+            source: library::LIBRARY_SOURCE.into(),
             path: skill_dir,
             tree: SkillTree {
                 tree_hash: tree,

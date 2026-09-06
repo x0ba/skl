@@ -135,7 +135,7 @@ cargo run -p skl -- status   # auto_sync / sync_frequency / last_sync / optional
 
 ### doctor
 
-Reports every unique catalog global root (vercel-labs/skills agents.ts) plus `~/.agents/skills` and `~/.config/agents/skills` — same list as `skl init` — whether each exists/writable, symlink capability (copy fallback when unavailable), local token store + `SKL_TOKEN` / `SKL_TOKEN_FILE`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. Also warns if `skills.toml` still lists host-absolute `path`s — run `skl use --all` to rewrite names-only. If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` show an interactive checklist (↑↓ move, space toggle, enter confirm): locked Universal (`.agents/skills`) is always on; toggleable rows are detected custom-project agents plus `claude-code`. Never cursor/codex. CI / non-TTY / `SKL_NO_PROMPT` / `SKL_YES` skip the UI.
+The personal library is canonical; `init`/`capture` import into it; `use` / `use --all` project from it. Reports every unique catalog global root (vercel-labs/skills agents.ts) plus `~/.agents/skills` and `~/.config/agents/skills` — same list as `skl init` — whether each exists/writable, symlink capability (copy fallback when unavailable), local token store + `SKL_TOKEN` / `SKL_TOKEN_FILE`, XDG `config.toml` / `state.db`, and `GET /v1/health`. Warns only (does not mutate; exit 0) if the project still has an M0 layout without `.agents/skills` — run `skl migrate targets`. Also warns if `skills.toml` still lists host-absolute `path`s — run `skl use --all` to rewrite names-only. In a project, warns (never auto-merges) on a divergent real copy (not a sync peer — `skl capture` or `skl use`), a dangling/wrong-target link (`skl use --all`), or an orphan `skills.toml` name missing from the library (`skl sync` or remove from the manifest). If no sticky extras are set yet and stdin is a TTY, `init`/`doctor` show an interactive checklist (↑↓ move, space toggle, enter confirm): locked Universal (`.agents/skills`) is always on; toggleable rows are detected custom-project agents plus `claude-code`. Never cursor/codex. CI / non-TTY / `SKL_NO_PROMPT` / `SKL_YES` skip the UI.
 ```bash
 # API down is still a successful report (health = unreachable)
 cargo run -p skl -- doctor
@@ -151,7 +151,7 @@ Vendored from [vercel-labs/skills `src/agents.ts`](https://github.com/vercel-lab
 - **Universal** — `project_skills_dir == .agents/skills` (cursor, codex, amp, …). `skl use` alone covers these readers; they are **never** extras / `-a` / checklist rows.
 - **Custom** — any other project dir (e.g. `claude-code` → `.claude/skills`). Sticky extras, `-a`, and the checklist only accept these.
 - **Alias** — sticky / `-a` / `skills.toml` `claude` migrates to `claude-code`. Leftover `cursor` / `codex` extras are dropped with a stderr warn (no-op).
-- OpenClaw's dynamic global is baked to `~/.openclaw/skills`. New canonical files prefer `~/.agents/skills`; init still imports every unique catalog global.
+- OpenClaw's dynamic global is baked to `~/.openclaw/skills`. New canonical files prefer `~/.agents/skills`; init still **imports** every unique catalog global into the personal library (foreign trees stay put).
 
 ### targets
 
@@ -188,9 +188,10 @@ skl use --all     # rematerialize every listed skill into project dests
 ```bash
 ./scripts/smoke-portable-use-all.sh  # two-HOME: clone portable toml → sync B → use --all
 
-# Home skill (or a path already imported by `skl init`)
+# Home skill — import into the personal library, then project
 mkdir -p ~/.claude/skills/greeter
 printf '# hello\n' > ~/.claude/skills/greeter/SKILL.md
+cargo run -p skl -- init
 
 # From a project directory — agents-only unless extras are opted in
 cargo run -p skl -- use greeter
@@ -283,7 +284,7 @@ Same `ALLOW_DEV_AUTH` user, two `HOME`s, API on `:8787`. Shared helpers live in 
 ```bash
 # API already up (ALLOW_DEV_AUTH=true)
 cargo build -p skl
-./scripts/smoke-import-sync-use.sh   # init → sync → skl use (.agents/skills first)
+./scripts/smoke-import-sync-use.sh   # init → library; sync library; use links to library
 ./scripts/smoke-clash.sh             # keep-local / keep-remote + scrub
 ./scripts/smoke-migrate-targets.sh   # M0 fixture → doctor warn → migrate (no API)
 ./scripts/smoke-init-home-agents.sh  # init from ~/.agents/skills + ~/.config/agents/skills (no API)
