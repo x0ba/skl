@@ -25,7 +25,7 @@ If the editor fails, the skill is still on disk.
 skl use writing-tests
 ```
 
-`skl use` makes a library skill available in the current project. It creates `.agents/skills/writing-tests` and adds the name to `skills.toml`. It uses a symlink by default and copies the skill if a symlink cannot be created.
+`skl use` makes a library skill available in the current project. It creates `.agents/skills/writing-tests` as a real copy (materialize) and adds the name to `skills.toml`. Use `--link` for a local symlink. `--all` rematerializes every listed skill from this machine's library.
 
 ```bash
 skl use
@@ -79,7 +79,7 @@ skl migrate targets --prune-old
 skl migrate targets --project DIR
 ```
 
-`skl migrate targets` moves old `.claude` and `.cursor` project links to `.agents/skills`. `--prune-old` removes the old links after the new destination exists. `skl use` does not run this migration. `skl doctor` warns when it finds the old layout.
+`skl migrate targets` moves old `.claude` and `.cursor` project links to `.agents/skills`. `--prune-old` removes the old links after the new destination exists. `skl migrate projections --materialize` converts symlink activations to copies. `skl use` does not run these migrations. `skl doctor` warns when it finds the old layout or a link projection.
 
 ## Update the CLI
 

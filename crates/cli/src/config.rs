@@ -31,6 +31,9 @@ pub struct Config {
     /// Sticky extra dests for `skl use` (`~/.config/skl/config.toml`).
     #[serde(default, skip_serializing_if = "TargetPrefs::is_unset")]
     pub targets: TargetPrefs,
+    /// Default project projection (`copy` / materialize, or `link`).
+    #[serde(default, skip_serializing_if = "ProjectPrefs::is_unset")]
+    pub project: ProjectPrefs,
 }
 
 /// `[sync]` — piggyback hash-sync on login/init/use/unuse/status.
@@ -78,6 +81,41 @@ impl TargetPrefs {
     }
 }
 
+/// `[project]` — default `skl use` projection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProjectPrefs {
+    /// `copy` (materialize, default) or `link` (symlink).
+    #[serde(default = "default_projection")]
+    pub projection: String,
+}
+
+impl Default for ProjectPrefs {
+    fn default() -> Self {
+        Self {
+            projection: default_projection(),
+        }
+    }
+}
+
+impl ProjectPrefs {
+    fn is_unset(&self) -> bool {
+        self.projection == default_projection()
+    }
+
+    pub fn mode(&self) -> Result<linker::ProjectionMode> {
+        linker::ProjectionMode::parse(&self.projection).ok_or_else(|| {
+            SklError::Config(format!(
+                "unknown [project].projection `{}` (expected copy, materialize, link, or symlink)",
+                self.projection.trim()
+            ))
+        })
+    }
+}
+
+fn default_projection() -> String {
+    linker::COPY_MODE.to_string()
+}
+
 impl Config {
     pub fn api_base(&self) -> String {
         self.api_base
@@ -87,6 +125,10 @@ impl Config {
 
     pub fn sticky_extras(&self) -> Vec<String> {
         linker::filter_extra_ids(&self.targets.extra)
+    }
+
+    pub fn projection_mode(&self) -> Result<linker::ProjectionMode> {
+        self.project.mode()
     }
 }
 
@@ -155,6 +197,7 @@ pub fn load(paths: &Paths) -> Result<Config> {
         cfg.targets.extra = extras;
         let _ = save(paths, &cfg);
     }
+    cfg.project.mode()?;
     Ok(cfg)
 }
 
@@ -307,6 +350,36 @@ mod tests {
         assert!(!cfg.targets.prompted);
         assert!(cfg.sync.auto);
         assert_eq!(cfg.sync.frequency_secs, DEFAULT_SYNC_FREQUENCY_SECS);
+        assert_eq!(cfg.projection_mode().unwrap(), linker::ProjectionMode::Copy);
+    }
+
+    #[test]
+    fn project_projection_link_overrides_default() {
+        let cfg: Config = toml::from_str("[project]\nprojection = \"link\"\n").unwrap();
+        assert_eq!(cfg.projection_mode().unwrap(), linker::ProjectionMode::Link);
+        let materialize: Config =
+            toml::from_str("[project]\nprojection = \"materialize\"\n").unwrap();
+        assert_eq!(
+            materialize.projection_mode().unwrap(),
+            linker::ProjectionMode::Copy
+        );
+    }
+
+    #[test]
+    fn unknown_project_projection_errors_on_load() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: tmp.path().join("data"),
+            db_file: tmp.path().join("data/state.db"),
+        };
+        paths.ensure().unwrap();
+        std::fs::write(&paths.config_file, "[project]\nprojection = \"coppy\"\n").unwrap();
+        let err = load(&paths).unwrap_err().to_string();
+        assert!(err.contains("unknown [project].projection"), "{err}");
+        assert!(err.contains("coppy"), "{err}");
+        assert!(err.contains("copy"), "{err}");
     }
 
     #[test]

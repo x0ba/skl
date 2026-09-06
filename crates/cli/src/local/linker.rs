@@ -1,12 +1,13 @@
-//! Project multi-agent linker: symlink skills into agent dirs + `skills.toml`.
+//! Project multi-agent linker: materialize (copy) or symlink skills + `skills.toml`.
 //!
 //! Canonical dest is **`.agents/skills`**. Extra dests (custom catalog project
 //! dirs such as `.claude/skills`) are created only when opted in via sticky
 //! config, project `skills.toml` `[targets].extra`, or `skl use -a`. Universal
 //! agents (cursor, codex, amp, …) already read `.agents/skills` — never extras.
-//! Default is **symlink**.
-//! On EPERM / ENOTSUP / Windows privilege errors, fall back to a copy on
-//! every dest that is active.
+//! Default is **copy** (materialize) so Cursor Cloud / remote checkouts see
+//! real files. `--link` or `project.projection = "link"` keeps live symlinks.
+//! On EPERM / ENOTSUP / Windows privilege errors, link mode falls back to a
+//! copy on every dest that is active.
 
 use std::fs;
 use std::io::ErrorKind;
@@ -21,6 +22,58 @@ use crate::local::skills::{hash_skill_dir, is_safe_file_path, DiscoveredSkill};
 pub const LINK_MODE: &str = "symlink";
 pub const COPY_MODE: &str = "copy";
 pub const MANIFEST_NAME: &str = "skills.toml";
+
+/// How `skl use` writes a skill into a project dest.
+///
+/// Wire name in `skills.toml` stays `copy` / `symlink`. Product language for
+/// copy is **materialize**.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectionMode {
+    Copy,
+    Link,
+}
+
+impl ProjectionMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Copy => COPY_MODE,
+            Self::Link => LINK_MODE,
+        }
+    }
+
+    /// Parse config / CLI tokens. Accepts product alias `materialize` and `link`.
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim() {
+            COPY_MODE | "materialize" => Some(Self::Copy),
+            LINK_MODE | "link" => Some(Self::Link),
+            _ => None,
+        }
+    }
+}
+
+impl Default for ProjectionMode {
+    fn default() -> Self {
+        Self::Copy
+    }
+}
+
+/// Options for [`activate_with`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActivateOpts<'a> {
+    pub extras: &'a [String],
+    pub mode: ProjectionMode,
+    pub force: bool,
+}
+
+impl Default for ActivateOpts<'static> {
+    fn default() -> Self {
+        Self {
+            extras: &[],
+            mode: ProjectionMode::Copy,
+            force: false,
+        }
+    }
+}
 
 /// `skl doctor` Windows note — directory symlinks need a privilege.
 pub const WINDOWS_SYMLINK_NOTE: &str =
@@ -464,6 +517,44 @@ pub fn save_manifest(project: &Path, manifest: &SkillsManifest) -> Result<()> {
     Ok(())
 }
 
+/// Doctor warn-only: link projections that Cursor Cloud / remote agents cannot follow.
+pub fn cloud_hostile_links_warning(project: &Path, home: &Path) -> Option<String> {
+    let Ok(manifest) = load_manifest(project) else {
+        return None;
+    };
+    let dests = destinations_for(project, home, &manifest.targets);
+    let mut names = Vec::new();
+    for skill in &manifest.skills {
+        let mode_link = skill.mode == LINK_MODE;
+        let dest_link = dests
+            .iter()
+            .any(|dest| dest_is_absolute_symlink(&dest.path.join(&skill.name)));
+        if mode_link || dest_link {
+            names.push(skill.name.clone());
+        }
+    }
+    if names.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "Cloud agents won't see {} (link projection); rematerialize with `skl use --all` (default copy) and commit `.agents/skills`",
+        names.join(", ")
+    ))
+}
+
+fn dest_is_absolute_symlink(path: &Path) -> bool {
+    let Ok(meta) = fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !meta.file_type().is_symlink() {
+        return false;
+    }
+    match fs::read_link(path) {
+        Ok(target) => target.is_absolute() || path_looks_absolute(&target.to_string_lossy()),
+        Err(_) => true,
+    }
+}
+
 /// Doctor warn-only: committed `skills.toml` still lists host-absolute `path`s.
 pub fn absolute_paths_warning(project: &Path) -> Option<String> {
     let Ok(manifest) = load_manifest(project) else {
@@ -485,16 +576,36 @@ pub fn absolute_paths_warning(project: &Path) -> Option<String> {
 }
 
 pub fn activate(project: &Path, home: &Path, skill: &DiscoveredSkill) -> Result<ActivateOutcome> {
-    activate_with_extras(project, home, skill, &[])
+    activate_with(project, home, skill, ActivateOpts::default())
 }
 
 /// Activate into canonical `.agents/skills` plus `extras` (merged with any
-/// extras already stored in the project `skills.toml`).
+/// extras already stored in the project `skills.toml`). Default projection
+/// is copy (materialize).
 pub fn activate_with_extras(
     project: &Path,
     home: &Path,
     skill: &DiscoveredSkill,
     extras: &[String],
+) -> Result<ActivateOutcome> {
+    activate_with(
+        project,
+        home,
+        skill,
+        ActivateOpts {
+            extras,
+            mode: ProjectionMode::Copy,
+            force: false,
+        },
+    )
+}
+
+/// Activate with an explicit projection mode (`copy` default, or `link`).
+pub fn activate_with(
+    project: &Path,
+    home: &Path,
+    skill: &DiscoveredSkill,
+    opts: ActivateOpts<'_>,
 ) -> Result<ActivateOutcome> {
     validate_skill_name(&skill.name)?;
     if !skill.path.is_dir() {
@@ -507,7 +618,7 @@ pub fn activate_with_extras(
 
     let source = canonicalize_dir(&skill.path)?;
     let mut manifest = load_manifest(project)?;
-    let extras = merge_extra_ids(&[&manifest.targets.extra, extras]);
+    let extras = merge_extra_ids(&[&manifest.targets.extra, opts.extras]);
     manifest.targets.canonical = default_canonical_ids();
     manifest.targets.extra = extras;
     let prior_copy = manifest
@@ -516,14 +627,30 @@ pub fn activate_with_extras(
         .any(|s| s.name == skill.name && s.mode == COPY_MODE);
 
     let targets = destinations_for(project, home, &manifest.targets);
-    preflight_dests(&targets, &skill.name, prior_copy)?;
+    preflight_dests(
+        &targets,
+        &skill.name,
+        PlaceOpts {
+            mode: opts.mode,
+            managed_copy: prior_copy,
+            force: opts.force,
+        },
+    )?;
 
     let mut links = Vec::new();
     let mut used_copy = false;
     let mut fallback = None;
     for target in targets {
         let dest = target.path.join(&skill.name);
-        let placed = ensure_link(&source, &dest, prior_copy)?;
+        let placed = ensure_projection(
+            &source,
+            &dest,
+            PlaceOpts {
+                mode: opts.mode,
+                managed_copy: prior_copy,
+                force: opts.force,
+            },
+        )?;
         if placed.mode == COPY_MODE {
             used_copy = true;
             if fallback.is_none() {
@@ -537,11 +664,12 @@ pub fn activate_with_extras(
         });
     }
 
-    let mode = if used_copy {
-        COPY_MODE.to_string()
+    let mode = if opts.mode == ProjectionMode::Copy || used_copy {
+        ProjectionMode::Copy.as_str()
     } else {
-        LINK_MODE.to_string()
-    };
+        ProjectionMode::Link.as_str()
+    }
+    .to_string();
     let entry = ActivatedSkill::portable(&skill.name, &mode);
     if let Some(existing) = manifest.skills.iter_mut().find(|s| s.name == skill.name) {
         *existing = entry;
@@ -665,12 +793,19 @@ pub struct Placed {
     pub fallback: Option<String>,
 }
 
-fn preflight_dests(targets: &[LinkTarget], skill: &str, managed_copy: bool) -> Result<()> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlaceOpts {
+    pub mode: ProjectionMode,
+    pub managed_copy: bool,
+    pub force: bool,
+}
+
+fn preflight_dests(targets: &[LinkTarget], skill: &str, opts: PlaceOpts) -> Result<()> {
     for target in targets {
         let dest = target.path.join(skill);
-        if dest_would_conflict(&dest, managed_copy)? {
+        if dest_would_conflict(&dest, opts)? {
             return Err(SklError::LocalState(format!(
-                "{} exists and is not a symlink; refusing to overwrite (skl use will not clobber a real directory)",
+                "{} exists and is not a managed projection; refusing to overwrite (pass --force to clobber a real directory)",
                 dest.display()
             )));
         }
@@ -678,41 +813,93 @@ fn preflight_dests(targets: &[LinkTarget], skill: &str, managed_copy: bool) -> R
     Ok(())
 }
 
-fn dest_would_conflict(dest: &Path, managed_copy: bool) -> Result<bool> {
+fn dest_would_conflict(dest: &Path, opts: PlaceOpts) -> Result<bool> {
+    if opts.force {
+        return Ok(false);
+    }
     match dest_kind(dest)? {
         DestKind::Missing | DestKind::Symlink => Ok(false),
-        DestKind::Directory if managed_copy => Ok(false),
+        DestKind::Directory if opts.managed_copy => Ok(false),
         DestKind::Directory | DestKind::Other => Ok(true),
     }
 }
 
+/// Place a skill dest. Prefer [`ensure_projection`]; this wrapper keeps
+/// capture / M0 migrate on symlink-first behavior.
 pub fn ensure_link(target: &Path, dest: &Path, managed_copy: bool) -> Result<Placed> {
+    ensure_projection(
+        target,
+        dest,
+        PlaceOpts {
+            mode: ProjectionMode::Link,
+            managed_copy,
+            force: false,
+        },
+    )
+}
+
+pub fn ensure_projection(target: &Path, dest: &Path, opts: PlaceOpts) -> Result<Placed> {
     match dest_kind(dest)? {
         DestKind::Missing => {
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
-            place_link(target, dest, false)
-        }
-        DestKind::Symlink => {
-            let current = fs::read_link(dest)?;
-            if same_path(&current, target, dest) {
-                Ok(Placed {
-                    action: LinkAction::Unchanged,
-                    mode: LINK_MODE,
-                    fallback: None,
-                })
-            } else {
-                fs::remove_file(dest)?;
-                place_link(target, dest, true)
+            match opts.mode {
+                ProjectionMode::Copy => place_copy(target, dest, false),
+                ProjectionMode::Link => place_link(target, dest, false),
             }
         }
-        DestKind::Directory if managed_copy => refresh_copy(target, dest),
+        DestKind::Symlink => match opts.mode {
+            ProjectionMode::Copy => {
+                fs::remove_file(dest)?;
+                place_copy(target, dest, true)
+            }
+            ProjectionMode::Link => {
+                let current = fs::read_link(dest)?;
+                if same_path(&current, target, dest) {
+                    Ok(Placed {
+                        action: LinkAction::Unchanged,
+                        mode: LINK_MODE,
+                        fallback: None,
+                    })
+                } else {
+                    fs::remove_file(dest)?;
+                    place_link(target, dest, true)
+                }
+            }
+        },
+        DestKind::Directory if opts.managed_copy || opts.force => match opts.mode {
+            ProjectionMode::Copy => refresh_copy(target, dest),
+            ProjectionMode::Link => {
+                fs::remove_dir_all(dest)?;
+                place_link(target, dest, true)
+            }
+        },
+        DestKind::Other if opts.force => {
+            fs::remove_file(dest)?;
+            match opts.mode {
+                ProjectionMode::Copy => place_copy(target, dest, true),
+                ProjectionMode::Link => place_link(target, dest, true),
+            }
+        }
         DestKind::Directory | DestKind::Other => Err(SklError::LocalState(format!(
-            "{} exists and is not a symlink; refusing to overwrite (skl use will not clobber a real directory)",
+            "{} exists and is not a managed projection; refusing to overwrite (pass --force to clobber a real directory)",
             dest.display()
         ))),
     }
+}
+
+fn place_copy(target: &Path, dest: &Path, replacing: bool) -> Result<Placed> {
+    copy_skill_tree(target, dest)?;
+    Ok(Placed {
+        action: if replacing {
+            LinkAction::CopyReplaced
+        } else {
+            LinkAction::Copied
+        },
+        mode: COPY_MODE,
+        fallback: None,
+    })
 }
 
 fn place_link(target: &Path, dest: &Path, replacing: bool) -> Result<Placed> {
@@ -932,13 +1119,13 @@ mod tests {
         assert_eq!(out.skill, "greeter");
         assert_eq!(out.links.len(), 1);
         assert_eq!(out.links[0].agent, "agents");
-        assert_eq!(out.links[0].action, LinkAction::Created);
-        assert_eq!(out.mode, LINK_MODE);
+        assert_eq!(out.links[0].action, LinkAction::Copied);
+        assert_eq!(out.mode, COPY_MODE);
         assert!(out.fallback.is_none());
 
         let agents = project.join(".agents/skills/greeter");
-        assert!(agents.symlink_metadata().unwrap().file_type().is_symlink());
-        assert_eq!(fs::read_link(&agents).unwrap(), out.source_path);
+        assert!(agents.is_dir());
+        assert!(!agents.symlink_metadata().unwrap().file_type().is_symlink());
         assert_eq!(
             fs::read_to_string(agents.join("SKILL.md")).unwrap(),
             "# greeter\n"
@@ -952,11 +1139,11 @@ mod tests {
         assert!(manifest.targets.extra.is_empty());
         assert_eq!(manifest.skills.len(), 1);
         assert_eq!(manifest.skills[0].name, "greeter");
-        assert_eq!(manifest.skills[0].mode, LINK_MODE);
+        assert_eq!(manifest.skills[0].mode, COPY_MODE);
         assert_eq!(manifest.skills[0].source.as_deref(), Some(PORTABLE_SOURCE));
         assert!(manifest.skills[0].path.is_none());
         let raw = fs::read_to_string(manifest_path(&project)).unwrap();
-        assert!(raw.contains("symlink"));
+        assert!(raw.contains("copy"));
         assert!(raw.contains("[targets]"));
         assert!(raw.contains("agents"));
         assert!(
@@ -985,12 +1172,9 @@ mod tests {
             out.links[0].path,
             project.join(".agents").join("skills").join("greeter")
         );
-        assert!(project
-            .join(".agents/skills/greeter")
-            .symlink_metadata()
-            .unwrap()
-            .file_type()
-            .is_symlink());
+        let dest = project.join(".agents/skills/greeter");
+        assert!(dest.is_dir());
+        assert!(!dest.symlink_metadata().unwrap().file_type().is_symlink());
         assert!(!project.join(".claude").exists());
         assert!(!project.join(".cursor").exists());
     }
@@ -1111,18 +1295,12 @@ mode = "symlink"
                 .collect::<Vec<_>>(),
             ["agents", "claude-code"]
         );
-        assert!(project
-            .join(".agents/skills/greeter")
-            .symlink_metadata()
-            .unwrap()
-            .file_type()
-            .is_symlink());
-        assert!(project
-            .join(".claude/skills/greeter")
-            .symlink_metadata()
-            .unwrap()
-            .file_type()
-            .is_symlink());
+        let agents = project.join(".agents/skills/greeter");
+        let claude = project.join(".claude/skills/greeter");
+        assert!(agents.is_dir());
+        assert!(!agents.symlink_metadata().unwrap().file_type().is_symlink());
+        assert!(claude.is_dir());
+        assert!(!claude.symlink_metadata().unwrap().file_type().is_symlink());
         assert!(!project.join(".cursor").exists());
         assert!(!project.join(".codex").exists());
         assert_eq!(load_manifest(&project).unwrap().skills.len(), 1);
@@ -1158,7 +1336,7 @@ mode = "symlink"
         let err = activate_with_extras(&project, &home, &skill, &["claude-code".into()])
             .unwrap_err()
             .to_string();
-        assert!(err.contains("not a symlink"), "{err}");
+        assert!(err.contains("not a managed projection"), "{err}");
         assert_eq!(
             fs::read_to_string(project.join(".claude/skills/greeter/SKILL.md")).unwrap(),
             "mine"
@@ -1199,9 +1377,19 @@ mode = "symlink"
         let skill = demo_skill(&home, "greeter");
 
         let extras = vec!["claude-code".into()];
-        let out =
-            with_forced_symlink_fail(|| activate_with_extras(&project, &home, &skill, &extras))
-                .unwrap();
+        let out = with_forced_symlink_fail(|| {
+            activate_with(
+                &project,
+                &home,
+                &skill,
+                ActivateOpts {
+                    extras: &extras,
+                    mode: ProjectionMode::Link,
+                    force: false,
+                },
+            )
+        })
+        .unwrap();
         assert_eq!(out.mode, COPY_MODE);
         assert!(out.fallback.as_ref().unwrap().contains("EPERM"), "{out:?}");
         assert!(out.links.iter().all(|l| l.action == LinkAction::Copied));
@@ -1224,14 +1412,29 @@ mode = "symlink"
             .unwrap()
             .contains("copy"));
 
-        let again =
-            with_forced_symlink_fail(|| activate_with_extras(&project, &home, &skill, &extras))
-                .unwrap();
-        assert!(again
-            .links
-            .iter()
-            .all(|l| l.action == LinkAction::Unchanged));
+        let again = with_forced_symlink_fail(|| {
+            activate_with(
+                &project,
+                &home,
+                &skill,
+                ActivateOpts {
+                    extras: &extras,
+                    mode: ProjectionMode::Link,
+                    force: false,
+                },
+            )
+        })
+        .unwrap();
+        assert!(
+            again.links.iter().all(|l| matches!(
+                l.action,
+                LinkAction::Unchanged | LinkAction::CopyReplaced | LinkAction::Copied
+            )),
+            "{again:?}"
+        );
         assert_eq!(again.mode, COPY_MODE);
+        assert!(agents.is_dir());
+        assert!(!agents.symlink_metadata().unwrap().file_type().is_symlink());
     }
 
     #[test]
@@ -1241,8 +1444,18 @@ mode = "symlink"
         let project = tmp.path().join("proj");
         fs::create_dir_all(&project).unwrap();
         let skill = demo_skill(&home, "greeter");
+        let extras = vec!["claude-code".into()];
         with_forced_symlink_fail(|| {
-            activate_with_extras(&project, &home, &skill, &["claude-code".into()])
+            activate_with(
+                &project,
+                &home,
+                &skill,
+                ActivateOpts {
+                    extras: &extras,
+                    mode: ProjectionMode::Link,
+                    force: false,
+                },
+            )
         })
         .unwrap();
         assert!(project.join(".claude/skills/greeter").is_dir());
@@ -1503,5 +1716,156 @@ mode = "symlink"
         assert!(!path_looks_absolute("library"));
         assert!(!path_looks_absolute(""));
         assert!(!path_looks_absolute("greeter"));
+    }
+
+    #[test]
+    fn link_mode_still_creates_symlink() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+
+        let out = activate_with(
+            &project,
+            &home,
+            &skill,
+            ActivateOpts {
+                extras: &[],
+                mode: ProjectionMode::Link,
+                force: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(out.mode, LINK_MODE);
+        let dest = project.join(".agents/skills/greeter");
+        assert!(dest.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_link(&dest).unwrap(), out.source_path);
+        assert_eq!(load_manifest(&project).unwrap().skills[0].mode, LINK_MODE);
+    }
+
+    #[test]
+    fn rematerialize_replaces_symlink_with_copy() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+        activate_with(
+            &project,
+            &home,
+            &skill,
+            ActivateOpts {
+                extras: &[],
+                mode: ProjectionMode::Link,
+                force: false,
+            },
+        )
+        .unwrap();
+        let dest = project.join(".agents/skills/greeter");
+        assert!(dest.symlink_metadata().unwrap().file_type().is_symlink());
+
+        let out = activate(&project, &home, &skill).unwrap();
+        assert_eq!(out.mode, COPY_MODE);
+        assert_eq!(out.links[0].action, LinkAction::CopyReplaced);
+        assert!(dest.is_dir());
+        assert!(!dest.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "# greeter\n"
+        );
+        assert_eq!(load_manifest(&project).unwrap().skills[0].mode, COPY_MODE);
+    }
+
+    #[test]
+    fn force_clobbers_unrelated_real_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        let skill = demo_skill(&home, "greeter");
+        fs::create_dir_all(project.join(".agents/skills/greeter")).unwrap();
+        fs::write(project.join(".agents/skills/greeter/SKILL.md"), "mine").unwrap();
+
+        let err = activate(&project, &home, &skill).unwrap_err().to_string();
+        assert!(err.contains("--force"), "{err}");
+        assert_eq!(
+            fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            "mine"
+        );
+
+        let out = activate_with(
+            &project,
+            &home,
+            &skill,
+            ActivateOpts {
+                extras: &[],
+                mode: ProjectionMode::Copy,
+                force: true,
+            },
+        )
+        .unwrap();
+        assert_eq!(out.mode, COPY_MODE);
+        assert_eq!(
+            fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            "# greeter\n"
+        );
+    }
+
+    /// Cloud checkout: tarball of the project without $HOME still has a usable SKILL.md.
+    #[test]
+    fn materialized_tree_survives_without_home_library() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+        activate(&project, &home, &skill).unwrap();
+
+        let archive = tmp.path().join("archive");
+        copy_skill_tree(&project, &archive).unwrap();
+        fs::remove_dir_all(&home).unwrap();
+
+        let dest = archive.join(".agents/skills/greeter");
+        assert!(dest.is_dir());
+        assert!(!dest.symlink_metadata().unwrap().file_type().is_symlink());
+        assert!(dest.join("SKILL.md").is_file());
+        assert_eq!(
+            fs::read_to_string(dest.join("SKILL.md")).unwrap(),
+            "# greeter\n"
+        );
+        let raw = fs::read_to_string(archive.join(MANIFEST_NAME)).unwrap();
+        assert!(raw.contains("copy"), "{raw}");
+        assert!(!raw.contains("path ="), "{raw}");
+        assert!(!home.exists());
+    }
+
+    #[test]
+    fn cloud_hostile_warning_flags_link_mode() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let skill = demo_skill(&home, "greeter");
+        activate_with(
+            &project,
+            &home,
+            &skill,
+            ActivateOpts {
+                extras: &[],
+                mode: ProjectionMode::Link,
+                force: false,
+            },
+        )
+        .unwrap();
+        let warning = cloud_hostile_links_warning(&project, &home).expect("warn");
+        assert!(warning.contains("greeter"), "{warning}");
+        assert!(warning.contains("skl use --all"), "{warning}");
+        assert!(warning.contains("commit"), "{warning}");
+
+        activate(&project, &home, &skill).unwrap();
+        assert!(
+            cloud_hostile_links_warning(&project, &home).is_none(),
+            "copy projection is cloud-ready"
+        );
     }
 }

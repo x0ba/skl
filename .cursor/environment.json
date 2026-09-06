@@ -1,0 +1,28 @@
+{
+  "name": "skl",
+  "install": "bash .cursor/install.sh",
+  "start": "bash .cursor/start.sh",
+  "terminals": [
+    {
+      "name": "api",
+      "command": "cd apps/api && pnpm dev",
+      "description": "Hono + Postgres API on http://localhost:8787 (health: /v1/health)"
+    },
+    {
+      "name": "web",
+      "command": "cd apps/web && pnpm dev",
+      "description": "Next.js web UI (dashboard + device approve) on http://localhost:3000"
+    },
+    {
+      "name": "docs",
+      "command": "cd apps/docs && pnpm start --port 3001 --no-open",
+      "description": "Docusaurus documentation site on http://localhost:3001"
+    }
+  ],
+  "ports": [
+    { "name": "web", "port": 3000 },
+    { "name": "docs", "port": 3001 },
+    { "name": "api", "port": 8787 },
+    { "name": "postgres", "port": 5432 }
+  ]
+}

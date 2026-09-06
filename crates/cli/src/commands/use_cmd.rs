@@ -1,4 +1,4 @@
-//! `skl use` — symlink a home skill into the project's agent dirs.
+//! `skl use` — materialize (copy) a library skill into the project's agent dirs.
 
 use std::path::{Path, PathBuf};
 
@@ -6,21 +6,29 @@ use crate::config::{self, Paths};
 use crate::error::{Result, SklError};
 use crate::local::db::LocalDb;
 use crate::local::library;
-use crate::local::linker::{self, LinkAction};
+use crate::local::linker::{self, ActivateOpts, LinkAction, ProjectionMode};
 use crate::local::skills::{self, DiscoveredSkill};
+
+pub struct UseOpts {
+    pub all: bool,
+    pub link: bool,
+    pub force: bool,
+}
 
 pub async fn run(
     names: &[String],
     project: Option<PathBuf>,
     agents: &[String],
-    all: bool,
+    opts: UseOpts,
     api_base: &str,
 ) -> Result<()> {
+    let all = opts.all;
     let project = resolve_project(project)?;
     let home = config::home_dir()?;
     let paths = Paths::resolve().ok();
     let db_file = paths.as_ref().map(|p| p.db_file.as_path());
     let extras = resolve_activation_extras(paths.as_ref(), agents)?;
+    let mode = resolve_projection_mode(paths.as_ref(), opts.link)?;
 
     if all && !names.is_empty() {
         return Err(SklError::LocalState(
@@ -29,7 +37,7 @@ pub async fn run(
     }
 
     if all {
-        let outs = restore_all(&project, &home, db_file, &extras)?;
+        let outs = restore_all(&project, &home, db_file, &extras, mode, opts.force)?;
         if outs.is_empty() {
             eprintln!(
                 "(no skills listed in {}; nothing to restore)",
@@ -70,7 +78,16 @@ pub async fn run(
 
     for name in names {
         let skill = resolve_skill(name, &home, db_file)?;
-        let out = linker::activate_with_extras(&project, &home, &skill, &extras)?;
+        let out = linker::activate_with(
+            &project,
+            &home,
+            &skill,
+            ActivateOpts {
+                extras: &extras,
+                mode,
+                force: opts.force,
+            },
+        )?;
         eprintln!(
             "using {}  ({}  {})",
             out.skill,
@@ -100,6 +117,8 @@ pub fn restore_all(
     home: &Path,
     db_file: Option<&Path>,
     extras: &[String],
+    mode: ProjectionMode,
+    force: bool,
 ) -> Result<Vec<linker::ActivateOutcome>> {
     let manifest = linker::load_manifest(project)?;
     if manifest.skills.is_empty() {
@@ -120,9 +139,33 @@ pub fn restore_all(
 
     let mut outs = Vec::new();
     for skill in &resolved {
-        outs.push(linker::activate_with_extras(project, home, skill, extras)?);
+        outs.push(linker::activate_with(
+            project,
+            home,
+            skill,
+            ActivateOpts {
+                extras,
+                mode,
+                force,
+            },
+        )?);
     }
     Ok(outs)
+}
+
+/// CLI `--link` wins; else `project.projection` in config; else copy.
+/// Unknown config values error instead of silently becoming copy.
+pub fn resolve_projection_mode(paths: Option<&Paths>, link: bool) -> Result<ProjectionMode> {
+    if link {
+        return Ok(ProjectionMode::Link);
+    }
+    let Some(paths) = paths else {
+        return Ok(ProjectionMode::Copy);
+    };
+    if !paths.config_file.exists() {
+        return Ok(ProjectionMode::Copy);
+    }
+    crate::config::load(paths)?.projection_mode()
 }
 
 fn missing_listed_skills_error(project: &Path, missing: &[String]) -> SklError {
@@ -236,7 +279,7 @@ fn fs_canonicalize(path: &Path) -> Result<PathBuf> {
 
 fn action_label(action: LinkAction) -> &'static str {
     match action {
-        LinkAction::Created => "symlink",
+        LinkAction::Created => "link",
         LinkAction::Copied => "copy",
         LinkAction::Replaced => "replace",
         LinkAction::CopyReplaced => "copy*",
@@ -392,10 +435,24 @@ mode = "symlink"
         )
         .unwrap();
 
-        let outs = restore_all(&project, &home, Some(&db_file), &[]).unwrap();
+        let outs = restore_all(
+            &project,
+            &home,
+            Some(&db_file),
+            &[],
+            ProjectionMode::Copy,
+            false,
+        )
+        .unwrap();
         assert_eq!(outs.len(), 1);
         assert_eq!(outs[0].skill, "greeter");
         assert!(project.join(".agents/skills/greeter").exists());
+        assert!(!project
+            .join(".agents/skills/greeter")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
         let raw = std::fs::read_to_string(linker::manifest_path(&project)).unwrap();
         assert!(!raw.contains("path ="), "{raw}");
         assert!(!raw.contains("/Users/other"), "{raw}");
@@ -422,7 +479,15 @@ mode = "symlink"
         );
 
         std::fs::write(skill_dir.join("SKILL.md"), "mutated library\n").unwrap();
-        let outs = restore_all(&project, &home, Some(&db_file), &[]).unwrap();
+        let outs = restore_all(
+            &project,
+            &home,
+            Some(&db_file),
+            &[],
+            ProjectionMode::Copy,
+            false,
+        )
+        .unwrap();
         assert_eq!(outs.len(), 1);
         let dest = project.join(".agents/skills/greeter");
         assert!(dest.exists());
@@ -430,14 +495,8 @@ mode = "symlink"
             std::fs::read_to_string(dest.join("SKILL.md")).unwrap(),
             "mutated library\n"
         );
-        #[cfg(unix)]
-        {
-            assert!(dest.symlink_metadata().unwrap().file_type().is_symlink());
-            assert_eq!(
-                std::fs::canonicalize(&dest).unwrap(),
-                std::fs::canonicalize(&skill_dir).unwrap()
-            );
-        }
+        assert!(dest.is_dir());
+        assert!(!dest.symlink_metadata().unwrap().file_type().is_symlink());
     }
 
     #[test]
@@ -457,7 +516,7 @@ mode = "symlink"
         )
         .unwrap();
 
-        let err = restore_all(&project, &home, None, &[])
+        let err = restore_all(&project, &home, None, &[], ProjectionMode::Copy, false)
             .unwrap_err()
             .to_string();
         assert!(err.contains("ghost"), "{err}");
@@ -504,7 +563,15 @@ mode = "symlink"
         std::fs::write(skill_b.join("SKILL.md"), "from B after sync").unwrap();
         let db_b = data_b.join("state.db");
 
-        let outs = restore_all(&project_b, &home_b, Some(&db_b), &[]).unwrap();
+        let outs = restore_all(
+            &project_b,
+            &home_b,
+            Some(&db_b),
+            &[],
+            ProjectionMode::Copy,
+            false,
+        )
+        .unwrap();
         assert_eq!(outs.len(), 1);
         assert_eq!(outs[0].skill, "greeter");
         let dest = project_b.join(".agents/skills/greeter");
@@ -564,7 +631,15 @@ mode = "symlink"
         )
         .unwrap();
 
-        let outs = restore_all(&project, &home_b, Some(&db_b), &[]).unwrap();
+        let outs = restore_all(
+            &project,
+            &home_b,
+            Some(&db_b),
+            &[],
+            ProjectionMode::Copy,
+            false,
+        )
+        .unwrap();
         assert_eq!(outs.len(), 1);
         assert_eq!(
             std::fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),
@@ -575,6 +650,50 @@ mode = "symlink"
         assert!(
             !raw.contains(&foreign.to_string_lossy().to_string()),
             "{raw}"
+        );
+    }
+
+    #[test]
+    fn resolve_projection_prefers_link_flag_then_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: tmp.path().join("data"),
+            db_file: tmp.path().join("data/state.db"),
+        };
+        paths.ensure().unwrap();
+        assert_eq!(
+            resolve_projection_mode(None, false).unwrap(),
+            ProjectionMode::Copy
+        );
+        assert_eq!(
+            resolve_projection_mode(None, true).unwrap(),
+            ProjectionMode::Link
+        );
+        std::fs::write(&paths.config_file, "[project]\nprojection = \"link\"\n").unwrap();
+        assert_eq!(
+            resolve_projection_mode(Some(&paths), false).unwrap(),
+            ProjectionMode::Link
+        );
+        assert_eq!(
+            resolve_projection_mode(Some(&paths), true).unwrap(),
+            ProjectionMode::Link
+        );
+        std::fs::write(&paths.config_file, "[project]\nprojection = \"copy\"\n").unwrap();
+        assert_eq!(
+            resolve_projection_mode(Some(&paths), false).unwrap(),
+            ProjectionMode::Copy
+        );
+        std::fs::write(&paths.config_file, "[project]\nprojection = \"coppy\"\n").unwrap();
+        let err = resolve_projection_mode(Some(&paths), false)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown [project].projection"), "{err}");
+        assert!(err.contains("coppy"), "{err}");
+        assert_eq!(
+            resolve_projection_mode(Some(&paths), true).unwrap(),
+            ProjectionMode::Link
         );
     }
 

@@ -94,6 +94,12 @@ enum Command {
         /// Rematerialize every skill listed in skills.toml from this machine's library.
         #[arg(long)]
         all: bool,
+        /// Symlink into the project instead of copying (local-only; broken for Cursor Cloud).
+        #[arg(long)]
+        link: bool,
+        /// Overwrite an unmanaged real directory at the dest.
+        #[arg(long)]
+        force: bool,
         /// Project directory (default: cwd).
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
@@ -130,7 +136,7 @@ enum Command {
         #[arg(value_name = "SKILL", required = true)]
         skills: Vec<String>,
     },
-    /// Remove project skill symlinks and drop them from skills.toml.
+    /// Remove project skill copies or symlinks and drop them from skills.toml.
     Unuse {
         #[arg(value_name = "SKILL", required = true)]
         skills: Vec<String>,
@@ -138,7 +144,7 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         project: Option<PathBuf>,
     },
-    /// Explicit layout rewrites (never run from `skl use`).
+    /// Explicit layout / projection rewrites (never run from `skl use`).
     Migrate {
         #[command(subcommand)]
         action: MigrateAction,
@@ -166,6 +172,15 @@ enum MigrateAction {
         /// Remove old .claude/.cursor (and .codex) links after the canonical dest exists.
         #[arg(long)]
         prune_old: bool,
+    },
+    /// Convert project projections (symlink ↔ copy).
+    Projections {
+        /// Project directory (default: cwd).
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+        /// Replace link projections with materialized copies.
+        #[arg(long)]
+        materialize: bool,
     },
 }
 
@@ -250,9 +265,20 @@ async fn run() -> Result<(), SklError> {
         Command::Use {
             skills,
             all,
+            link,
+            force,
             project,
             agents,
-        } => commands::use_cmd::run(&skills, project, &agents, all, &api_base).await,
+        } => {
+            commands::use_cmd::run(
+                &skills,
+                project,
+                &agents,
+                commands::use_cmd::UseOpts { all, link, force },
+                &api_base,
+            )
+            .await
+        }
         Command::Create { name } => commands::create::run(&name, &api_base).await,
         Command::Capture {
             path,
@@ -279,7 +305,14 @@ async fn run() -> Result<(), SklError> {
         }
         Command::Migrate {
             action: MigrateAction::Targets { project, prune_old },
-        } => commands::migrate::run(project, prune_old),
+        } => commands::migrate::run_targets(project, prune_old),
+        Command::Migrate {
+            action:
+                MigrateAction::Projections {
+                    project,
+                    materialize,
+                },
+        } => commands::migrate::run_projections(project, materialize),
         Command::Update { force } => commands::update::run(force).await,
         Command::Tui | Command::Ui => unreachable!("TUI dispatched before match"),
     }
@@ -349,6 +382,26 @@ mod cli_parse_tests {
                 .unwrap()
                 .command,
             Some(Command::Use { .. })
+        ));
+        let use_link = Cli::try_parse_from(["skl", "use", "--link", "greeter"]).unwrap();
+        assert!(matches!(
+            use_link.command,
+            Some(Command::Use {
+                link: true,
+                force: false,
+                ..
+            })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "migrate", "projections", "--materialize"])
+                .unwrap()
+                .command,
+            Some(Command::Migrate {
+                action: MigrateAction::Projections {
+                    materialize: true,
+                    ..
+                }
+            })
         ));
         assert!(matches!(
             Cli::try_parse_from(["skl", "delete", "greeter"])
