@@ -26,6 +26,9 @@ pub fn draw(frame: &mut Frame<'_>, app: &App) {
     if app.overlay == Overlay::Help {
         draw_help(frame, area);
     }
+    if app.overlay == Overlay::Create {
+        draw_create(frame, area, app);
+    }
 }
 
 fn draw_header(frame: &mut Frame<'_>, area: Rect, app: &App) {
@@ -115,6 +118,7 @@ fn draw_preview(frame: &mut Frame<'_>, area: Rect, app: &App) {
 fn draw_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let keys = match app.overlay {
         Overlay::Search => "type to filter  ↑↓ move  Enter done  Esc clear".to_string(),
+        Overlay::Create => "type a skill name  Enter create  Esc cancel".to_string(),
         Overlay::ConfirmDelete => {
             let name = app
                 .selected_row()
@@ -123,7 +127,7 @@ fn draw_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
             format!("delete {name}? removes library copy   y confirm  n/Esc cancel")
         }
         Overlay::None | Overlay::Help => {
-            "/ search  ↑↓/jk move  [] scroll  e edit  u/U use  d delete  s sync  r refresh  ? help  q quit"
+            "/ search  n new  ↑↓/jk move  [] scroll  e edit  u/U use  d delete  s sync  r refresh  ? help  q quit"
                 .to_string()
         }
     };
@@ -134,6 +138,21 @@ fn draw_footer(frame: &mut Frame<'_>, area: Rect, app: &App) {
     };
     let para = Paragraph::new(status).block(Block::default().borders(Borders::ALL));
     frame.render_widget(para, area);
+}
+
+fn draw_create(frame: &mut Frame<'_>, area: Rect, app: &App) {
+    let popup = centered(area, 54, 28);
+    let name = if app.create_name.is_empty() {
+        "_".to_string()
+    } else {
+        format!("{}_", app.create_name)
+    };
+    let body = format!("name: {name}\n\nEnter opens $EDITOR with name + description frontmatter.");
+    let para = Paragraph::new(body)
+        .block(Block::default().borders(Borders::ALL).title(" new skill "))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(Clear, popup);
+    frame.render_widget(para, popup);
 }
 
 fn draw_help(frame: &mut Frame<'_>, area: Rect) {

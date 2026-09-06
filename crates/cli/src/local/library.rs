@@ -1,7 +1,8 @@
 //! Canonical personal skill library (`{data_dir}/skills`).
 //!
-//! Roles: the library is canonical; `skl init` / `skl capture` import foreign
-//! trees into it; `skl use` / `skl use --all` project from it. `skl sync` is
+//! Roles: the library is canonical; `skl create` writes new skills; `skl init` /
+//! `skl capture` import foreign trees into it; `skl use` / `skl use --all`
+//! project from it. `skl sync` is
 //! content-addressed against this library only — never agent homes
 //! (`~/.agents/skills`, `~/.claude/skills`, …) or project dests.
 
@@ -235,7 +236,10 @@ mod tests {
             "unindexed harness/project trees must not become sync peers: {listed:?}"
         );
         assert!(!paths.library_skill("decoy").join("SKILL.md").is_file());
-        assert!(!paths.library_skill("claude-decoy").join("SKILL.md").is_file());
+        assert!(!paths
+            .library_skill("claude-decoy")
+            .join("SKILL.md")
+            .is_file());
         assert!(!paths.library_skill("proj-decoy").join("SKILL.md").is_file());
     }
 }
