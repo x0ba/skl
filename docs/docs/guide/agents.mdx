@@ -1,0 +1,30 @@
+---
+title: Extra agents
+description: Keep .agents/skills as the project dest, and opt in extra dests such as Claude Code.
+---
+
+# Extra agents
+
+The canonical **project dest** is always `.agents/skills`. Cursor, Codex, and other agents that already read that directory need nothing else.
+
+An **extra dest** is for an agent that uses its own project directory. The common case is Claude Code, which reads `.claude/skills`.
+
+## This activation
+
+```bash
+skl use writing-tests -a claude-code
+```
+
+`claude` is an alias for `claude-code`. Other catalog ids work with `-a <id>` when that agent uses its own project dir. Cursor and Codex are rejected as extras because they already read `.agents/skills`.
+
+## Sticky extras
+
+```bash
+skl targets
+skl targets add claude-code
+skl targets remove claude-code
+```
+
+`skl targets` lists the canonical dest and any **sticky extras** stored in `~/.config/skl/config.toml` under `[targets].extra`. Sticky extras apply to later `skl use` runs on this machine.
+
+`skl init` and `skl doctor` may ask once whether you want extras. The prompt is skipped in CI, when `SKL_NO_PROMPT` or `SKL_YES` is set, and when stdin is not a TTY.

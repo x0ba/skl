@@ -1,0 +1,32 @@
+---
+title: skl login
+description: Device authorization. Stores the device token in state.db.
+---
+
+# skl login
+
+Device authorization. Polls for approval and stores the device token in local state.
+
+## Synopsis
+
+```bash
+skl login
+```
+
+## Flags
+
+None.
+
+## What it writes
+
+- Device token in `state.db` (`meta.device_token`)
+- `api_base` in `config.toml`
+- May piggyback auto-sync after a successful login
+
+Prints `verification_uri_complete` and `user_code`. Client name sent to the API is `skl@<hostname>`.
+
+## Errors
+
+- `device authorization expired; run skl login again`
+- `device authorization was denied`
+- `cannot reach API at <url>`

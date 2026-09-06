@@ -1,0 +1,42 @@
+---
+title: skl create
+description: Create a personal-library skill and open SKILL.md in the editor.
+---
+
+# skl create
+
+Create a personal-library skill and open `SKILL.md` in `$EDITOR`. Alias `skl new`.
+
+## Synopsis
+
+```bash
+skl create <skill>
+skl new <skill>
+```
+
+## Flags
+
+- `SKILL` required name
+
+The name cannot be empty, cannot start with `.`, and cannot contain `/` or `\`.
+
+## What it writes
+
+`{data_dir}/skills/<name>/SKILL.md` with:
+
+```md
+---
+name: <skill>
+description:
+---
+```
+
+Indexes the tree in `state.db`. Opens `$VISUAL` or `$EDITOR` (fallback `vi`). Editor failure leaves the files in place and prints a warning. May piggyback auto-sync.
+
+Does not write project dests.
+
+## Errors
+
+- `invalid skill name`
+- skill already exists in the personal library
+- Filesystem errors while creating the directory

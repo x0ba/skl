@@ -1,0 +1,67 @@
+---
+title: Installation
+description: Install skl with the curl script, from source, or upgrade by rerunning the installer.
+---
+
+# Installation
+
+## Recommended
+
+```bash
+curl -fsSL https://www.tryskl.fyi/install.sh | sh
+```
+
+The script writes `~/.local/bin/skl` (or `skl.exe` on Windows Git Bash). It never edits `.bashrc`, `.zshrc`, or fish config.
+
+### Flags
+
+- `--non-interactive` installs the binary only. It skips login, init, and first-run prompts.
+- `--print-target` prints the GitHub Release triple for this machine and exits.
+- `--help` prints the installer help.
+
+### Environment
+
+- `SKL_DOWNLOAD_BASE` is the asset origin. Default is GitHub Releases `latest/download`.
+- `SKL_INSTALL_DIR` is the install directory. Default is `~/.local/bin`.
+- `SKL_NON_INTERACTIVE` has the same effect as `--non-interactive`.
+- `API_BASE` is the API origin for first-run setup. The installer defaults this to `https://api.tryskl.fyi`.
+- `CI` forces a binary-only install.
+
+CI and other non-TTY runs install the binary only. On a TTY, `curl | sh` still runs first-run because the script reattaches `/dev/tty`.
+
+## PATH
+
+If `~/.local/bin` is not on `PATH`, the installer prints:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add that export yourself if you want it to persist. The installer does not touch shell rc files.
+
+## From source
+
+From a clone of [x0ba/skl](https://github.com/x0ba/skl):
+
+```bash
+cargo install --path crates/cli
+```
+
+Debug builds default `api_base` to `http://localhost:8787`. Release builds default to `https://api.tryskl.fyi`. Override with `--api-base` or `API_BASE`.
+
+## Upgrade
+
+Rerun the install script. It overwrites the binary in `SKL_INSTALL_DIR`.
+
+## Interactive first-run
+
+On a TTY, the installer runs `skl setup`. That asks two questions, both defaulting to yes:
+
+```text
+Log in now? [Y/n]
+Import existing skills (skl init)? [Y/n]
+```
+
+Answer `n` to skip either step. You can run `skl login` and `skl init` later.
+
+`skl setup --non-interactive` prints the next commands and exits.

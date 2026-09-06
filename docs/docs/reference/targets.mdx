@@ -1,0 +1,34 @@
+---
+title: skl targets
+description: Show or edit sticky extra dests in config.toml.
+---
+
+# skl targets
+
+Show or edit sticky extra dests (`~/.config/skl/config.toml`).
+
+## Synopsis
+
+```bash
+skl targets
+skl targets add <id>…
+skl targets remove <id>…
+```
+
+## Subcommands
+
+- no subcommand lists canonical dest and extras
+- `add` writes extra dest ids (custom catalog ids, for example `claude-code`). Rejects universal ids.
+- `remove` deletes extra dest ids. Accepts aliases such as `claude`.
+
+## What it writes
+
+`add` and `remove` rewrite `[targets].extra` in `config.toml`. List writes nothing.
+
+Printed lines are `canonical`, `extra`, `config`, and `ids`.
+
+## Errors
+
+- Universal ids such as `cursor` or `codex` on `add` (`… uses project .agents/skills …`)
+- Unknown catalog ids
+- Config dir resolution failures

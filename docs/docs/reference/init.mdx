@@ -1,0 +1,30 @@
+---
+title: skl init
+description: Import foreign home skills into the personal library.
+---
+
+# skl init
+
+Import foreign skills into the personal library (`~/.local/share/skl/skills`).
+
+## Synopsis
+
+```bash
+skl init
+```
+
+## Flags
+
+None.
+
+## What it writes
+
+Copies missing skills from home roots into `{data_dir}/skills`. Rebuilds the `state.db` import index from the library only. Foreign trees stay in place. Existing library names are left untouched.
+
+May prompt once for sticky extras and write `[targets]` in `config.toml`. May piggyback auto-sync.
+
+Home roots include `~/.agents/skills`, `~/.config/agents/skills`, `~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`, and other catalog globals.
+
+## Errors
+
+Config or data dir resolution failures. Filesystem errors while copying.

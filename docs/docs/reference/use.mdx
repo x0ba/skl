@@ -1,0 +1,45 @@
+---
+title: skl use
+description: Activate a skill, list activated skills, or restore all from skills.toml.
+---
+
+# skl use
+
+Activate a skill, list activated skills, or restore all (`--all`).
+
+## Synopsis
+
+```bash
+skl use
+skl use <skill>…
+skl use --all
+skl use <skill> --project <dir> -a <id>
+```
+
+## Flags
+
+- `SKILL…` skill names. With none, list skills already activated in the project.
+- `--all` rematerializes every skill listed in `skills.toml` from this machine's library.
+- `--project DIR` project directory (default cwd).
+- `-a`, `--agent ID` extra dest for this activation. Repeatable.
+
+`claude` is accepted as `claude-code`. `cursor` and `codex` are rejected as extras.
+
+`--all` cannot be combined with skill names.
+
+## What it writes
+
+- `.agents/skills/<name>` as a symlink, or a copy when the symlink fails
+- extra dests from `-a` and sticky extras
+- `skills.toml` in the project
+- May piggyback auto-sync
+
+Does not run `skl migrate`.
+
+## Errors
+
+- `use either skl use --all or skl use <skill>`
+- skill is not in the personal library on this machine
+- skill listed in `skills.toml` but not found in the personal library
+- dest exists and is not a symlink (refuses to overwrite a real directory)
+- invalid skill name (leading `.`, `/`, or `\`)

@@ -1,0 +1,39 @@
+---
+title: skl
+description: Personal skill library, hash sync, and project activation for agent skills.
+slug: /
+---
+
+# skl
+
+skl keeps a personal library of agent skills on this machine and can sync that library across machines by content hash. A skill is a directory that contains `SKILL.md`. You activate a skill into a project with `skl use`. That writes the project dest, `.agents/skills`, and records the name in `skills.toml`.
+
+Sync is optional. The hosted API is [https://api.tryskl.fyi](https://api.tryskl.fyi). Skip login and the personal library stays on this machine at `~/.local/share/skl/skills`.
+
+## Quickstart
+
+```bash
+curl -fsSL https://www.tryskl.fyi/install.sh | sh
+```
+
+Then:
+
+```bash
+skl login
+skl init
+skl sync
+cd /path/to/project
+skl use writing-tests
+```
+
+`skl init` is only needed if you already have skills in home agent dirs. `skl login` and `skl sync` are only needed if you want the hosted library. Bare `skl` on a TTY opens the TUI.
+
+If you want the same path with more explanation, start at [Getting started](/guide/getting-started).
+
+## Supported platforms
+
+The installer covers Linux `x86_64` and `aarch64`, macOS Intel and Apple silicon, and Windows `x86_64` through Git Bash. It writes `~/.local/bin/skl` and does not edit `.bashrc`, `.zshrc`, or fish config. If that directory is not on `PATH`, the script prints an export you can add yourself.
+
+## Getting help
+
+File an issue at [github.com/x0ba/skl/issues](https://github.com/x0ba/skl/issues). Run `skl doctor` and include that output. It reports the resolved paths, the token store, the API health check, and whether this machine can create directory symlinks.

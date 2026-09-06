@@ -1,0 +1,61 @@
+---
+title: Configuration
+description: config.toml fields, environment variables, and global CLI flags.
+---
+
+# Configuration
+
+skl reads `config.toml` from the config dir. Override the directory with `SKL_CONFIG_DIR`. On Linux the default file is `~/.config/skl/config.toml`. `skl doctor` prints the path this machine uses.
+
+```toml
+api_base = "https://api.tryskl.fyi"
+
+[sync]
+auto = true
+frequency_secs = 900
+
+[targets]
+extra = ["claude-code"]
+```
+
+Missing keys take the defaults below.
+
+## Fields
+
+**`api_base`.** API origin with no trailing slash. Release builds default to `https://api.tryskl.fyi`. Debug builds default to `http://localhost:8787`. `--api-base` and `API_BASE` override this file.
+
+**`[sync] auto`.** When `true`, login, init, use, unuse, status, create, capture, and list may piggyback a fail-soft sync. Default `true`.
+
+**`[sync] frequency_secs`.** Minimum seconds between a successful sync or a failed auto-sync attempt. Default `900`.
+
+**`[targets] extra`.** Sticky extra dest ids. Empty means `skl use` writes only `.agents/skills`. `claude` is stored as `claude-code`. Universal ids such as `cursor` and `codex` are dropped.
+
+`[targets] prompted` is written after the one-time extras prompt. You do not set it by hand.
+
+## Environment
+
+| Variable | Role |
+| --- | --- |
+| `API_BASE` | API origin. Same as `--api-base`. Wins over `config.toml`. |
+| `SKL_CONFIG_DIR` | Directory that contains `config.toml`. |
+| `SKL_DATA_DIR` | Directory that contains `state.db` and `skills/`. |
+| `SKL_TOKEN` | Device token. Wins over the file and `state.db`. |
+| `SKL_TOKEN_FILE` | Path to a file whose first non-empty line is the token. |
+| `SKL_NO_TUI` | When set, bare `skl` prints help instead of opening the TUI. |
+| `SKL_NO_PROMPT` | Skip first-run and extras prompts. |
+| `SKL_YES` | Same prompt skip as `SKL_NO_PROMPT`. |
+| `SKL_NON_INTERACTIVE` | Installer binary-only mode. |
+| `SKL_INSTALL_DIR` | Installer destination. Default `~/.local/bin`. |
+| `SKL_DOWNLOAD_BASE` | Installer asset origin. |
+| `CI` | Treat setup and install as non-interactive. |
+
+Token precedence is `SKL_TOKEN`, then `SKL_TOKEN_FILE`, then `state.db`.
+
+## Global flags
+
+- `--api-base <url>` sets the API origin for this process.
+- `--no-tui` prints help instead of opening the TUI.
+
+## Data dir
+
+The personal library is `{SKL_DATA_DIR}/skills`. The device token and local index live in `{SKL_DATA_DIR}/state.db`. On Linux that is `~/.local/share/skl`. The data dir is created with mode `0700` on Unix. `state.db` is `0600`.

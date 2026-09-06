@@ -1,0 +1,75 @@
+---
+title: Getting started
+description: Install skl, import existing skills, optionally sync, then use a skill in a project.
+---
+
+# Getting started
+
+This guide walks through setup one step at a time. If you only want the commands, the [home page](/) has them.
+
+Setup takes four steps. Only the first is required.
+
+1. Install skl
+2. Import existing skills, if you have any
+3. Log in and sync, if you want the library on more than one machine
+4. Open the TUI and use a skill in a project
+
+## 1. Install
+
+The install script downloads the binary and can walk you through first-run:
+
+```bash
+curl -fsSL https://www.tryskl.fyi/install.sh | sh
+```
+
+On a TTY it asks `Log in now? [Y/n]`, then `Import existing skills (skl init)? [Y/n]`. A non-TTY or CI install writes the binary only.
+
+Want flags and `PATH` notes? See [Installation](/guide/installation).
+
+At this point `skl` is on disk. Bare `skl` on a TTY opens the TUI.
+
+## 2. Import existing skills
+
+`skl init` copies skills from home agent dirs into the personal library. The foreign trees stay where they are.
+
+```bash
+skl init
+```
+
+Skip this if you have nothing to import. You can create a skill later with `skl create`. Details are in [Import existing skills](/guide/import).
+
+## 3. Set up sync (optional)
+
+Sync backs the personal library up and shares it between machines. You can use the hosted API or [run the server from this repo](/self-hosting).
+
+```bash
+skl login
+skl sync
+```
+
+`skl login` prints a verification URL and a user code. Approve the device in the browser. The **device token** is stored in `~/.local/share/skl/state.db`.
+
+Skipping this step is fine. The personal library stays on this machine, not backed up and not synchronized. [Setting up sync](/guide/sync) covers a second machine, conflicts, and what the server can read.
+
+## 4. Use a skill
+
+Create one if the library is empty:
+
+```bash
+skl create writing-tests
+```
+
+Change into a project and activate it:
+
+```bash
+cd /path/to/project
+skl use writing-tests
+```
+
+`skl use` writes `.agents/skills/writing-tests` and adds the name to `skills.toml`. Default is a symlink to the personal library. If the symlink fails, skl copies instead.
+
+Bare `skl` opens the two-pane browser. Keybindings are in [The TUI](/guide/tui). Everyday commands are in [Basic usage](/guide/basic-usage).
+
+## Getting help
+
+File an issue at [github.com/x0ba/skl/issues](https://github.com/x0ba/skl/issues). Run `skl doctor` first and include that output.

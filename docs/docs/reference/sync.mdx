@@ -1,0 +1,42 @@
+---
+title: skl sync
+description: Hash-sync the personal library. Never project or home agent dirs.
+---
+
+# skl sync
+
+Hash-sync the personal library only. Never agent or project dirs.
+
+## Synopsis
+
+```bash
+skl sync
+skl sync --keep-local
+skl sync --keep-remote
+skl sync --allow-warnings
+```
+
+## Flags
+
+- `--keep-local` resolves every tree-hash conflict by keeping local (overwrite remote).
+- `--keep-remote` resolves every tree-hash conflict by keeping remote (overwrite local).
+- `--allow-warnings` allows warning-level secret findings. Blocks still refuse upload.
+
+`--keep-local` and `--keep-remote` are mutually exclusive. With neither flag, a TTY prompts. A non-TTY requires one of the flags.
+
+## What it writes
+
+- Uploads and downloads blobs under `{data_dir}/skills`
+- Updates `state.db` hashes and last-sync meta
+- Does not write `.agents/skills`, `skills.toml`, or home agent dirs
+
+Requires a device token and an existing `state.db`. Secret scan runs before upload.
+
+## Errors
+
+- `not logged in; run skl login`
+- `no local skill index; run skl init first`
+- `upload blocked: …` (block-level secrets)
+- `conflict: …` when unresolved
+- `non-interactive sync needs --keep-local or --keep-remote`
+- `cannot reach API at <url>`

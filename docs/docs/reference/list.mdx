@@ -1,0 +1,28 @@
+---
+title: skl list
+description: List local skills from state.db, plus remote presence when logged in.
+---
+
+# skl list
+
+List local skills from `state.db`. When logged in, also shows remote presence.
+
+## Synopsis
+
+```bash
+skl list
+```
+
+## Flags
+
+None.
+
+## What it writes
+
+Nothing on disk except a possible auto-sync when due. Prints `name`, short `tree_hash`, `source`, `path`, and `remote` (`yes`, `no`, or `-`). Names that exist only on the server appear under `remote only`.
+
+Without `state.db`, prints `no local skill index; run skl init first` and exits 0.
+
+## Errors
+
+Remote list failures print `remote list skipped` and still show the local table. Config or database open failures return an error.

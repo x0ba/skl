@@ -1,0 +1,49 @@
+---
+title: Import existing skills
+description: Copy home agent skills into the personal library with init, or promote a project skill with capture.
+---
+
+# Import existing skills
+
+Two commands bring skills into the personal library. `skl init` copies from home agent dirs. `skl capture` promotes a skill that already lives in a project.
+
+## Init
+
+```bash
+skl init
+```
+
+`skl init` finds skills under home roots and copies any name that is not already in `~/.local/share/skl/skills`. Foreign trees stay in place. Init never overwrites a library skill of the same name.
+
+Roots include:
+
+- `~/.agents/skills`
+- `~/.config/agents/skills`
+- `~/.claude/skills`
+- `~/.cursor/skills`
+- `~/.codex/skills`
+- other catalog globals on this machine
+
+`skl doctor` lists the roots it can see. After init, the library is ready for `skl sync`. Sync still does not touch those home dirs.
+
+Init may ask once whether you want **sticky extras** such as Claude Code. See [Extra agents](/guide/agents).
+
+## Capture
+
+```bash
+skl capture writing-tests
+skl capture .agents/skills/writing-tests
+```
+
+`skl capture` copies a project skill into the personal library. The path or name is resolved under the project dest `.agents/skills` and any sticky extras.
+
+After a successful capture, the project directory becomes a symlink to the library copy. Pass `--keep-copy` to leave a real directory in the project.
+
+### Flags
+
+- `--force` overwrites an existing library skill of the same name.
+- `--as NAME` stores the skill under a different name.
+- `--keep-copy` copies into the library and leaves the project dir as a real copy.
+- `--project DIR` sets the project root. Default is the current directory.
+
+A name clash without `--force` or `--as` is an error. The source must be a directory that contains `SKILL.md`.

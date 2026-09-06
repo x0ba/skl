@@ -1,0 +1,82 @@
+---
+title: Basic usage
+description: Create, use, unuse, list, status, delete, and migrate skills.
+---
+
+# Basic usage
+
+These commands assume skl is installed. Sync steps live on [Setting up sync](/guide/sync).
+
+## Create
+
+```bash
+skl create writing-tests
+```
+
+`skl new` is an alias. Create writes `~/.local/share/skl/skills/writing-tests/SKILL.md` with frontmatter `name` and `description`, then opens `$VISUAL` or `$EDITOR` (fallback `vi`).
+
+The name cannot start with `.` and cannot contain `/` or `\`. A name that already exists in the library is an error. Edit that skill instead.
+
+If the editor fails, the skill is still on disk.
+
+## Use
+
+```bash
+skl use writing-tests
+```
+
+`skl use` activates a library skill into this project. It writes `.agents/skills/writing-tests` and adds the name to `skills.toml`. Default is a symlink. If the symlink fails, skl copies.
+
+```bash
+skl use
+```
+
+With no arguments, `skl use` lists skills already activated in this project.
+
+```bash
+skl use --all
+```
+
+`--all` rematerializes every skill listed in `skills.toml` from this machine's personal library. If a listed name is missing here, sync first, then run `skl use --all` again.
+
+```bash
+skl use writing-tests -a claude-code
+```
+
+`-a` / `--agent` adds an **extra dest** for this activation. Repeat the flag for more than one id. `claude` is an alias for `claude-code`.
+
+Cursor and Codex already read `.agents/skills`. Do not add them as extras.
+
+`--project DIR` sets the project root. Default is the current directory.
+
+## Unuse
+
+```bash
+skl unuse writing-tests
+```
+
+`skl unuse` removes the project dest for that name and drops it from `skills.toml`. The personal library copy stays.
+
+## List, status, delete
+
+```bash
+skl list
+skl status
+skl delete writing-tests
+```
+
+`skl list` prints local skills from `state.db`. When you are logged in, it also marks remote presence.
+
+`skl status` prints `api_base`, whether a device token is present, config and `state.db` paths, auto-sync prefs, local skill count, and last sync.
+
+`skl delete` removes the skill from SKL and deletes the local library copy. Project dests and home agent dirs stay. Delete talks to the API, so you need to be logged in.
+
+## Migrate old project links
+
+```bash
+skl migrate targets
+skl migrate targets --prune-old
+skl migrate targets --project DIR
+```
+
+`skl migrate targets` moves old `.claude` and `.cursor` project links onto `.agents/skills`. `--prune-old` removes the old links after the canonical dest exists. `skl use` never runs this. `skl doctor` warns when it sees the old layout.
