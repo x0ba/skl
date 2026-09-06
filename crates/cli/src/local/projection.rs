@@ -16,6 +16,7 @@ pub enum ProjectionKind {
     DivergentCopy,
     DanglingLink,
     OrphanActivation,
+    CloudHostileLink,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +60,18 @@ pub fn inspect(project: &Path, home: &Path, paths: Option<&Paths>) -> Vec<Projec
             });
         }
 
+        if entry.mode == linker::LINK_MODE {
+            out.push(ProjectionWarning {
+                kind: ProjectionKind::CloudHostileLink,
+                skill: entry.name.clone(),
+                dest: None,
+                message: format!(
+                    "{} uses a link projection; Cloud agents won't see this. Rematerialize with `skl use --all` (default copy) and commit `.agents/skills`",
+                    entry.name
+                ),
+            });
+        }
+
         for dest in &dests {
             let candidate = dest.path.join(&entry.name);
             let meta = match fs::symlink_metadata(&candidate) {
@@ -80,6 +93,16 @@ pub fn inspect(project: &Path, home: &Path, paths: Option<&Paths>) -> Vec<Projec
                             entry.name
                         ),
                     });
+                } else if entry.mode != linker::LINK_MODE {
+                    out.push(ProjectionWarning {
+                        kind: ProjectionKind::CloudHostileLink,
+                        skill: entry.name.clone(),
+                        dest: Some(candidate.clone()),
+                        message: format!(
+                            "{} is an absolute symlink; Cloud agents won't see this. Rematerialize with `skl use --all` (default copy) and commit `.agents/skills`",
+                            entry.name
+                        ),
+                    });
                 }
                 continue;
             }
@@ -91,7 +114,7 @@ pub fn inspect(project: &Path, home: &Path, paths: Option<&Paths>) -> Vec<Projec
                             skill: entry.name.clone(),
                             dest: Some(candidate.clone()),
                             message: format!(
-                                "{}: project owns a copy; not a sync peer. `skl capture` to import, or replace with `skl use`.",
+                                "{}: materialized copy differs from the library. `skl use --all` to refresh, or `skl capture` to import project edits.",
                                 entry.name
                             ),
                         });
@@ -130,7 +153,7 @@ mod tests {
         fs::write(dir.join("SKILL.md"), body).unwrap();
     }
 
-    fn write_manifest(project: &Path, name: &str) {
+    fn write_manifest(project: &Path, name: &str, mode: &str) {
         fs::create_dir_all(project).unwrap();
         fs::write(
             linker::manifest_path(project),
@@ -138,7 +161,7 @@ mod tests {
                 r#"
 [[skills]]
 name = "{name}"
-mode = "symlink"
+mode = "{mode}"
 "#
             ),
         )
@@ -152,11 +175,8 @@ mode = "symlink"
         let home = tmp.path().join("home");
         let project = tmp.path().join("proj");
         plant(&paths.library_skill("greeter"), "# library\n");
-        plant(
-            &project.join(".agents/skills/greeter"),
-            "# project copy\n",
-        );
-        write_manifest(&project, "greeter");
+        plant(&project.join(".agents/skills/greeter"), "# project copy\n");
+        write_manifest(&project, "greeter", linker::COPY_MODE);
 
         let warns = inspect(&project, &home, Some(&paths));
         assert!(
@@ -168,7 +188,7 @@ mode = "symlink"
         assert!(
             warns
                 .iter()
-                .any(|w| w.message.contains("not a sync peer") && w.message.contains("skl capture")),
+                .any(|w| w.message.contains("skl use --all") && w.message.contains("skl capture")),
             "{warns:?}"
         );
     }
@@ -181,11 +201,13 @@ mode = "symlink"
         let project = tmp.path().join("proj");
         plant(&paths.library_skill("greeter"), "# same\n");
         plant(&project.join(".agents/skills/greeter"), "# same\n");
-        write_manifest(&project, "greeter");
+        write_manifest(&project, "greeter", linker::COPY_MODE);
 
         let warns = inspect(&project, &home, Some(&paths));
         assert!(
-            !warns.iter().any(|w| w.kind == ProjectionKind::DivergentCopy),
+            !warns
+                .iter()
+                .any(|w| w.kind == ProjectionKind::DivergentCopy),
             "{warns:?}"
         );
     }
@@ -203,7 +225,7 @@ mode = "symlink"
         plant(&elsewhere, "# other\n");
         #[cfg(unix)]
         std::os::unix::fs::symlink(&elsewhere, &dest).unwrap();
-        write_manifest(&project, "greeter");
+        write_manifest(&project, "greeter", linker::LINK_MODE);
 
         let warns = inspect(&project, &home, Some(&paths));
         assert!(
@@ -211,6 +233,13 @@ mode = "symlink"
                 .iter()
                 .any(|w| w.kind == ProjectionKind::DanglingLink
                     && w.message.contains("skl use --all")),
+            "{warns:?}"
+        );
+        assert!(
+            warns
+                .iter()
+                .any(|w| w.kind == ProjectionKind::CloudHostileLink
+                    && w.message.contains("Cloud agents")),
             "{warns:?}"
         );
     }
@@ -227,10 +256,21 @@ mode = "symlink"
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink(&lib, &dest).unwrap();
-        write_manifest(&project, "greeter");
+        write_manifest(&project, "greeter", linker::LINK_MODE);
 
         let warns = inspect(&project, &home, Some(&paths));
-        assert!(warns.is_empty(), "{warns:?}");
+        assert!(
+            warns
+                .iter()
+                .any(|w| w.kind == ProjectionKind::CloudHostileLink
+                    && w.message.contains("Cloud agents")
+                    && w.message.contains("skl use --all")),
+            "{warns:?}"
+        );
+        assert!(
+            !warns.iter().any(|w| w.kind == ProjectionKind::DanglingLink),
+            "{warns:?}"
+        );
     }
 
     #[test]
@@ -239,14 +279,16 @@ mode = "symlink"
         let paths = isolated_paths(tmp.path());
         let home = tmp.path().join("home");
         let project = tmp.path().join("proj");
-        write_manifest(&project, "ghost");
+        write_manifest(&project, "ghost", linker::COPY_MODE);
 
         let warns = inspect(&project, &home, Some(&paths));
         assert!(
-            warns.iter().any(|w| w.kind == ProjectionKind::OrphanActivation
-                && w.skill == "ghost"
-                && w.message.contains("skl sync")
-                && w.message.contains("manifest")),
+            warns
+                .iter()
+                .any(|w| w.kind == ProjectionKind::OrphanActivation
+                    && w.skill == "ghost"
+                    && w.message.contains("skl sync")
+                    && w.message.contains("manifest")),
             "{warns:?}"
         );
     }

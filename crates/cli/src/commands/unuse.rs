@@ -43,7 +43,7 @@ fn action_label(action: LinkAction) -> &'static str {
     match action {
         LinkAction::Removed => "removed",
         LinkAction::Absent => "absent",
-        LinkAction::Created => "symlink",
+        LinkAction::Created => "link",
         LinkAction::Copied => "copy",
         LinkAction::Replaced => "replace",
         LinkAction::CopyReplaced => "copy*",

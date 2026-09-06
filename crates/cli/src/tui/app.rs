@@ -526,8 +526,18 @@ pub fn activate_cwd(name: &str) -> Result<String> {
     let paths = Paths::resolve().ok();
     let db_file = paths.as_ref().map(|p| p.db_file.as_path());
     let extras = resolve_activation_extras(paths.as_ref(), &[])?;
+    let mode = crate::commands::use_cmd::resolve_projection_mode(paths.as_ref(), false)?;
     let skill = resolve_skill(name, &home, db_file)?;
-    let out = linker::activate_with_extras(&project, &home, &skill, &extras)?;
+    let out = linker::activate_with(
+        &project,
+        &home,
+        &skill,
+        linker::ActivateOpts {
+            extras: &extras,
+            mode,
+            force: false,
+        },
+    )?;
     Ok(format!(
         "using {}  ({}  {})",
         out.skill,
@@ -1282,12 +1292,25 @@ mod tests {
         );
         assert!(tui_toml.contains("name = \"greeter\""), "{tui_toml}");
         assert_eq!(
-            dest_real(&project_tui, "greeter"),
-            dest_real(&project_cli, "greeter")
+            fs::read_to_string(project_tui.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            fs::read_to_string(project_cli.join(".agents/skills/greeter/SKILL.md")).unwrap()
         );
-        let tui_dest = dest_real(&project_tui, "greeter");
-        let lib_real = fs::canonicalize(&lib).unwrap();
-        assert_eq!(tui_dest, lib_real, "dest should point at library skill");
+        let tui_dest = project_tui.join(".agents/skills/greeter");
+        assert!(tui_dest.is_dir());
+        assert!(!tui_dest
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(
+            fs::read_to_string(tui_dest.join("SKILL.md")).unwrap(),
+            fs::read_to_string(&lib.join("SKILL.md")).unwrap()
+        );
+        assert_ne!(
+            dest_real(&project_tui, "greeter"),
+            fs::canonicalize(&lib).unwrap(),
+            "materialized dest must not be the library path"
+        );
     }
 
     #[test]
@@ -1315,8 +1338,14 @@ mod tests {
         let cli_toml = fs::read_to_string(linker::manifest_path(&project_cli)).unwrap();
         assert_eq!(tui_toml, cli_toml);
         assert_eq!(
-            dest_real(&project_tui, "greeter"),
-            dest_real(&project_cli, "greeter")
+            fs::read_to_string(project_tui.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            fs::read_to_string(project_cli.join(".agents/skills/greeter/SKILL.md")).unwrap()
         );
+        assert!(!project_tui
+            .join(".agents/skills/greeter")
+            .symlink_metadata()
+            .unwrap()
+            .file_type()
+            .is_symlink());
     }
 }
