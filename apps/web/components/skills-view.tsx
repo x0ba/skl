@@ -16,7 +16,7 @@ const COLS = "minmax(0,1fr) 8rem 6rem";
 
 export function SkillsView() {
   const { data, error, loading, refreshing, unauthenticated, refresh } =
-    useResource(listSkills);
+    useResource(listSkills, "skills");
 
   const skills = data?.skills ?? [];
 

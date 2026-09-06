@@ -1,5 +1,5 @@
 import { verifyToken } from "@clerk/backend";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import { createMiddleware } from "hono/factory";
 import { DEVICE_TOKEN_PREFIX, DEV_AUTH_PREFIX } from "../contracts";
@@ -46,6 +46,7 @@ async function resolveDeviceAuth(token: string): Promise<AuthContext> {
   const rows = await db
     .select({
       deviceId: devices.id,
+      lastUsedAt: devices.lastUsedAt,
       userId: devices.userId,
       clerkUserId: users.clerkUserId,
     })
@@ -58,10 +59,16 @@ async function resolveDeviceAuth(token: string): Promise<AuthContext> {
   if (!row) {
     throw new AuthError("invalid_token");
   }
-  await db
-    .update(devices)
-    .set({ lastUsedAt: new Date() })
-    .where(eq(devices.id, row.deviceId));
+  // Keep revocation checks live on every request, but avoid serializing all
+  // concurrent blob transfers on writes to the same device row.
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - 5 * 60_000);
+  if (!row.lastUsedAt || row.lastUsedAt < staleBefore) {
+    await db.update(devices).set({ lastUsedAt: now }).where(and(
+      eq(devices.id, row.deviceId),
+      or(isNull(devices.lastUsedAt), lt(devices.lastUsedAt, staleBefore)),
+    ));
+  }
   return {
     userId: row.userId,
     clerkUserId: row.clerkUserId,
@@ -85,6 +92,7 @@ async function resolveClerkAuth(token: string): Promise<AuthContext> {
 
   const payload = await verifyToken(token, {
     secretKey: env.CLERK_SECRET_KEY,
+    jwtKey: env.CLERK_JWT_KEY,
   });
   const clerkUserId = payload.sub;
   if (!clerkUserId) {

@@ -106,6 +106,7 @@ describe("device auth + sync demo path", () => {
     });
     expect(emptySync.status).toBe(200);
     expect(await json(emptySync)).toEqual({
+      up_to_date: [],
       upload: [blobHash],
       download: [],
       conflicts: [],

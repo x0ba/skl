@@ -9,7 +9,7 @@ import { iso, jsonError } from "../lib/http";
 
 export const deviceRoutes = new Hono<{ Variables: AuthVariables }>();
 
-deviceRoutes.use("/devices", requireAuth);
+// The wildcard also matches the collection route; register auth only once.
 deviceRoutes.use("/devices/*", requireAuth);
 
 deviceRoutes.get("/devices", async (c) => {

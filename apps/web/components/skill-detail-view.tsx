@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useSWRConfig } from "swr";
 import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/auth-gate";
 import { useSession } from "@/components/providers";
@@ -25,21 +26,22 @@ type SkillDetail = SkillDetailResponse & {
 
 export function SkillDetailView({ name }: { name: string }) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
   const session = useSession();
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const fetcher = useCallback(async (token: string): Promise<SkillDetail> => {
-    const skill = await getSkill(token, name);
+    const skill = await getSkill(token, name, true);
     const hash = skill.files[SKILL_FILE];
     if (!hash) return { ...skill, skillFile: null };
     return {
       ...skill,
-      skillFile: { path: SKILL_FILE, content: await getBlobText(token, hash) },
+      skillFile: { path: SKILL_FILE, content: skill.skill_md ?? await getBlobText(token, hash) },
     };
   }, [name]);
   const { data, error, loading, refreshing, unauthenticated, refresh } =
-    useResource(fetcher);
+    useResource(fetcher, `skill:${name}`);
 
   async function onDelete() {
     setDeleteError(null);
@@ -51,6 +53,9 @@ export function SkillDetailView({ name }: { name: string }) {
     setDeleting(true);
     try {
       await deleteSkill(token, name);
+      // Clear list and detail caches before returning to the library.
+      await mutate((key) => Array.isArray(key) &&
+        (key[1] === "skills" || key[1] === `skill:${name}`), undefined, { revalidate: false });
       router.push("/skills");
     } catch (caught) {
       setDeleteError(describeApiError(caught));

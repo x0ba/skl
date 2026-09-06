@@ -48,6 +48,7 @@ export const env = {
     optional("DATABASE_URL") ?? "postgres://skl:skl@localhost:5432/skl",
   PORT: Number(optional("PORT") ?? "8787"),
   CLERK_SECRET_KEY: clerkSecret,
+  CLERK_JWT_KEY: optional("CLERK_JWT_KEY"),
   CLERK_PUBLISHABLE_KEY: optional("CLERK_PUBLISHABLE_KEY"),
   CLERK_WEBHOOK_SECRET: optional("CLERK_WEBHOOK_SECRET"),
   SKL_WEB_ORIGIN: optional("SKL_WEB_ORIGIN") ?? "http://localhost:3000",

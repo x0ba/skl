@@ -121,6 +121,9 @@ pub struct SyncRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SyncResponse {
+    /// Older APIs omit this; default preserves their push-all behavior.
+    #[serde(default)]
+    pub up_to_date: Vec<String>,
     pub upload: Vec<String>,
     pub download: Vec<SyncDownload>,
     pub conflicts: Vec<SyncConflict>,

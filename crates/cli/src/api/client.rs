@@ -21,6 +21,8 @@ pub struct ApiClient {
 impl ApiClient {
     pub fn new(api_base: impl Into<String>) -> Result<Self> {
         let http = Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(120))
             .user_agent(concat!("skl/", env!("CARGO_PKG_VERSION")))
             .build()?;
         Ok(Self {

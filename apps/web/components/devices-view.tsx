@@ -20,7 +20,7 @@ const COLS = "minmax(0,1fr) 7rem 7rem 5rem";
 export function DevicesView() {
   const session = useSession();
   const { data, error, loading, refreshing, unauthenticated, refresh } =
-    useResource(listDevices);
+    useResource(listDevices, "devices");
 
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);

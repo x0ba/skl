@@ -65,6 +65,7 @@ async function apiRequest(
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers,
+    signal: init.signal ?? AbortSignal.timeout(30_000),
   });
 
   if (!res.ok) {
@@ -102,8 +103,9 @@ export async function listSkills(token: string): Promise<SkillsListResponse> {
 export async function getSkill(
   token: string,
   name: string,
+  includeSkillMd = false,
 ): Promise<SkillDetailResponse> {
-  return apiFetch<SkillDetailResponse>(skillPath(name), token);
+  return apiFetch<SkillDetailResponse>(`${skillPath(name)}${includeSkillMd ? "?include=skill_md" : ""}`, token);
 }
 
 export async function deleteSkill(token: string, name: string): Promise<void> {

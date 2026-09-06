@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
 import { useSession } from "@/components/providers";
 import { describeApiError } from "./api";
 
@@ -16,58 +16,28 @@ export type Resource<T> = {
   refresh: () => void;
 };
 
-/**
- * Loads a token-scoped API resource and re-loads it when the session changes.
- *
- * `fetcher` must be stable across renders, since it is part of the reload
- * dependency list — pass a module-level function, or wrap a closure that
- * captures props in `useCallback`.
- */
-export function useResource<T>(fetcher: (token: string) => Promise<T>): Resource<T> {
+/** Session-scoped stale-while-revalidate data shared across dashboard routes. */
+export function useResource<T>(
+  fetcher: (token: string) => Promise<T>,
+  key: string,
+): Resource<T> {
   const session = useSession();
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [settled, setSettled] = useState(false);
-  const [unauthenticated, setUnauthenticated] = useState(false);
-
-  const load = useCallback(async () => {
-    try {
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
+    session.isReady ? [session.cacheKey, key] : null,
+    async () => {
       const token = await session.getAccessToken();
-      setError(null);
-      if (!token) {
-        setData(null);
-        setUnauthenticated(true);
-        return;
-      }
-      setUnauthenticated(false);
-      setData(await fetcher(token));
-    } catch (caught) {
-      setData(null);
-      setError(describeApiError(caught));
-    } finally {
-      setRefreshing(false);
-      setSettled(true);
-    }
-  }, [fetcher, session]);
-
-  useEffect(() => {
-    if (!session.isReady) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, [load, session.isReady, session.isSignedIn, session.localToken]);
-
-  const refresh = useCallback(() => {
-    setRefreshing(true);
-    void load();
-  }, [load]);
-
+      return token
+        ? { value: await fetcher(token), unauthenticated: false }
+        : { value: null, unauthenticated: true };
+    },
+    { shouldRetryOnError: false, dedupingInterval: 5000 },
+  );
   return {
-    data,
-    error,
-    loading: !settled,
-    refreshing,
-    unauthenticated,
-    refresh,
+    data: data?.value ?? null,
+    error: error ? describeApiError(error) : null,
+    loading: !session.isReady || isLoading,
+    refreshing: isValidating,
+    unauthenticated: data?.unauthenticated ?? false,
+    refresh: () => { void mutate(); },
   };
 }

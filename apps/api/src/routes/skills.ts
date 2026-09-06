@@ -8,7 +8,7 @@ import type {
   SkillsListResponse,
 } from "../contracts";
 import { db } from "../db";
-import { skills } from "../db/schema";
+import { blobs, skillFiles, skills } from "../db/schema";
 import type { AuthVariables } from "../lib/auth";
 import { getAuth, requireAuth } from "../lib/auth";
 import { iso, jsonError } from "../lib/http";
@@ -29,7 +29,7 @@ const putTreeBody = z.object({
 
 export const skillRoutes = new Hono<{ Variables: AuthVariables }>();
 
-skillRoutes.use("/skills", requireAuth);
+// The wildcard also matches the collection route; register auth only once.
 skillRoutes.use("/skills/*", requireAuth);
 
 function handleSkillError(c: Parameters<typeof jsonError>[0], error: unknown) {
@@ -75,7 +75,7 @@ skillRoutes.delete("/skills/:name", async (c) => {
 skillRoutes.get("/skills", async (c) => {
   const auth = getAuth(c);
   const rows = await db
-    .select()
+    .select({ name: skills.name, currentTreeHash: skills.currentTreeHash, updatedAt: skills.updatedAt })
     .from(skills)
     .where(and(eq(skills.userId, auth.userId), isNull(skills.deletedAt)))
     .orderBy(desc(skills.updatedAt));
@@ -111,8 +111,17 @@ skillRoutes.get("/skills/:name", async (c) => {
     if (!skill || !skill.currentVersionId || !skill.currentTreeHash) {
       return jsonError(c, 404, "skill_not_found");
     }
-    const files = filesToRecord(await listSkillFiles(skill.currentVersionId));
+    const includeSkillMd = c.req.query("include") === "skill_md";
+    const [fileList, preview] = await Promise.all([
+      listSkillFiles(skill.currentVersionId),
+      includeSkillMd ? db.select({ content: blobs.content }).from(skillFiles)
+        .innerJoin(blobs, eq(blobs.hash, skillFiles.contentHash))
+        .where(and(eq(skillFiles.versionId, skill.currentVersionId), eq(skillFiles.path, "SKILL.md")))
+        .limit(1) : Promise.resolve([]),
+    ]);
+    const files = filesToRecord(fileList);
     const body: SkillDetailResponse = {
+      ...(includeSkillMd ? { skill_md: preview[0] ? Buffer.from(preview[0].content).toString("utf8") : null } : {}),
       name: skill.name,
       tree_hash: skill.currentTreeHash,
       files,

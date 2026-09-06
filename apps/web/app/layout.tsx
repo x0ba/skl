@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppProviders } from "@/components/providers";
-import { isClerkEnabled } from "@/lib/config";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,7 +23,7 @@ export const metadata: Metadata = {
 /**
  * Page chrome lives in the route-group layouts — (marketing) is full-bleed,
  * (app) gets the sidebar, (auth) is centered — so this layout only sets up
- * fonts and session context.
+ * fonts. Session context is scoped to dashboard and auth routes.
  */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -34,7 +32,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
       <body className="min-h-dvh bg-background text-foreground">
-        <AppProviders clerkEnabled={isClerkEnabled()}>{children}</AppProviders>
+        {children}
       </body>
     </html>
   );

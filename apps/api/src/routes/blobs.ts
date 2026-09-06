@@ -50,17 +50,12 @@ blobRoutes.put("/blobs/:hash", async (c) => {
     return jsonError(c, 400, "hash_mismatch", "Body SHA-256 does not match :hash");
   }
 
-  const existing = await db.select({ hash: blobs.hash }).from(blobs).where(eq(blobs.hash, hash)).limit(1);
-  if (!existing[0]) {
-    await db.insert(blobs).values({
-      hash,
-      content: raw,
-      sizeBytes: raw.byteLength,
-    });
-  }
+  const inserted = await db.insert(blobs).values({
+    hash, content: raw, sizeBytes: raw.byteLength,
+  }).onConflictDoNothing({ target: blobs.hash }).returning({ hash: blobs.hash });
 
   const body: PutBlobResponse = { hash, size: raw.byteLength };
-  return c.json(body, existing[0] ? 200 : 201);
+  return c.json(body, inserted[0] ? 201 : 200);
 });
 
 blobRoutes.get("/blobs/:hash", async (c) => {

@@ -19,7 +19,7 @@ const COLS = "minmax(0,1fr) 8rem 6rem";
 
 export function ActivityView() {
   const { data, error, loading, refreshing, unauthenticated, refresh } =
-    useResource(listSkills);
+    useResource(listSkills, "skills");
 
   const recent = useMemo(() => {
     const skills = data?.skills ?? [];

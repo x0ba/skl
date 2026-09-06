@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::api::types::{SkillTree, SyncRequest};
 use crate::error::{Result, SklError};
@@ -62,6 +62,7 @@ impl LocalDb {
                 hash TEXT NOT NULL,
                 PRIMARY KEY (skill_name, source, path)
             );
+            CREATE INDEX IF NOT EXISTS skill_files_hash_idx ON skill_files(hash);
             ",
         )?;
         Ok(())
@@ -88,11 +89,9 @@ impl LocalDb {
                 ],
             )?;
             for (path, hash) in &skill.tree.files {
-                tx.execute(
-                    "INSERT INTO skill_files (skill_name, source, path, hash)
-                     VALUES (?1, ?2, ?3, ?4)",
-                    params![skill.name, skill.source, path, hash],
-                )?;
+                tx.prepare_cached(
+                    "INSERT INTO skill_files (skill_name, source, path, hash) VALUES (?1, ?2, ?3, ?4)",
+                )?.execute(params![skill.name, skill.source, path, hash])?;
             }
         }
         tx.execute(
@@ -163,10 +162,28 @@ impl LocalDb {
     }
 
     pub fn find_skill(&self, name: &str) -> Result<Option<DiscoveredSkill>> {
-        Ok(self
-            .list_skills()?
-            .into_iter()
-            .find(|skill| skill.name == name))
+        let row = self.conn.query_row(
+            "SELECT source, path, tree_hash FROM skills WHERE name = ?1 ORDER BY source LIMIT 1",
+            params![name],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+        ).optional()?;
+        let Some((source, path, tree_hash)) = row else {
+            return Ok(None);
+        };
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT path, hash FROM skill_files WHERE skill_name = ?1 AND source = ?2",
+        )?;
+        let files = stmt
+            .query_map(params![name, source], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<std::result::Result<_, _>>()?;
+        Ok(Some(DiscoveredSkill {
+            name: name.to_string(),
+            source,
+            path: path.into(),
+            tree: SkillTree { tree_hash, files },
+        }))
     }
 
     /// Drop every indexed row for `name` (all sources). Returns whether anything existed.
@@ -220,15 +237,26 @@ impl LocalDb {
 
     /// Locate a local file whose content hash matches.
     pub fn find_file_by_hash(&self, hash: &str) -> Result<Option<(std::path::PathBuf, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT s.path, f.path
+        self.find_upload_file(hash, &std::collections::BTreeSet::new())
+    }
+
+    /// Prefer a file from a skill that is being kept locally when hashes are shared.
+    pub fn find_upload_file(
+        &self,
+        hash: &str,
+        skipped: &std::collections::BTreeSet<String>,
+    ) -> Result<Option<(std::path::PathBuf, String)>> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT s.path, f.path, s.name
              FROM skill_files f
              JOIN skills s ON s.name = f.skill_name AND s.source = f.source
-             WHERE f.hash = ?1
-             LIMIT 1",
+             WHERE f.hash = ?1",
         )?;
         let mut rows = stmt.query(params![hash])?;
-        if let Some(row) = rows.next()? {
+        while let Some(row) = rows.next()? {
+            if skipped.contains(&row.get::<_, String>(2)?) {
+                continue;
+            }
             let skill_dir: String = row.get(0)?;
             let rel: String = row.get(1)?;
             return Ok(Some((skill_dir.into(), rel)));
@@ -346,6 +374,36 @@ mod tests {
         assert!(at > 0);
         assert_eq!(summary.uploaded, 1);
         assert_eq!(db.skill_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn upload_lookup_uses_non_skipped_copy_of_a_shared_blob() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = LocalDb::open(&tmp.path().join("state.db")).unwrap();
+        let mut hash = String::new();
+        for name in ["alpha", "beta"] {
+            let path = tmp.path().join(name);
+            std::fs::create_dir_all(&path).unwrap();
+            std::fs::write(path.join("SKILL.md"), "shared content").unwrap();
+            let tree = hash_skill_dir(&path).unwrap();
+            hash = tree.files["SKILL.md"].clone();
+            db.upsert_skill(&DiscoveredSkill {
+                name: name.into(),
+                source: "agents".into(),
+                path,
+                tree,
+            })
+            .unwrap();
+        }
+        let skipped = std::collections::BTreeSet::from(["alpha".to_string()]);
+        let found = db.find_upload_file(&hash, &skipped).unwrap().unwrap();
+        assert_eq!(found.0, tmp.path().join("beta"));
+        let skipped = std::collections::BTreeSet::from(["alpha".to_string(), "beta".to_string()]);
+        assert!(db.find_upload_file(&hash, &skipped).unwrap().is_none());
+        assert_eq!(
+            db.find_skill("alpha").unwrap().unwrap().tree.files["SKILL.md"],
+            hash
+        );
     }
 
     #[test]

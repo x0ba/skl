@@ -159,6 +159,8 @@ export type SyncConflict = {
 };
 
 export type SyncResponse = {
+  /** Additive optimization; older servers omit this field. */
+  up_to_date?: string[];
   upload: string[];
   download: SyncDownloadBlob[];
   conflicts: SyncConflict[];
@@ -187,6 +189,8 @@ export type SkillsListResponse = {
 };
 
 export type SkillDetailResponse = {
+  /** Present when requested with ?include=skill_md; null if absent. */
+  skill_md?: string | null;
   name: string;
   tree_hash: string;
   files: FileHashMap;

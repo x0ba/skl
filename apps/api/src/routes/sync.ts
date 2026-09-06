@@ -9,13 +9,13 @@ import type { AuthVariables } from "../lib/auth";
 import { getAuth, requireAuth } from "../lib/auth";
 import { iso, jsonError } from "../lib/http";
 import {
-  listSkillFiles,
+  listSkillFilesByVersion,
   missingBlobHashes,
   normalizeFileMap,
   SkillError,
 } from "../lib/skills";
 import { isSha256Hex, normalizeHash } from "../lib/hash";
-import { isSkillName } from "../lib/tree";
+import { computeTreeHash, isSkillName } from "../lib/tree";
 
 const clientSkillState = z.object({
   tree_hash: z.string().min(1),
@@ -58,7 +58,7 @@ syncRoutes.post("/sync", requireAuth, zValidator("json", syncBody), async (c) =>
     }
 
     const serverRows = await db
-      .select()
+      .select({ name: skills.name, currentTreeHash: skills.currentTreeHash, currentVersionId: skills.currentVersionId, updatedAt: skills.updatedAt })
       .from(skills)
       .where(and(eq(skills.userId, auth.userId), isNull(skills.deletedAt)));
 
@@ -67,6 +67,27 @@ syncRoutes.post("/sync", requireAuth, zValidator("json", syncBody), async (c) =>
         .filter((row) => row.currentVersionId && row.currentTreeHash)
         .map((row) => [row.name, row]),
     );
+
+    // A matching, verified manifest already proves all its blobs exist. Avoid
+    // reading its files or looking up its blob hashes again on a no-op sync.
+    const upToDate = new Set<string>();
+    for (const [name, state] of clientSkills) {
+      if (serverByName.get(name)?.currentTreeHash === state.tree_hash &&
+          computeTreeHash(state.files) === state.tree_hash) {
+        upToDate.add(name);
+      }
+    }
+    const versions = [...serverByName.values()]
+      .filter((row) => !upToDate.has(row.name) &&
+        (!clientSkills.has(row.name) || clientSkills.get(row.name)?.tree_hash === row.currentTreeHash))
+      .map((row) => row.currentVersionId!);
+    const candidateHashes = [...clientSkills.entries()]
+      .filter(([name]) => !upToDate.has(name))
+      .flatMap(([, state]) => Object.values(state.files));
+    const [filesByVersion, missingHashes] = await Promise.all([
+      listSkillFilesByVersion(versions),
+      missingBlobHashes(candidateHashes),
+    ]);
 
     const conflicts: SyncConflict[] = [];
     const missingSkills: string[] = [];
@@ -83,12 +104,13 @@ syncRoutes.post("/sync", requireAuth, zValidator("json", syncBody), async (c) =>
     }
 
     for (const [name, state] of clientSkills) {
+      if (upToDate.has(name)) continue;
       const remote = serverByName.get(name);
       if (!remote || !remote.currentTreeHash || !remote.currentVersionId) {
         continue;
       }
       if (remote.currentTreeHash === state.tree_hash) {
-        const remoteFiles = await listSkillFiles(remote.currentVersionId);
+        const remoteFiles = filesByVersion.get(remote.currentVersionId) ?? [];
         for (const file of remoteFiles) {
           if (!clientBlobHashes.has(file.hash)) {
             addDownload(file.hash, name, file.path);
@@ -112,13 +134,13 @@ syncRoutes.post("/sync", requireAuth, zValidator("json", syncBody), async (c) =>
         continue;
       }
       missingSkills.push(name);
-      const remoteFiles = await listSkillFiles(remote.currentVersionId);
+      const remoteFiles = filesByVersion.get(remote.currentVersionId) ?? [];
       for (const file of remoteFiles) {
         addDownload(file.hash, name, file.path);
       }
     }
 
-    const upload = (await missingBlobHashes([...clientBlobHashes])).sort();
+    const upload = missingHashes.sort();
     const download: SyncDownloadBlob[] = [...downloadIndex.entries()]
       .map(([hash, refs]) => ({
         hash,
@@ -128,6 +150,7 @@ syncRoutes.post("/sync", requireAuth, zValidator("json", syncBody), async (c) =>
       .sort((a, b) => a.hash.localeCompare(b.hash));
 
     const body: SyncResponse = {
+      up_to_date: [...upToDate].sort(),
       upload,
       download,
       conflicts: conflicts.sort((a, b) => a.skill.localeCompare(b.skill)),

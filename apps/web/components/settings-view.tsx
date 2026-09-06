@@ -24,7 +24,7 @@ const TARGETS = [
 
 export function SettingsView() {
   const session = useSession();
-  const { data, unauthenticated, refresh } = useResource(listDevices);
+  const { data, unauthenticated, refresh } = useResource(listDevices, "devices");
 
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);

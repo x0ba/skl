@@ -13,7 +13,7 @@ Furnace (CLI + device-approve page) should import `apps/api/src/contracts.ts` (o
 | `POST` | `/v1/auth/device/approve` | Clerk JWT | `{ user_code, device_name? }` | `{ ok, device_id }` |
 | `GET` | `/v1/devices` | Clerk or device | — | `{ devices: [{ id, name, created_at, last_used_at, revoked_at }] }` |
 | `DELETE` | `/v1/devices/:id` | Clerk or device | — | `204` |
-| `POST` | `/v1/sync` | Clerk or device | `{ skills: { [name]: { tree_hash, files: { [path]: hash } } } }` | `{ upload: hash[], download: [{ hash, skills, paths }], conflicts: [{ skill, local_tree_hash, remote_tree_hash, remote_updated_at }], missing_skills: string[] }` |
+| `POST` | `/v1/sync` | Clerk or device | `{ skills: { [name]: { tree_hash, files: { [path]: hash } } } }` | `{ up_to_date?: string[], upload: hash[], download: [{ hash, skills, paths }], conflicts: [{ skill, local_tree_hash, remote_tree_hash, remote_updated_at }], missing_skills: string[] }` |
 | `PUT` | `/v1/blobs/:hash` | Clerk or device | raw bytes or `{ content_base64 }` | `{ hash, size }` |
 | `GET` | `/v1/blobs/:hash` | Clerk or device | — | `application/octet-stream` |
 | `PUT` | `/v1/skills/:name/tree` | Clerk or device | `{ tree_hash, files }` | `{ name, tree_hash, updated_at }` |
@@ -52,6 +52,7 @@ API listens on `http://localhost:8787`. Health: `http://localhost:8787/v1/health
 | `SKL_WEB_ORIGIN` | no | default `http://localhost:3000` — `verification_uri` + CORS. Apex/www variants are both allowed. Comma-separate extra origins. |
 | `SKL_API_ORIGIN` | no | default `http://localhost:8787` |
 | `CLERK_SECRET_KEY` | prod | verifies Clerk session JWTs |
+| `CLERK_JWT_KEY` | no | optional PEM public key for networkless JWT verification; keep in sync with Clerk key rotation |
 | `CLERK_PUBLISHABLE_KEY` | prod (web) | not consumed by the API |
 | `CLERK_WEBHOOK_SECRET` | later | **TODO:** user.created / user.deleted webhook |
 | `ALLOW_DEV_AUTH` | local | on when `CLERK_SECRET_KEY` is unset. `Authorization: Bearer dev:<clerk_user_id>` |
@@ -82,3 +83,17 @@ pnpm migrate
 pnpm test
 pnpm typecheck
 ```
+
+## Performance
+
+Sync responses include `up_to_date`, listing client manifests that match the
+stored tree. Updated CLIs skip their tree PUTs; older clients ignore the field.
+`GET /v1/skills/:name?include=skill_md` also returns `skill_md` (UTF-8 text or
+`null`) so the web preview does not need a second authenticated HTTP request.
+Device activity timestamps are refreshed at most once every five minutes;
+revocation is checked on every request. CORS preflight results can be reused
+for up to one day (subject to browser limits), and JSON responses negotiate
+compression. `Server-Timing: app;dur=...` reports API processing time.
+
+See [the performance pass](../../docs/performance.md) for measured results,
+reproduction commands, and rollout notes.

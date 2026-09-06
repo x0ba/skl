@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { compress } from "hono/compress";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { API_PREFIX, API_ROUTES } from "./contracts";
@@ -20,11 +21,19 @@ const v1 = new Hono()
 
 export const app = new Hono()
   .use("*", logger())
+  .use("*", compress())
+  .use("*", async (c, next) => {
+    const start = performance.now();
+    await next();
+    c.header("Server-Timing", `app;dur=${(performance.now() - start).toFixed(1)}`);
+  })
   .use(
     "*",
     cors({
       origin: corsOrigins(),
       allowHeaders: ["Authorization", "Content-Type"],
+      maxAge: 86400,
+      exposeHeaders: ["Server-Timing"],
       allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     }),
   )

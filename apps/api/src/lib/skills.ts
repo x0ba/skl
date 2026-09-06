@@ -52,11 +52,13 @@ export async function missingBlobHashes(hashes: string[]): Promise<string[]> {
   if (unique.length === 0) {
     return [];
   }
-  const existing = await db
-    .select({ hash: blobs.hash })
-    .from(blobs)
-    .where(inArray(blobs.hash, unique));
-  const have = new Set(existing.map((row) => row.hash));
+  const have = new Set<string>();
+  // Stay below PostgreSQL's parameter limit for large libraries.
+  for (let offset = 0; offset < unique.length; offset += 5000) {
+    const existing = await db.select({ hash: blobs.hash }).from(blobs)
+      .where(inArray(blobs.hash, unique.slice(offset, offset + 5000)));
+    for (const row of existing) have.add(row.hash);
+  }
   return unique.filter((hash) => !have.has(hash));
 }
 
@@ -96,11 +98,6 @@ export async function putSkillTree(
     };
   }
 
-  const missing = await missingBlobHashes(Object.values(files));
-  if (missing.length > 0) {
-    throw new SkillError("missing_blobs", 400, { hashes: missing });
-  }
-
   if (skill && skill.currentTreeHash === expected && skill.currentVersionId) {
     return {
       name: skill.name,
@@ -108,6 +105,11 @@ export async function putSkillTree(
       tree_hash: expected,
       updated_at: skill.updatedAt,
     };
+  }
+
+  const missing = await missingBlobHashes(Object.values(files));
+  if (missing.length > 0) {
+    throw new SkillError("missing_blobs", 400, { hashes: missing });
   }
 
   const now = new Date();
@@ -127,11 +129,6 @@ export async function putSkillTree(
       throw new SkillError("skill_create_failed");
     }
     skill = created;
-  } else {
-    await db
-      .update(skills)
-      .set({ metadata, updatedAt: now })
-      .where(eq(skills.id, skill.id));
   }
 
   const versions = await db
@@ -209,4 +206,21 @@ export async function listSkillFiles(versionId: string) {
   return rows
     .map((row) => ({ path: row.path, hash: row.hash }))
     .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** Fetch manifests in bounded batches, never one round trip per skill. */
+export async function listSkillFilesByVersion(versionIds: string[]) {
+  const result = new Map<string, { path: string; hash: string }[]>();
+  const unique = [...new Set(versionIds)];
+  for (let offset = 0; offset < unique.length; offset += 5000) {
+    const rows = await db.select({
+      versionId: skillFiles.versionId, path: skillFiles.path, hash: skillFiles.contentHash,
+    }).from(skillFiles).where(inArray(skillFiles.versionId, unique.slice(offset, offset + 5000)));
+    for (const row of rows) {
+      const files = result.get(row.versionId) ?? [];
+      files.push({ path: row.path, hash: row.hash });
+      result.set(row.versionId, files);
+    }
+  }
+  return result;
 }

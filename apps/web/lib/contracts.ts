@@ -62,6 +62,8 @@ export type SkillsListResponse = {
 export type FileHashMap = Record<string, string>;
 
 export type SkillDetailResponse = {
+  /** Present when requested with ?include=skill_md; null if absent. */
+  skill_md?: string | null;
   name: string;
   tree_hash: string;
   files: FileHashMap;

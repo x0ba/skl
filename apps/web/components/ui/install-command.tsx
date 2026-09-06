@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { CopyCommand } from "@/components/ui/copy-command";
 
 function installCommand(origin: string): string {
@@ -11,12 +11,11 @@ function installCommand(origin: string): string {
  * Advertises `curl …/install.sh` against the origin the visitor is on,
  * so localhost, preview, and production all copy a working URL.
  */
-export function InstallCommand({ initialOrigin }: { initialOrigin: string }) {
-  const [origin, setOrigin] = useState(initialOrigin);
+const subscribe = () => () => {};
+const getOrigin = () => window.location.origin;
+const getServerOrigin = () => process.env.NEXT_PUBLIC_WEB_ORIGIN || "https://www.tryskl.fyi";
 
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
+export function InstallCommand() {
+  const origin = useSyncExternalStore(subscribe, getOrigin, getServerOrigin);
   return <CopyCommand command={installCommand(origin)} />;
 }

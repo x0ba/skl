@@ -7,6 +7,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::time::SystemTime;
 
+use futures_util::{stream, StreamExt, TryStreamExt};
+
+// Share the HTTP connection pool without flooding the API or buffering every upload.
+const TRANSFER_CONCURRENCY: usize = 6;
+
 use crate::api::{ApiClient, SkillTreePut, SyncRequest, SyncResponse};
 use crate::config::Paths;
 use crate::error::{Result, SklError};
@@ -117,8 +122,10 @@ pub async fn run_with_opts(
         .filter(|c| !keep_local.contains(&c.skill) && !keep_remote.contains(&c.skill))
         .count();
 
-    if !keep_local.is_empty() || !keep_remote.is_empty() {
+    if !downloaded.is_empty() || !plan.missing_skills.is_empty() || !keep_remote.is_empty() {
         refresh_local_index(&db, paths)?;
+    }
+    if !keep_local.is_empty() || !keep_remote.is_empty() {
         let retry = db.sync_request()?;
         eprintln!(
             "re-POST {api_base}/v1/sync  ({} skill(s) after keep-local/keep-remote)",
@@ -129,7 +136,6 @@ pub async fn run_with_opts(
         eprintln!("re-POST conflicts: {}", plan2.conflicts.len());
     }
 
-    refresh_local_index(&db, paths)?;
     let summary = SyncSummary {
         uploaded: uploaded.len(),
         downloaded: downloaded.len(),
@@ -191,44 +197,42 @@ async fn upload_blobs(
     skip_skills: &BTreeSet<String>,
     allow_warnings: bool,
 ) -> Result<Vec<String>> {
-    let mut uploaded = Vec::new();
-    for hash in &plan.upload {
-        let (skill_dir, rel) = db
-            .find_file_by_hash(hash)?
-            .ok_or_else(|| SklError::LocalState(format!("no local file for upload hash {hash}")))?;
-        if let Some(skill) = skill_name_for_dir(db, &skill_dir)? {
-            if skip_skills.contains(&skill) {
-                continue;
+    let uploads = plan.upload.iter().map(|hash| {
+        async move {
+            let source = db.find_upload_file(hash, skip_skills)?;
+            let Some((skill_dir, rel)) = source else {
+                if db.find_file_by_hash(hash)?.is_some() {
+                    return Ok(None); // only needed by skills being replaced remotely
+                }
+                return Err(SklError::LocalState(format!(
+                    "no local file for upload hash {hash}"
+                )));
+            };
+            let path = skill_dir.join(&rel);
+            let bytes = tokio::fs::read(&path).await?;
+            if hash_bytes(&bytes) != *hash {
+                return Err(SklError::LocalState(format!(
+                    "local file {} hash mismatch for {hash}",
+                    path.display()
+                )));
             }
+            scrub::scrub_blob_before_upload(hash, &bytes, allow_warnings)?;
+            eprintln!("PUT /v1/blobs/{hash}  ({} bytes)", bytes.len());
+            let put = client.put_blob(hash, bytes).await?;
+            if put.hash != *hash {
+                return Err(SklError::LocalState(format!(
+                    "API returned hash {} for uploaded {hash}",
+                    put.hash
+                )));
+            }
+            Ok(Some(hash.clone()))
         }
-        let path = skill_dir.join(&rel);
-        let bytes = std::fs::read(&path)?;
-        if hash_bytes(&bytes) != *hash {
-            return Err(SklError::LocalState(format!(
-                "local file {} hash mismatch for {hash}",
-                path.display()
-            )));
-        }
-        scrub::scrub_blob_before_upload(hash, &bytes, allow_warnings)?;
-        eprintln!("PUT /v1/blobs/{hash}  ({} bytes)", bytes.len());
-        let put = client.put_blob(hash, bytes).await?;
-        if put.hash != *hash {
-            return Err(SklError::LocalState(format!(
-                "API returned hash {} for uploaded {hash}",
-                put.hash
-            )));
-        }
-        uploaded.push(hash.clone());
-    }
-    Ok(uploaded)
-}
-
-fn skill_name_for_dir(db: &LocalDb, skill_dir: &Path) -> Result<Option<String>> {
-    Ok(db
-        .list_skills()?
-        .into_iter()
-        .find(|s| s.path == skill_dir)
-        .map(|s| s.name))
+    });
+    let results: Vec<Option<String>> = stream::iter(uploads)
+        .buffered(TRANSFER_CONCURRENCY)
+        .try_collect()
+        .await?;
+    Ok(results.into_iter().flatten().collect())
 }
 
 async fn push_trees(
@@ -241,26 +245,30 @@ async fn push_trees(
     for name in keep_local {
         skip.remove(name.as_str());
     }
-    let mut pushed = Vec::new();
-    for (name, tree) in &body.skills {
-        if skip.contains(name.as_str()) {
-            continue;
-        }
-        let commit = SkillTreePut {
-            tree_hash: tree.tree_hash.clone(),
-            files: tree.files.clone(),
-        };
-        eprintln!("PUT /v1/skills/{name}/tree");
-        let res = client.put_skill_tree(name, &commit).await?;
-        if res.tree_hash != tree.tree_hash {
-            return Err(SklError::LocalState(format!(
-                "tree commit mismatch for {name}: local={} remote={}",
-                tree.tree_hash, res.tree_hash
-            )));
-        }
-        pushed.push(name.clone());
-    }
-    Ok(pushed)
+    skip.extend(plan.up_to_date.iter().map(String::as_str));
+    let commits = body
+        .skills
+        .iter()
+        .filter(|(name, _)| !skip.contains(name.as_str()))
+        .map(|(name, tree)| async move {
+            let commit = SkillTreePut {
+                tree_hash: tree.tree_hash.clone(),
+                files: tree.files.clone(),
+            };
+            eprintln!("PUT /v1/skills/{name}/tree");
+            let res = client.put_skill_tree(name, &commit).await?;
+            if res.tree_hash != tree.tree_hash {
+                return Err(SklError::LocalState(format!(
+                    "tree commit mismatch for {name}: local={} remote={}",
+                    tree.tree_hash, res.tree_hash
+                )));
+            }
+            Ok(name.clone())
+        });
+    stream::iter(commits)
+        .buffered(TRANSFER_CONCURRENCY)
+        .try_collect()
+        .await
 }
 
 async fn download_blobs(
@@ -270,38 +278,50 @@ async fn download_blobs(
     plan: &SyncResponse,
     keep_remote: &BTreeSet<String>,
 ) -> Result<Vec<String>> {
-    let mut blob_cache: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    for item in &plan.download {
-        eprintln!(
-            "GET /v1/blobs/{}  skills={:?}  paths={:?}",
-            item.hash, item.skills, item.paths
-        );
-        let bytes = client.get_blob(&item.hash).await?;
-        if hash_bytes(&bytes) != item.hash {
-            return Err(SklError::LocalState(format!(
-                "downloaded blob {} failed hash check",
-                item.hash
-            )));
-        }
-        blob_cache.insert(item.hash.clone(), bytes);
-    }
-
-    // download.skills / download.paths are sets, not pairs. Place files from
-    // GET /v1/skills/:name so each path maps to the correct hash.
+    // Fetch manifests first: download.skills / paths are sets, not pairs.
+    // Resolve their exact hashes, deduplicate across skills, then fetch in parallel.
     let mut skill_names: BTreeSet<String> = BTreeSet::new();
     for item in &plan.download {
         skill_names.extend(item.skills.iter().cloned());
     }
     skill_names.extend(plan.missing_skills.iter().cloned());
     skill_names.extend(keep_remote.iter().cloned());
+    let details: Vec<_> = stream::iter(
+        skill_names
+            .iter()
+            .filter(|name| {
+                !plan.conflicts.iter().any(|c| c.skill == **name) || keep_remote.contains(*name)
+            })
+            .map(|name| async move {
+                let detail = client.get_skill(name).await?;
+                Ok::<_, SklError>((name.clone(), detail))
+            }),
+    )
+    .buffered(TRANSFER_CONCURRENCY)
+    .try_collect()
+    .await?;
+
+    let mut hashes: BTreeSet<String> = plan.download.iter().map(|item| item.hash.clone()).collect();
+    for (_, detail) in &details {
+        hashes.extend(detail.files.values().cloned());
+    }
+    let blob_cache: BTreeMap<String, Vec<u8>> =
+        stream::iter(hashes.into_iter().map(|hash| async move {
+            eprintln!("GET /v1/blobs/{hash}");
+            let bytes = client.get_blob(&hash).await?;
+            if hash_bytes(&bytes) != hash {
+                return Err(SklError::LocalState(format!(
+                    "downloaded blob {hash} failed hash check"
+                )));
+            }
+            Ok((hash, bytes))
+        }))
+        .buffered(TRANSFER_CONCURRENCY)
+        .try_collect()
+        .await?;
 
     let pull_root = library::default_pull_root(paths);
-    for name in &skill_names {
-        let conflicted = plan.conflicts.iter().any(|c| c.skill == *name);
-        if conflicted && !keep_remote.contains(name) {
-            continue;
-        }
-        let detail = client.get_skill(name).await?;
+    for (name, detail) in &details {
         let dest = match db.find_skill(name)? {
             Some(existing) if library::is_under_library(&existing.path, &pull_root) => {
                 existing.path
@@ -310,24 +330,11 @@ async fn download_blobs(
         };
         std::fs::create_dir_all(&dest)?;
         for (rel, hash) in &detail.files {
-            let bytes = if let Some(cached) = blob_cache.get(hash) {
-                cached.clone()
-            } else {
-                let fetched = client.get_blob(hash).await?;
-                if hash_bytes(&fetched) != *hash {
-                    return Err(SklError::LocalState(format!(
-                        "downloaded blob {hash} failed hash check"
-                    )));
-                }
-                blob_cache.insert(hash.clone(), fetched.clone());
-                fetched
-            };
-            write_blob_file(&dest, rel, &bytes)?;
+            write_blob_file(&dest, rel, &blob_cache[hash])?;
         }
         eprintln!("wrote skill {name} → {}", dest.display());
     }
-
-    Ok(blob_cache.keys().cloned().collect())
+    Ok(blob_cache.into_keys().collect())
 }
 
 fn refresh_local_index(db: &LocalDb, paths: &Paths) -> Result<()> {
@@ -359,6 +366,120 @@ mod tests {
         std::fs::create_dir_all(&skill_dir).unwrap();
         std::fs::write(skill_dir.join("SKILL.md"), body).unwrap();
         skill_dir
+    }
+
+    #[tokio::test]
+    async fn unchanged_library_only_posts_the_plan() {
+        let server = MockServer::start().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = paths_for(tmp.path());
+        paths.ensure().unwrap();
+        let db = LocalDb::open(&paths.db_file).unwrap();
+        db.replace_import(&[]).unwrap();
+        for i in 0..24 {
+            plant_library(&paths, &format!("skill-{i}"), b"# clean skill\n");
+        }
+        Mock::given(method("POST"))
+            .and(path("/v1/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "up_to_date": (0..24).map(|i| format!("skill-{i}")).collect::<Vec<_>>(),
+                "upload": [], "download": [], "conflicts": [], "missing_skills": []
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let result = run_with(&server.uri(), "dev:alice", &paths, tmp.path())
+            .await
+            .unwrap();
+        assert!(result.pushed.is_empty());
+        assert!(result.uploaded.is_empty());
+        assert_eq!(server.received_requests().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn uploads_overlap_with_bounded_concurrency() {
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+        let server = MockServer::start().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = paths_for(tmp.path());
+        paths.ensure().unwrap();
+        let db = LocalDb::open(&paths.db_file).unwrap();
+        let mut hashes = Vec::new();
+        for i in 0..18 {
+            let content = format!("# clean skill {i}\n");
+            plant_library(&paths, &format!("skill-{i}"), content.as_bytes());
+            hashes.push(hash_bytes(content.as_bytes()));
+        }
+        library::reindex_library_only(&db, &paths).unwrap();
+        let state = Arc::new(Mutex::new((Vec::<Instant>::new(), 0usize)));
+        let observed = state.clone();
+        Mock::given(method("PUT"))
+            .respond_with(move |request: &wiremock::Request| {
+                let now = Instant::now();
+                let mut state = observed.lock().unwrap();
+                // Responses stay in flight for 100ms. Count overlapping arrivals
+                // conservatively, leaving scheduling slack before completion.
+                state.0.retain(|start| now.duration_since(*start) < Duration::from_millis(75));
+                state.0.push(now);
+                state.1 = state.1.max(state.0.len());
+                ResponseTemplate::new(201).set_delay(Duration::from_millis(100))
+                    .set_body_json(json!({ "hash": request.url.path().rsplit('/').next().unwrap(), "size": request.body.len() }))
+            }).expect(18).mount(&server).await;
+        let plan = SyncResponse {
+            up_to_date: vec![],
+            upload: hashes.clone(),
+            download: vec![],
+            conflicts: vec![],
+            missing_skills: vec![],
+        };
+        let client = ApiClient::new(server.uri())
+            .unwrap()
+            .with_token("dev:alice");
+        let uploaded = upload_blobs(&client, &db, &plan, &BTreeSet::new(), false)
+            .await
+            .unwrap();
+        assert_eq!(uploaded, hashes);
+        let peak = state.lock().unwrap().1;
+        assert!(peak > 1, "uploads must overlap");
+        assert!(
+            peak <= TRANSFER_CONCURRENCY,
+            "too many concurrent uploads: {peak}"
+        );
+    }
+
+    #[tokio::test]
+    async fn corrupt_download_does_not_write_any_skill_files() {
+        let server = MockServer::start().await;
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = paths_for(tmp.path());
+        paths.ensure().unwrap();
+        let db = LocalDb::open(&paths.db_file).unwrap();
+        let hash = hash_bytes(b"expected");
+        Mock::given(method("GET")).and(path("/v1/skills/new-skill"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "name": "new-skill", "tree_hash": "unused", "files": { "SKILL.md": hash }, "updated_at": "2026-09-04T08:00:00.000Z"
+            }))).mount(&server).await;
+        Mock::given(method("GET"))
+            .and(path(format!("/v1/blobs/{hash}")))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"corrupted"))
+            .mount(&server)
+            .await;
+        let plan = SyncResponse {
+            up_to_date: vec![],
+            upload: vec![],
+            download: vec![],
+            conflicts: vec![],
+            missing_skills: vec!["new-skill".into()],
+        };
+        let client = ApiClient::new(server.uri())
+            .unwrap()
+            .with_token("dev:alice");
+        let err = download_blobs(&client, &db, &paths, &plan, &BTreeSet::new())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("hash check"));
+        assert!(!paths.library_skill("new-skill").exists());
     }
 
     #[test]

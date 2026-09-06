@@ -15,6 +15,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { SWRConfig } from "swr";
 import { DEFAULT_DEV_TOKEN } from "@/lib/config";
 import {
   readLocalToken,
@@ -23,6 +24,7 @@ import {
 } from "@/lib/local-token";
 
 export type SessionApi = {
+  cacheKey: string;
   clerkEnabled: boolean;
   isReady: boolean;
   isSignedIn: boolean;
@@ -60,7 +62,7 @@ function ClerkSessionBridge({
   children: ReactNode;
   defaultDevToken: string;
 }) {
-  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken, sessionId, orgId } = useAuth();
   const [localToken, setLocalToken] = usePersistedLocalToken(defaultDevToken);
 
   const getAccessToken = useCallback(async () => {
@@ -73,6 +75,7 @@ function ClerkSessionBridge({
 
   const value = useMemo<SessionApi>(
     () => ({
+      cacheKey: isSignedIn ? `clerk:${sessionId}:${orgId ?? ""}` : `local:${localToken}`,
       clerkEnabled: true,
       isReady: isLoaded,
       isSignedIn: Boolean(isSignedIn),
@@ -80,11 +83,13 @@ function ClerkSessionBridge({
       localToken,
       setLocalToken,
     }),
-    [getAccessToken, isLoaded, isSignedIn, localToken, setLocalToken],
+    [getAccessToken, isLoaded, isSignedIn, sessionId, orgId, localToken, setLocalToken],
   );
 
   return (
-    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
+    <SessionContext.Provider value={value}>
+      <SessionResources>{children}</SessionResources>
+    </SessionContext.Provider>
   );
 }
 
@@ -104,6 +109,7 @@ function LocalSessionProvider({
 
   const value = useMemo<SessionApi>(
     () => ({
+      cacheKey: `local:${localToken}`,
       clerkEnabled: false,
       isReady: true,
       isSignedIn: false,
@@ -115,8 +121,18 @@ function LocalSessionProvider({
   );
 
   return (
-    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
+    <SessionContext.Provider value={value}>
+      <SessionResources>{children}</SessionResources>
+    </SessionContext.Provider>
   );
+}
+
+// Keep the cache local to this mounted app. useResource partitions every entry
+// by session/organization/token, so late responses cannot cross accounts.
+// Preserve the subtree while editing a local token so inputs retain focus.
+function SessionResources({ children }: { children: ReactNode }) {
+  const value = useMemo(() => ({ provider: () => new Map() }), []);
+  return <SWRConfig value={value}>{children}</SWRConfig>;
 }
 
 export function AppProviders({
