@@ -288,7 +288,7 @@ fn draw_confirm(frame: &mut Frame<'_>, area: Rect, app: &App) {
     let body = format!("{heading}\n\nRemoves the library copy.");
     let width =
         ((heading.chars().count() as u16) + 4).clamp(36, area.width.saturating_sub(4).max(20));
-    let popup = popup_sized(area, width, 7);
+    let popup = popup_sized(area, width, 6);
     let para = Paragraph::new(body)
         .block(Block::default().borders(Borders::ALL).title(" delete "))
         .wrap(Wrap { trim: false });
@@ -324,14 +324,17 @@ fn toast_dims(message: &str, area: Rect) -> (u16, u16) {
     (inner.saturating_add(2), height)
 }
 
-/// Bottom-right, sitting on the pane above the footer.
+/// Bottom-right of the preview pane, above the pane border and footer.
 fn toast_rect(area: Rect, width: u16, height: u16) -> Rect {
     let footer = 3;
+    let pane_border = 1;
     let width = width.min(area.width.saturating_sub(2)).max(1);
-    let height = height.min(area.height.saturating_sub(footer)).max(1);
+    let height = height
+        .min(area.height.saturating_sub(footer + pane_border))
+        .max(1);
     Rect {
         x: area.x + area.width.saturating_sub(width + 1),
-        y: area.y + area.height.saturating_sub(footer + height),
+        y: area.y + area.height.saturating_sub(footer + pane_border + height),
         width,
         height,
     }
