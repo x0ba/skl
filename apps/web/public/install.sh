@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Atuin-style curl installer for the skl CLI. Served as a website asset:
-#
-#   curl -fsSL https://<site>/install.sh | bash
-#   curl -fsSL https://<site>/install.sh | bash -s -- --non-interactive
-#
-# Never edits shell rc files (.bashrc / .zshrc / fish). Installs to ~/.local/bin/skl.
-# Binaries still come from GitHub Releases (same asset names).
 
 set -euo pipefail
 
