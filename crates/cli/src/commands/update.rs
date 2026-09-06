@@ -317,13 +317,14 @@ fn persist_file(path: &Path) -> Result<()> {
 }
 
 fn persist_dir(path: &Path) -> Result<()> {
-    let dir = File::open(path)?;
-    if let Err(err) = dir.sync_all() {
-        // Windows cannot fsync a directory.
-        if err.kind() != ErrorKind::InvalidInput {
-            return Err(err.into());
-        }
-    }
+    // Best-effort: the binary is already in place. On Windows, File::open on a
+    // directory often fails before sync_all can run; do not turn that into a
+    // false update failure that would prompt a retry.
+    let dir = match File::open(path) {
+        Ok(dir) => dir,
+        Err(_) => return Ok(()),
+    };
+    let _ = dir.sync_all();
     Ok(())
 }
 
