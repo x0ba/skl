@@ -24,6 +24,7 @@ skl — local skill browser
 [ / ]          scroll preview
 Ctrl-j / Ctrl-k  scroll preview
 /              search (filter names)
+n              new skill (same as `skl create <name>`)
 e              edit SKILL.md ($VISUAL or $EDITOR)
 u              use in this project (same as `skl use <name>`)
 U              unuse in this project (same as `skl unuse <name>`)
@@ -31,7 +32,7 @@ d              delete from SKL and the local library (same as `skl delete <name>
 s              sync (blocking; same as `skl sync`)
 r              refresh from local library / state.db
 ?              this help
-q or Esc       quit (Esc also leaves search / help / delete confirm)
+q or Esc       quit (Esc also leaves search / help / create / delete confirm)
 
 Browse works offline. Sync needs login + API.
 ";
@@ -41,6 +42,7 @@ pub enum Overlay {
     None,
     Help,
     Search,
+    Create,
     ConfirmDelete,
 }
 
@@ -68,6 +70,7 @@ pub struct App {
     pub preview_scroll: u16,
     pub overlay: Overlay,
     pub query: String,
+    pub create_name: String,
     pub status: String,
     pub preview: Preview,
     /// After `u`/`U`, piggyback the same fail-soft auto-sync as the CLI verbs.
@@ -88,6 +91,8 @@ pub enum Tick {
     /// Leave TUI, run an external action, then reload.
     SuspendSync,
     SuspendEdit,
+    /// Write a new library skill, then open SKILL.md in `$EDITOR`.
+    SuspendCreate,
     /// DELETE /v1/skills/:name, then remove the local library copy.
     DeleteRemote,
 }
@@ -161,7 +166,7 @@ pub async fn run(api_base: String) -> Result<()> {
                     continue;
                 };
                 term.suspend()?;
-                if let Err(err) = open_editor(&path) {
+                if let Err(err) = crate::editor::open(&path) {
                     eprintln!("edit: {err}");
                     app.status = format!("edit: {err}");
                 } else {
@@ -169,6 +174,36 @@ pub async fn run(api_base: String) -> Result<()> {
                 }
                 term.resume()?;
                 app.reload();
+            }
+            Tick::SuspendCreate => {
+                let name = app.create_name.trim().to_string();
+                app.create_name.clear();
+                app.overlay = Overlay::None;
+                let paths = match Paths::resolve() {
+                    Ok(paths) => paths,
+                    Err(err) => {
+                        app.status = format!("create: {err}");
+                        continue;
+                    }
+                };
+                term.suspend()?;
+                match crate::commands::create::create_library_skill(&name, &paths) {
+                    Ok(out) => {
+                        if let Err(err) = crate::editor::open(&out.skill_md) {
+                            eprintln!("edit: {err}");
+                            app.status = format!("created {name}  (edit: {err})");
+                        } else {
+                            app.status = format!("created {name}");
+                        }
+                        let _ = crate::commands::create::reindex(&out, &paths);
+                        app.query.clear();
+                        app.reload();
+                        app.select_named(&name);
+                        let _ = crate::auto_sync::maybe_run(&api_base, &paths, "create").await;
+                    }
+                    Err(err) => app.status = format!("create: {err}"),
+                }
+                term.resume()?;
             }
         }
     }
@@ -184,6 +219,7 @@ impl App {
             preview_scroll: 0,
             overlay: Overlay::None,
             query: String::new(),
+            create_name: String::new(),
             status: String::new(),
             preview: Preview {
                 title: String::new(),
@@ -221,6 +257,18 @@ impl App {
 
     pub fn selected_skill_md_path(&self) -> Option<PathBuf> {
         self.selected_row().map(|row| row.path.join("SKILL.md"))
+    }
+
+    pub fn select_named(&mut self, name: &str) {
+        let idxs = self.filtered_indices();
+        if let Some(pos) = idxs
+            .iter()
+            .position(|&i| self.catalog.skills.get(i).map(|row| row.name.as_str()) == Some(name))
+        {
+            self.selected = pos;
+            self.preview_scroll = 0;
+            self.refresh_preview();
+        }
     }
 
     pub fn header_line(&self, now: i64) -> String {
@@ -291,6 +339,10 @@ impl App {
             return self.handle_search_key(key);
         }
 
+        if self.overlay == Overlay::Create {
+            return self.handle_create_key(key);
+        }
+
         match (key.code, key.modifiers) {
             (KeyCode::Char('q'), _) | (KeyCode::Esc, _) => Tick::Quit,
             (KeyCode::Char('?'), _) => {
@@ -330,6 +382,12 @@ impl App {
                 self.status = "refreshed".into();
                 Tick::Continue
             }
+            (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                self.overlay = Overlay::Create;
+                self.create_name.clear();
+                self.status.clear();
+                Tick::Continue
+            }
             (KeyCode::Char('e'), _) => Tick::SuspendEdit,
             (KeyCode::Char('u'), KeyModifiers::NONE) => {
                 self.activate_selected();
@@ -366,6 +424,28 @@ impl App {
             }
             _ => Tick::Continue,
         }
+    }
+
+    fn handle_create_key(&mut self, key: KeyEvent) -> Tick {
+        match key.code {
+            KeyCode::Esc => {
+                self.create_name.clear();
+                self.overlay = Overlay::None;
+                self.status = "create cancelled".into();
+            }
+            KeyCode::Enter => match ready_create_name(&self.create_name, &self.catalog.skills) {
+                Ok(_) => return Tick::SuspendCreate,
+                Err(err) => self.status = err,
+            },
+            KeyCode::Backspace => {
+                self.create_name.pop();
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.create_name.push(c);
+            }
+            _ => {}
+        }
+        Tick::Continue
     }
 
     fn handle_search_key(&mut self, key: KeyEvent) -> Tick {
@@ -596,7 +676,7 @@ fn empty_catalog_hint(paths: Option<&Paths>) -> String {
         .map(|p| p.library_dir())
         .unwrap_or_else(|| PathBuf::from("~/.local/share/skl/skills"));
     format!(
-        "No local skills.\nRun `skl init` then `skl sync` to fill {}.\nBrowsing offline is fine — this screen never talks to the network.",
+        "No local skills.\nPress n or run `skl create <name>` to start one, or `skl init` then `skl sync` to fill {}.\nBrowsing offline is fine — this screen never talks to the network.",
         lib.display()
     )
 }
@@ -674,27 +754,16 @@ pub fn load_preview(row: &SkillRow) -> Preview {
     }
 }
 
-fn open_editor(path: &Path) -> Result<()> {
-    let editor = std::env::var("VISUAL")
-        .or_else(|_| std::env::var("EDITOR"))
-        .unwrap_or_else(|_| "vi".into());
-    let mut parts = editor.split_whitespace();
-    let bin = parts.next().unwrap_or("vi");
-    let mut cmd = std::process::Command::new(bin);
-    for arg in parts {
-        cmd.arg(arg);
+fn ready_create_name(raw: &str, skills: &[SkillRow]) -> std::result::Result<String, String> {
+    let name = raw.trim().to_string();
+    if name.is_empty() {
+        return Err("enter a skill name".into());
     }
-    cmd.arg(path);
-    let status = cmd
-        .status()
-        .map_err(|err| SklError::LocalState(format!("spawn {bin}: {err}")))?;
-    if !status.success() {
-        return Err(SklError::LocalState(format!(
-            "{bin} exited {}",
-            status.code().unwrap_or(-1)
-        )));
+    linker::validate_skill_name(&name).map_err(|err| err.to_string())?;
+    if skills.iter().any(|row| row.name == name) {
+        return Err(format!("skill `{name}` already exists"));
     }
-    Ok(())
+    Ok(name)
 }
 
 #[cfg(test)]
@@ -744,6 +813,7 @@ mod tests {
             preview_scroll: 0,
             overlay: Overlay::None,
             query: String::new(),
+            create_name: String::new(),
             status: String::new(),
             preview: Preview {
                 title: String::new(),
@@ -825,6 +895,54 @@ mod tests {
     }
 
     #[test]
+    fn n_prompts_then_creates() {
+        let mut app = app_with(sample_catalog());
+        assert_eq!(app.handle_key(key(KeyCode::Char('n'))), Tick::Continue);
+        assert_eq!(app.overlay, Overlay::Create);
+        app.handle_key(key(KeyCode::Char('n')));
+        app.handle_key(key(KeyCode::Char('o')));
+        app.handle_key(key(KeyCode::Char('t')));
+        app.handle_key(key(KeyCode::Char('e')));
+        app.handle_key(key(KeyCode::Char('s')));
+        assert_eq!(app.create_name, "notes");
+        assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::SuspendCreate);
+    }
+
+    #[test]
+    fn create_overlay_rejects_empty_invalid_and_existing() {
+        let mut app = app_with(sample_catalog());
+        app.handle_key(key(KeyCode::Char('n')));
+        assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::Continue);
+        assert!(app.status.contains("enter a skill name"), "{}", app.status);
+
+        app.handle_key(key(KeyCode::Char('.')));
+        app.handle_key(key(KeyCode::Char('x')));
+        assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::Continue);
+        assert!(app.status.contains("invalid skill name"), "{}", app.status);
+
+        app.create_name.clear();
+        app.handle_key(key(KeyCode::Char('a')));
+        app.handle_key(key(KeyCode::Char('l')));
+        app.handle_key(key(KeyCode::Char('p')));
+        app.handle_key(key(KeyCode::Char('h')));
+        app.handle_key(key(KeyCode::Char('a')));
+        assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::Continue);
+        assert!(app.status.contains("already exists"), "{}", app.status);
+        assert_eq!(app.overlay, Overlay::Create);
+    }
+
+    #[test]
+    fn create_overlay_esc_cancels() {
+        let mut app = app_with(sample_catalog());
+        app.handle_key(key(KeyCode::Char('n')));
+        app.handle_key(key(KeyCode::Char('x')));
+        assert_eq!(app.handle_key(key(KeyCode::Esc)), Tick::Continue);
+        assert_eq!(app.overlay, Overlay::None);
+        assert!(app.create_name.is_empty());
+        assert!(app.status.contains("cancelled"), "{}", app.status);
+    }
+
+    #[test]
     fn d_confirms_then_deletes() {
         let mut app = app_with(sample_catalog());
         assert_eq!(app.handle_key(key(KeyCode::Char('d'))), Tick::Continue);
@@ -836,6 +954,15 @@ mod tests {
         app.handle_key(key(KeyCode::Char('d')));
         assert_eq!(app.handle_key(key(KeyCode::Char('y'))), Tick::DeleteRemote);
         assert_eq!(app.overlay, Overlay::None);
+    }
+
+    #[test]
+    fn select_named_moves_selection() {
+        let mut app = app_with(sample_catalog());
+        app.select_named("gamma");
+        assert_eq!(app.selected_row().unwrap().name, "gamma");
+        app.select_named("missing");
+        assert_eq!(app.selected_row().unwrap().name, "gamma");
     }
 
     #[test]
@@ -938,6 +1065,26 @@ mod tests {
     }
 
     #[test]
+    fn created_skill_shows_in_catalog() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let project = tmp.path().join("proj");
+        fs::create_dir_all(&project).unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: data,
+            db_file: tmp.path().join("data/state.db"),
+        };
+        crate::commands::create::create_library_skill("notes", &paths).unwrap();
+        let cat = load_catalog_at(&project, Some(&paths), 0).unwrap();
+        assert_eq!(cat.skills.len(), 1);
+        assert_eq!(cat.skills[0].name, "notes");
+        assert!(cat.skills[0].path.join("SKILL.md").is_file());
+        assert!(cat.empty_hint.is_none());
+    }
+
+    #[test]
     fn empty_catalog_hints_init_sync() {
         let tmp = tempfile::tempdir().unwrap();
         let project = tmp.path().join("proj");
@@ -953,6 +1100,7 @@ mod tests {
         let hint = cat.empty_hint.unwrap();
         assert!(hint.contains("skl init"), "{hint}");
         assert!(hint.contains("skl sync"), "{hint}");
+        assert!(hint.contains("skl create"), "{hint}");
     }
 
     #[test]

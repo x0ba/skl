@@ -6,6 +6,7 @@ mod checklist;
 mod commands;
 mod config;
 mod conflict;
+mod editor;
 mod error;
 mod hooks;
 mod local;
@@ -99,6 +100,12 @@ enum Command {
         /// Extra dest for this activation (custom catalog id, e.g. `claude-code`). Repeatable.
         #[arg(short = 'a', long = "agent", value_name = "ID")]
         agents: Vec<String>,
+    },
+    /// Create a personal-library skill and open SKILL.md in `$EDITOR`.
+    #[command(alias = "new")]
+    Create {
+        #[arg(value_name = "SKILL")]
+        name: String,
     },
     /// Promote a project skill into the personal library (`~/.local/share/skl/skills`).
     Capture {
@@ -239,6 +246,7 @@ async fn run() -> Result<(), SklError> {
             project,
             agents,
         } => commands::use_cmd::run(&skills, project, &agents, all, &api_base).await,
+        Command::Create { name } => commands::create::run(&name, &api_base).await,
         Command::Capture {
             path,
             force,
@@ -339,6 +347,18 @@ mod cli_parse_tests {
                 .unwrap()
                 .command,
             Some(Command::Delete { .. })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "create", "greeter"])
+                .unwrap()
+                .command,
+            Some(Command::Create { .. })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "new", "greeter"])
+                .unwrap()
+                .command,
+            Some(Command::Create { .. })
         ));
     }
 }

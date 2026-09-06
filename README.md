@@ -9,6 +9,7 @@ You can self host the web interface and API if you want to! ATM this option is k
 - Personal skill library; no more scattered skills across global and project-specific `.agents/skills` and `.claude/skills` directories.
 - Automatic personal skill syncing across devices.
 - Declarative symlinking of skills to projects.
+- Create skills in the personal library (`skl create` / `n` in the TUI) and edit them in `$EDITOR`.
 - Capture skills from projects to add once-temporary skills to your personal skill library.
 - Supports all major harnesses.
 - Interactive TUI to search, preview, edit, activate, and sync without memorizing flags.
