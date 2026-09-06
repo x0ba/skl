@@ -524,9 +524,11 @@ impl App {
             }
             KeyCode::Backspace => {
                 self.create_name.pop();
+                self.clear_status();
             }
             KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.create_name.push(c);
+                self.clear_status();
             }
             _ => {}
         }
@@ -988,6 +990,18 @@ mod tests {
         app.handle_key(key(KeyCode::Char('s')));
         assert_eq!(app.create_name, "notes");
         assert_eq!(app.handle_key(key(KeyCode::Enter)), Tick::SuspendCreate);
+    }
+
+    #[test]
+    fn create_dialog_shows_validation_error() {
+        let mut app = app_with(sample_catalog());
+        app.handle_key(key(KeyCode::Char('n')));
+        app.handle_key(key(KeyCode::Enter));
+        let joined = screen_lines(&app, 80, 24).join("\n");
+        assert!(
+            joined.contains("enter a skill name"),
+            "create error hidden:\n{joined}"
+        );
     }
 
     #[test]

@@ -270,7 +270,12 @@ fn draw_create(frame: &mut Frame<'_>, area: Rect, app: &App) {
     } else {
         format!("{}_", app.create_name)
     };
-    let body = format!("name: {name}\n\nEnter opens $EDITOR with name + description frontmatter.");
+    let hint = if app.status.is_empty() {
+        "Enter opens $EDITOR with name + description frontmatter."
+    } else {
+        app.status.as_str()
+    };
+    let body = format!("name: {name}\n\n{hint}");
     let para = Paragraph::new(body)
         .block(Block::default().borders(Borders::ALL).title(" new skill "))
         .wrap(Wrap { trim: false });
