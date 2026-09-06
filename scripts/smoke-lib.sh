@@ -2,10 +2,10 @@
 # Shared helpers for two-HOME CLI smokes against cipher's API on :8787.
 # CLI crate path is crates/cli; package/binary name is skl (`cargo build -p skl`).
 #
-# Used by scripts/smoke-import-sync-use.sh and
-# scripts/smoke-portable-use-all.sh. The clash + scrub harness
-# (scripts/smoke-clash.sh on the conflict/scrub PR) uses the same HOME /
-# SKL_TOKEN / ALLOW_DEV_AUTH=true pattern.
+# Used by scripts/smoke-import-sync-use.sh,
+# scripts/smoke-portable-use-all.sh, scripts/smoke-capture.sh,
+# scripts/smoke-init-home-agents.sh, and the other dual-HOME smokes.
+# Clash + scrub stays in scripts/smoke-clash.sh.
 #
 # DAN-14: `skl login` persists to local `state.db` (no DBus / OS keyring).
 # Prefer `skl_login_store` + `skl_run_store` so CI exercises that path.
@@ -601,4 +601,68 @@ skl_assert_symlink_to() {
       exit 1
     fi
   fi
+}
+
+# Canonical library copy exists. Harness homes are importers, not the library.
+# Usage: skl_assert_library_skill <home> <skill-name>
+skl_assert_library_skill() {
+  local home="$1"
+  local name="$2"
+  local lib
+  lib="$(skl_library_of "$home" "$name")"
+  if [[ ! -f "$lib/SKILL.md" ]]; then
+    echo "expected personal library skill at $lib/SKILL.md" >&2
+    ls -la "$(dirname "$lib")" >&2 || true
+    exit 1
+  fi
+  case "$lib" in
+    */.agents/skills/*|*/.claude/skills/*|*/.cursor/skills/*|*/.config/agents/skills/*)
+      echo "personal library must not be a harness home: $lib" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# `skl sync` / `skl init` must not treat ~/.agents/skills as the library dest.
+# Foreign importer leftovers under harness homes are allowed — this asserts
+# the HOME harness path is not where the canonical copy was written.
+# Usage: skl_assert_not_home_agents_peer <home> <skill-name>
+skl_assert_not_home_agents_peer() {
+  local home="$1"
+  local name="$2"
+  if [[ -e "$home/.agents/skills/$name" ]]; then
+    echo "must not treat ~/.agents/skills as a sync/library peer: $home/.agents/skills/$name" >&2
+    ls -la "$home/.agents/skills" >&2 || true
+    exit 1
+  fi
+}
+
+# Sync / use / doctor must not offer an agent-dir merge UI.
+# Usage: skl_assert_no_agent_dir_merge_ui <output>
+skl_assert_no_agent_dir_merge_ui() {
+  local haystack="$1"
+  skl_assert_not_contains "$haystack" "keep [l]ocal"
+  skl_assert_not_contains "$haystack" "overwrite? "
+  skl_assert_not_contains "$haystack" "[y/n]"
+  skl_assert_not_contains "$haystack" "three-way"
+  skl_assert_not_contains "$haystack" "merge project"
+  skl_assert_not_contains "$haystack" "agent-dir merge"
+}
+
+# Run `skl doctor` in a project cwd with an isolated HOME (local store).
+# Usage: skl_doctor_in <home> <project>
+skl_doctor_in() {
+  local home="$1"
+  local cwd="$2"
+  (
+    cd "$cwd"
+    env -u SKL_TOKEN -u SKL_TOKEN_FILE \
+      -u DBUS_SESSION_BUS_ADDRESS \
+      HOME="$home" \
+      SKL_DATA_DIR="$home/.local/share/skl" \
+      SKL_CONFIG_DIR="$home/.config/skl" \
+      SKL_NO_PROMPT=1 \
+      API_BASE="${API:-http://localhost:8787}" \
+      "$BIN" doctor
+  )
 }

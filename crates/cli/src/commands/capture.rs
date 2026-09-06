@@ -603,6 +603,53 @@ mod tests {
         assert!(names.contains(&(LIBRARY_SOURCE, "greeter")));
     }
 
+    #[test]
+    fn divergent_copy_force_capture_then_use_reprojects() {
+        let tmp = tempfile::tempdir().unwrap();
+        let paths = isolated_paths(tmp.path());
+        let home = tmp.path().join("home");
+        plant_skill(&paths.library_skill("greeter"), "# library\n");
+        let (project, skill) = project_skill(tmp.path(), "greeter", "# divergent\n");
+        fs::write(
+            linker::manifest_path(&project),
+            "[[skills]]\nname = \"greeter\"\nmode = \"copy\"\n",
+        )
+        .unwrap();
+
+        let warns = crate::local::projection::inspect(&project, &home, Some(&paths));
+        assert!(
+            warns
+                .iter()
+                .any(|w| w.message.contains("not a sync peer") && w.message.contains("skl capture")),
+            "{warns:?}"
+        );
+        assert!(!is_symlink(&skill));
+        assert_eq!(
+            fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+            "# divergent\n"
+        );
+
+        let mut opts = opts_for(&project);
+        opts.force = true;
+        let out = capture(&skill, &opts, &paths).unwrap();
+        assert_eq!(out.action, CaptureAction::Forced);
+        assert_eq!(
+            fs::read_to_string(paths.library_skill("greeter").join("SKILL.md")).unwrap(),
+            "# divergent\n"
+        );
+
+        let resolved =
+            crate::commands::use_cmd::resolve_skill("greeter", &home, Some(&paths.db_file)).unwrap();
+        assert_eq!(resolved.path, paths.library_skill("greeter"));
+        linker::activate(&project, &home, &resolved).unwrap();
+        assert!(is_symlink(&skill));
+        assert!(points_at(&skill, &paths.library_skill("greeter")));
+        assert_eq!(
+            fs::read_to_string(skill.join("SKILL.md")).unwrap(),
+            "# divergent\n"
+        );
+    }
+
     #[tokio::test]
     async fn fail_soft_dead_api_does_not_fail_capture() {
         let tmp = tempfile::tempdir().unwrap();

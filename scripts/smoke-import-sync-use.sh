@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Two-machine happy path against cipher's API on localhost:8787:
-#   import (skl init) → sync → skl use
+#   import (skl init) → library only → sync → skl use (link → library)
+# DAN-15: mutate library → sync B → use --all restores; harness homes
+# are not sync peers. Clash / keep-local / scrub stays in smoke-clash.sh.
 #
 # Same Clerk-dev user, two HOMEs (two devices). A clash is per-user, not
 # cross-user — login the same ALLOW_DEV_AUTH id into each machine's local
@@ -35,6 +37,7 @@ skl_smoke_defaults
 MACHINE_A="$WORKDIR/machine-a"
 MACHINE_B="$WORKDIR/machine-b"
 PROJECT_B="$WORKDIR/project-b"
+PROJECT_RESTORE="$WORKDIR/project-restore"
 # Same ALLOW_DEV_AUTH user on both machines (a sync is per-user). Default is
 # unique per process so leftover skills from a prior run are not pulled.
 # Set SKL_TOKEN=dev:alice to share a stable user with smoke-clash.sh.
@@ -70,7 +73,7 @@ skl_start_api
 skl_require_bin
 skl_wait_for_api
 
-mkdir -p "$MACHINE_A" "$MACHINE_B" "$PROJECT_B"
+mkdir -p "$MACHINE_A" "$MACHINE_B" "$PROJECT_B" "$PROJECT_RESTORE"
 mkdir -p "$MACHINE_B/.agents/skills"
 # Explicit `skl sync` harness — do not let furnace maybe_run steal the first PUT.
 skl_write_sync_prefs "$MACHINE_A" false 900
@@ -79,11 +82,19 @@ skl_login_store "$MACHINE_A" "$TOKEN_A" >/dev/null
 skl_login_store "$MACHINE_B" "$TOKEN_B" >/dev/null
 seed_skill "$MACHINE_A" "$SKILL_NAME" "$SKILL_BODY"
 
-echo "==> machine A: import (skl init)"
+echo "==> machine A: import (skl init) → library only"
 a_init="$(run_a init 2>&1)"
 echo "$a_init"
 skl_assert_contains "$a_init" "Imported 1 skill"
 skl_assert_contains "$a_init" "$SKILL_NAME"
+skl_assert_no_agent_dir_merge_ui "$a_init"
+skl_assert_library_skill "$MACHINE_A" "$SKILL_NAME"
+skl_assert_file_contains "$(skl_library_of "$MACHINE_A" "$SKILL_NAME")/SKILL.md" \
+  "hello from machine A"
+# Foreign seed stays (importer); ~/.agents/skills is not the library dest.
+skl_assert_file_contains "$MACHINE_A/.claude/skills/${SKILL_NAME}/SKILL.md" \
+  "hello from machine A"
+skl_assert_not_home_agents_peer "$MACHINE_A" "$SKILL_NAME"
 
 echo "==> machine A: sync (first upload)"
 a_sync="$(run_a sync 2>&1)"
@@ -112,11 +123,9 @@ skl_assert_contains "$b_sync" "GET /v1/blobs/"
 skl_assert_contains "$b_sync" "wrote skill $SKILL_NAME"
 skl_assert_contains "$b_sync" "sync done"
 skl_assert_file_contains "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")/SKILL.md" "hello from machine A"
-if [[ -e "$MACHINE_B/.agents/skills/${SKILL_NAME}" ]]; then
-  echo "sync must not write the personal library under ~/.agents/skills" >&2
-  ls -la "$MACHINE_B/.agents/skills" >&2 || true
-  exit 1
-fi
+skl_assert_library_skill "$MACHINE_B" "$SKILL_NAME"
+skl_assert_not_home_agents_peer "$MACHINE_B" "$SKILL_NAME"
+skl_assert_no_agent_dir_merge_ui "$b_sync"
 
 echo "==> machine B: list after pull"
 b_list="$(run_b list 2>&1)"
@@ -135,6 +144,7 @@ claude_link="$PROJECT_B/.claude/skills/${SKILL_NAME}"
 cursor_link="$PROJECT_B/.cursor/skills/${SKILL_NAME}"
 home_skill="$(skl_library_of "$MACHINE_B" "$SKILL_NAME")"
 skl_assert_symlink_to "$agents_link" "$home_skill"
+skl_assert_no_agent_dir_merge_ui "$b_use"
 if [[ -e "$claude_link" || -L "$claude_link" || -d "$PROJECT_B/.claude" ]]; then
   echo "default use must not create .claude" >&2
   ls -la "$PROJECT_B" >&2 || true
@@ -165,6 +175,62 @@ echo "$b_used"
 skl_assert_contains "$b_used" "$SKILL_NAME"
 skl_assert_contains "$b_used" "symlink"
 
+echo "==> mutate library on A → sync B → use --all restores projection"
+printf '\nmutated on A\n' >>"$(skl_library_of "$MACHINE_A" "$SKILL_NAME")/SKILL.md"
+# Library-layer clash only (not agent/project dests). A pushes; B takes remote.
+a_sync2="$(run_a sync --keep-local 2>&1)"
+echo "$a_sync2"
+skl_assert_contains "$a_sync2" "sync done"
+skl_assert_contains "$a_sync2" "keep-local: $SKILL_NAME"
+skl_assert_no_agent_dir_merge_ui "$a_sync2"
+
+cp "$PROJECT_B/skills.toml" "$PROJECT_RESTORE/skills.toml"
+skl_assert_portable_manifest "$PROJECT_RESTORE/skills.toml" "$MACHINE_A" "$MACHINE_B"
+if [[ -e "$PROJECT_RESTORE/.agents" ]]; then
+  echo "clone must not copy project dests" >&2
+  exit 1
+fi
+
+b_sync2="$(run_b sync --keep-remote 2>&1)"
+echo "$b_sync2"
+skl_assert_contains "$b_sync2" "sync done"
+skl_assert_contains "$b_sync2" "keep-remote: $SKILL_NAME"
+skl_assert_no_agent_dir_merge_ui "$b_sync2"
+skl_assert_file_contains "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")/SKILL.md" "mutated on A"
+skl_assert_not_home_agents_peer "$MACHINE_B" "$SKILL_NAME"
+if [[ -e "$PROJECT_RESTORE/.agents" ]]; then
+  echo "sync must not auto-restore project dests" >&2
+  ls -la "$PROJECT_RESTORE" >&2 || true
+  exit 1
+fi
+
+b_all="$(run_b use --all --project "$PROJECT_RESTORE" 2>&1)"
+echo "$b_all"
+skl_assert_contains "$b_all" "using $SKILL_NAME"
+skl_assert_no_agent_dir_merge_ui "$b_all"
+skl_assert_symlink_to \
+  "$PROJECT_RESTORE/.agents/skills/${SKILL_NAME}" \
+  "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")"
+skl_assert_file_contains \
+  "$PROJECT_RESTORE/.agents/skills/${SKILL_NAME}/SKILL.md" \
+  "mutated on A"
+
+echo "==> harness homes are not sync peers (decoy under ~/.agents + ~/.claude)"
+decoy="decoy-$$"
+mkdir -p "$MACHINE_B/.agents/skills/${decoy}" "$MACHINE_B/.claude/skills/${decoy}"
+printf '%s\n' "not a sync peer" >"$MACHINE_B/.agents/skills/${decoy}/SKILL.md"
+printf '%s\n' "not a sync peer" >"$MACHINE_B/.claude/skills/${decoy}/SKILL.md"
+b_sync3="$(run_b sync 2>&1)"
+echo "$b_sync3"
+skl_assert_contains "$b_sync3" "sync done"
+skl_assert_not_contains "$b_sync3" "PUT /v1/skills/${decoy}/tree"
+skl_assert_not_contains "$b_sync3" "wrote skill ${decoy}"
+skl_assert_no_agent_dir_merge_ui "$b_sync3"
+if [[ -e "$(skl_library_of "$MACHINE_B" "$decoy")" ]]; then
+  echo "sync must not import unindexed harness-home decoys into the library" >&2
+  exit 1
+fi
+
 echo "==> machine B: skl unuse ${SKILL_NAME}"
 b_unuse="$(run_b unuse "$SKILL_NAME" --project "$PROJECT_B" 2>&1)"
 echo "$b_unuse"
@@ -183,4 +249,4 @@ if [[ -e "$cursor_link" || -L "$cursor_link" ]]; then
   exit 1
 fi
 
-echo "OK: import → sync → use against $API (A=$TOKEN_A B=$TOKEN_B)"
+echo "OK: import → library; use → library link; mutate → sync B → use --all; no harness sync peers (A=$TOKEN_A B=$TOKEN_B)"

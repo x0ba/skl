@@ -203,10 +203,12 @@ echo "==> machine B: skl use --all rematerializes from this machine"
 b_all="$(run_b use --all --project "$PROJECT_B" 2>&1)"
 echo "$b_all"
 skl_assert_contains "$b_all" "using $SKILL_NAME"
+skl_assert_no_agent_dir_merge_ui "$b_all"
 skl_assert_symlink_to \
   "$PROJECT_B/.agents/skills/${SKILL_NAME}" \
   "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")"
 skl_assert_file_contains "$PROJECT_B/.agents/skills/${SKILL_NAME}/SKILL.md" "hello from machine A"
+skl_assert_library_skill "$MACHINE_B" "$SKILL_NAME"
 skl_assert_portable_manifest "$PROJECT_B/skills.toml" \
   "$MACHINE_A" \
   "$MACHINE_B" \

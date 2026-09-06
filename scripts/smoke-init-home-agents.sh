@@ -57,13 +57,16 @@ list_out="$(run_home list 2>&1)"
 echo "$list_out"
 skl_assert_contains "$list_out" "$AGENTS_NAME"
 skl_assert_contains "$list_out" "$XDG_NAME"
+skl_assert_library_skill "$HOME_DIR" "$AGENTS_NAME"
+skl_assert_library_skill "$HOME_DIR" "$XDG_NAME"
 skl_assert_file_contains "$(skl_library_of "$HOME_DIR" "$AGENTS_NAME")/SKILL.md" \
   "hello from ~/.agents/skills"
 skl_assert_file_contains "$(skl_library_of "$HOME_DIR" "$XDG_NAME")/SKILL.md" \
   "hello from ~/.config/agents/skills"
-# Foreign trees stay in place (importer, not a projection).
+# Foreign trees stay in place (importer, not a projection / not a sync peer).
 skl_assert_file_contains "$HOME_DIR/.agents/skills/${AGENTS_NAME}/SKILL.md" \
   "hello from ~/.agents/skills"
+skl_assert_no_agent_dir_merge_ui "$init_out"
 
 echo "==> skl doctor reports both furnace home roots"
 doc_out="$(run_home doctor 2>&1)"
@@ -72,4 +75,4 @@ skl_assert_contains "$doc_out" "skills=2"
 skl_assert_contains "$doc_out" "${HOME_DIR}/.agents/skills  writable=yes  skills=1"
 skl_assert_contains "$doc_out" "${HOME_DIR}/.config/agents/skills  writable=yes  skills=1"
 
-echo "OK: skl init imported ${AGENTS_NAME} (agents) + ${XDG_NAME} (xdg-agents)"
+echo "OK: skl init imported ${AGENTS_NAME} (agents) + ${XDG_NAME} (xdg-agents) into the personal library"
