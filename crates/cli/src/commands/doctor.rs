@@ -1,11 +1,11 @@
-//! `skl doctor` — agent skill paths, keyring/config/state.db, API health.
+//! `skl doctor` — agent skill paths, local token store / config / state.db, API health.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::api::ApiClient;
-use crate::auth::{self, TokenPresence, KEYRING_ACCOUNT, KEYRING_SERVICE, TOKEN_ENV};
+use crate::auth::{self, TokenPresence, TokenSource, TOKEN_ENV, TOKEN_FILE_ENV};
 use crate::config::{self, Paths, SkillRoot};
 use crate::error::Result;
 use crate::local::db::{LocalDb, SyncSummary};
@@ -42,8 +42,9 @@ pub struct DoctorReport {
     pub health: HealthStatus,
     pub token: TokenPresence,
     pub token_env_set: bool,
-    pub keyring_service: String,
-    pub keyring_account: String,
+    pub token_file_set: bool,
+    pub token_source: TokenSource,
+    pub token_store: Option<PathBuf>,
     pub config: Option<PathStatus>,
     pub state_db: Option<PathStatus>,
     pub local_skills: Option<u64>,
@@ -79,6 +80,11 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
     let token_env_set = std::env::var(TOKEN_ENV)
         .map(|v| !v.trim().is_empty())
         .unwrap_or(false);
+    let token_file_set = std::env::var(TOKEN_FILE_ENV)
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false);
+    let token_source = auth::token_source();
+    let token_store = paths.map(|p| p.db_file.clone());
 
     let (config, state_db, local_skills, last_sync) = match paths {
         Some(paths) => {
@@ -116,8 +122,9 @@ pub async fn collect(api_base: &str, home: &Path, paths: Option<&Paths>) -> Doct
         health,
         token,
         token_env_set,
-        keyring_service: KEYRING_SERVICE.to_string(),
-        keyring_account: KEYRING_ACCOUNT.to_string(),
+        token_file_set,
+        token_source,
+        token_store,
         config,
         state_db,
         local_skills,
@@ -287,30 +294,37 @@ fn print_report(report: &DoctorReport) {
 
     println!();
     println!("== Auth");
-    let env_note = if report.token_env_set {
-        format!("  ({TOKEN_ENV} override)")
-    } else {
-        String::new()
+    let source_note = match report.token_source {
+        TokenSource::Env => format!("  ({TOKEN_ENV} override)"),
+        TokenSource::File => format!("  ({TOKEN_FILE_ENV} override)"),
+        TokenSource::Local => String::new(),
+        TokenSource::None => String::new(),
+    };
+    let store = match &report.token_store {
+        Some(path) => path.display().to_string(),
+        None => "(cannot resolve XDG data dir)".into(),
     };
     match &report.token {
         TokenPresence::Present { preview } => {
-            println!(
-                "keyring      present  service={} account={}  token={preview}{env_note}",
-                report.keyring_service, report.keyring_account
-            );
+            println!("token        present  store={store}  token={preview}{source_note}");
         }
         TokenPresence::Absent => {
-            println!(
-                "keyring      absent   service={} account={}  (run `skl login`){env_note}",
-                report.keyring_service, report.keyring_account
-            );
+            println!("token        absent   store={store}  (run `skl login`){source_note}");
         }
         TokenPresence::Error(msg) => {
-            println!(
-                "keyring      error    service={} account={}  {msg}{env_note}",
-                report.keyring_service, report.keyring_account
-            );
+            println!("token        error    store={store}  {msg}{source_note}");
         }
+    }
+    println!("token_store  local state.db (OS keyring not required)");
+    if report.token_env_set || report.token_file_set {
+        let mut overrides = Vec::new();
+        if report.token_env_set {
+            overrides.push(TOKEN_ENV);
+        }
+        if report.token_file_set {
+            overrides.push(TOKEN_FILE_ENV);
+        }
+        println!("overrides    {}", overrides.join(" "));
     }
 
     println!();
@@ -497,6 +511,7 @@ mod tests {
         assert_eq!(xdg_root.symlink, None);
         assert!(!report.config.as_ref().unwrap().exists);
         assert!(report.state_db.as_ref().unwrap().exists);
+        assert_eq!(report.token_store.as_ref(), Some(&paths.db_file));
         assert!(report.symlink, "host temp dir should allow symlinks");
         assert_eq!(report.symlink_detail, "ok");
         assert!(report.windows_note.is_none());

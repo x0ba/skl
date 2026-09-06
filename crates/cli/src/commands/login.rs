@@ -47,12 +47,8 @@ pub async fn run(api_base: String, dev_user: Option<String>) -> Result<()> {
                 let mut cfg = config::load(&paths).unwrap_or_default();
                 cfg.api_base = Some(api_base.clone());
                 config::save(&paths, &cfg)?;
-                eprintln!("Logged in. Device token stored in OS keyring");
-                eprintln!(
-                    "  service={}  account={}",
-                    auth::KEYRING_SERVICE,
-                    auth::KEYRING_ACCOUNT
-                );
+                eprintln!("Logged in. Device token stored in local state");
+                eprintln!("  store {}", paths.db_file.display());
                 eprintln!("  api_base saved to {}", paths.config_file.display());
                 let _ = crate::auto_sync::maybe_run(&api_base, &paths, "login").await;
                 return Ok(());
@@ -69,6 +65,7 @@ async fn store_dev_user(paths: &Paths, api_base: String, user: &str) -> Result<(
     config::save(paths, &cfg)?;
     eprintln!("Stored local dev token (no device poll)");
     eprintln!("  Authorization: Bearer {token}");
+    eprintln!("  store {}", paths.db_file.display());
     eprintln!("  api_base {api_base} → {}", paths.config_file.display());
     eprintln!("API accepts this only when CLERK_SECRET_KEY is unset (ALLOW_DEV_AUTH).");
     let _ = crate::auto_sync::maybe_run(&api_base, paths, "login").await;

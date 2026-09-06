@@ -53,7 +53,7 @@ run_b() { run_home "$MACHINE_B" "$TOKEN_B" "$@"; }
 login_home() {
   local home="$1"
   local token="$2"
-  # SKL_TOKEN only — do not `skl login` (no Secret Service on CI runners).
+  # SKL_TOKEN only — env override; machines stay isolated from local store.
   skl_prepare_home "$home" "$token"
 }
 

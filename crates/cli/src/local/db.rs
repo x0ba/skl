@@ -6,6 +6,23 @@ use crate::api::types::{SkillTree, SyncRequest};
 use crate::error::{Result, SklError};
 use crate::local::skills::DiscoveredSkill;
 
+/// Atuin-style: owner-only data dir (`0700`) and DB file (`0600`).
+/// No-op on non-Unix; Windows ACLs are left to the user profile.
+pub fn restrict_unix_mode(path: &Path, mode: u32) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(path)?.permissions();
+        perms.set_mode(mode);
+        std::fs::set_permissions(path, perms)?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, mode);
+    }
+    Ok(())
+}
+
 pub struct LocalDb {
     conn: Connection,
 }
@@ -14,8 +31,10 @@ impl LocalDb {
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
+            restrict_unix_mode(parent, 0o700)?;
         }
         let conn = Connection::open(path)?;
+        restrict_unix_mode(path, 0o600)?;
         let db = Self { conn };
         db.migrate()?;
         Ok(db)
@@ -223,6 +242,12 @@ impl LocalDb {
         Ok(None)
     }
 
+    pub fn delete_meta(&self, key: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM meta WHERE key = ?1", params![key])?;
+        Ok(())
+    }
+
     pub fn record_sync_summary(&self, summary: &SyncSummary) -> Result<()> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -351,5 +376,33 @@ mod tests {
             beta.tree.files["SKILL.md"],
             crate::local::skills::hash_bytes(b"b2")
         );
+    }
+
+    #[test]
+    fn meta_roundtrip_and_delete() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = LocalDb::open(&tmp.path().join("state.db")).unwrap();
+        assert!(db.get_meta("device_token").unwrap().is_none());
+        db.set_meta("device_token", "dev:alice").unwrap();
+        assert_eq!(
+            db.get_meta("device_token").unwrap().as_deref(),
+            Some("dev:alice")
+        );
+        db.delete_meta("device_token").unwrap();
+        assert!(db.get_meta("device_token").unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_restricts_db_and_parent_perms() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let parent = tmp.path().join("data");
+        let db_path = parent.join("state.db");
+        let _db = LocalDb::open(&db_path).unwrap();
+        let dir_mode = std::fs::metadata(&parent).unwrap().permissions().mode() & 0o777;
+        let file_mode = std::fs::metadata(&db_path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir_mode, 0o700);
+        assert_eq!(file_mode, 0o600);
     }
 }
