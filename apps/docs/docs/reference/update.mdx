@@ -1,0 +1,50 @@
+---
+title: skl update
+description: Replace this skl binary with the latest GitHub Release.
+---
+
+# skl update
+
+Download the latest GitHub Release for this machine and replace the `skl` binary that is running.
+
+## Synopsis
+
+```bash
+skl update
+skl update --force
+skl upgrade
+```
+
+`skl upgrade` is an alias.
+
+## Flags
+
+- `--force` — download and replace even when this binary already matches the latest release checksum.
+
+## What it writes
+
+`skl update` replaces the invoked binary in place (the path printed by `skl update`, usually `~/.local/bin/skl`). It does not change config, `state.db`, the personal library, or shell rc files.
+
+The command:
+
+1. Resolves this machine's GitHub Release triple (same triples as [install.sh](/guide/installation)).
+2. Downloads `SHA256SUMS` from the asset origin.
+3. Skips the download when the current file already matches the latest checksum, unless `--force` is set.
+4. Downloads `skl-<triple>` (or `skl-<triple>.exe` on Windows).
+5. Verifies the SHA-256 and then replaces the binary.
+
+A checksum mismatch leaves the existing binary in place.
+
+## Environment
+
+- `SKL_DOWNLOAD_BASE` sets the asset origin. The default is GitHub Releases `latest/download`, the same default as the installer.
+
+## Errors
+
+- `unsupported platform … for skl update` — this OS/arch is not in the release matrix.
+- `SHA256SUMS has no entry for …` — the asset origin is missing this triple.
+- `checksum mismatch for …` — the downloaded bytes did not match `SHA256SUMS`.
+- `cannot resolve this skl binary` — `skl` could not find its own path.
+- Network or GitHub errors from the asset origin.
+
+You can still upgrade by rerunning the [install script](/guide/installation).

@@ -42,6 +42,7 @@ const sidebars: SidebarsConfig = {
         'reference/delete',
         'reference/unuse',
         'reference/migrate',
+        'reference/update',
         'reference/tui',
       ],
     },

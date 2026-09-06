@@ -143,6 +143,13 @@ enum Command {
         #[command(subcommand)]
         action: MigrateAction,
     },
+    /// Replace this binary with the latest GitHub Release.
+    #[command(alias = "upgrade")]
+    Update {
+        /// Download and replace even when this binary already matches latest.
+        #[arg(long)]
+        force: bool,
+    },
     /// Interactive two-pane skill browser (also opened by bare `skl` on a TTY).
     Tui,
     /// Alias for `tui`.
@@ -273,6 +280,7 @@ async fn run() -> Result<(), SklError> {
         Command::Migrate {
             action: MigrateAction::Targets { project, prune_old },
         } => commands::migrate::run(project, prune_old),
+        Command::Update { force } => commands::update::run(force).await,
         Command::Tui | Command::Ui => unreachable!("TUI dispatched before match"),
     }
 }
@@ -359,6 +367,20 @@ mod cli_parse_tests {
                 .unwrap()
                 .command,
             Some(Command::Create { .. })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "update"]).unwrap().command,
+            Some(Command::Update { force: false })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "update", "--force"])
+                .unwrap()
+                .command,
+            Some(Command::Update { force: true })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "upgrade"]).unwrap().command,
+            Some(Command::Update { force: false })
         ));
     }
 }

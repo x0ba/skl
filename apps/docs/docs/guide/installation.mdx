@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install skl with the curl script, from source, or upgrade by rerunning the installer.
+description: Install skl with the curl script, from source, or upgrade with skl update.
 ---
 
 # Installation
@@ -51,7 +51,13 @@ Debug builds default `api_base` to `http://localhost:8787`. Release builds defau
 
 ## Upgrade
 
-Run the install script again. It replaces the binary in `SKL_INSTALL_DIR`.
+```bash
+skl update
+```
+
+`skl update` downloads the latest GitHub Release for this machine, checks `SHA256SUMS`, and replaces the invoked binary (usually `~/.local/bin/skl`). It does not run first-run setup again. Use `--force` to reinstall even when the checksum already matches. `skl upgrade` is an alias.
+
+You can also run the install script again. It replaces the binary in `SKL_INSTALL_DIR`.
 
 ## Interactive first-run
 
