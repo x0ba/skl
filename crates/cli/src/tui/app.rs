@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
@@ -16,6 +16,9 @@ use crate::sync::SyncOptions;
 
 use super::render;
 use super::terminal::TuiTerminal;
+
+/// How long a status toast stays on screen before the footer is keys-only again.
+pub const TOAST_TTL: Duration = Duration::from_secs(3);
 
 const HELP_TEXT: &str = "\
 skl — local skill browser
@@ -71,7 +74,9 @@ pub struct App {
     pub overlay: Overlay,
     pub query: String,
     pub create_name: String,
+    /// Last status text (tests + toast body). Not drawn in the footer.
     pub status: String,
+    status_at: Option<Instant>,
     pub preview: Preview,
     /// After `u`/`U`, piggyback the same fail-soft auto-sync as the CLI verbs.
     pending_auto_sync: Option<&'static str>,
@@ -106,10 +111,21 @@ pub async fn run(api_base: String) -> Result<()> {
             .draw(|frame| render::draw(frame, &app))
             .map_err(|err| SklError::LocalState(format!("TUI draw: {err}")))?;
 
+        if let Some(wait) = app.toast_poll() {
+            match event::poll(wait) {
+                Ok(false) => continue,
+                Ok(true) => {}
+                Err(err) => {
+                    app.set_status(format!("input error: {err}"));
+                    continue;
+                }
+            }
+        }
+
         let ev = match event::read() {
             Ok(ev) => ev,
             Err(err) => {
-                app.status = format!("input error: {err}");
+                app.set_status(format!("input error: {err}"));
                 continue;
             }
         };
@@ -141,36 +157,36 @@ pub async fn run(api_base: String) -> Result<()> {
                 )
                 .await;
                 match result {
-                    Ok(()) => app.status = "sync finished".into(),
-                    Err(err) => app.status = format!("sync: {err}"),
+                    Ok(()) => app.set_status("sync finished"),
+                    Err(err) => app.set_status(format!("sync: {err}")),
                 }
                 term.resume()?;
                 app.reload();
             }
             Tick::DeleteRemote => {
                 let Some(name) = app.selected_row().map(|r| r.name.clone()) else {
-                    app.status = "no skill selected".into();
+                    app.set_status("no skill selected");
                     continue;
                 };
                 match crate::commands::delete::run(std::slice::from_ref(&name), &api_base).await {
                     Ok(()) => {
-                        app.status = format!("deleted {name}");
+                        app.set_status(format!("deleted {name}"));
                         app.reload();
                     }
-                    Err(err) => app.status = format!("delete: {err}"),
+                    Err(err) => app.set_status(format!("delete: {err}")),
                 }
             }
             Tick::SuspendEdit => {
                 let Some(path) = app.selected_skill_md_path() else {
-                    app.status = "no skill selected".into();
+                    app.set_status("no skill selected");
                     continue;
                 };
                 term.suspend()?;
                 if let Err(err) = crate::editor::open(&path) {
                     eprintln!("edit: {err}");
-                    app.status = format!("edit: {err}");
+                    app.set_status(format!("edit: {err}"));
                 } else {
-                    app.status = format!("edited {}", path.display());
+                    app.set_status(format!("edited {}", path.display()));
                 }
                 term.resume()?;
                 app.reload();
@@ -182,14 +198,14 @@ pub async fn run(api_base: String) -> Result<()> {
                 let paths = match Paths::resolve() {
                     Ok(paths) => paths,
                     Err(err) => {
-                        app.status = format!("create: {err}");
+                        app.set_status(format!("create: {err}"));
                         continue;
                     }
                 };
                 term.suspend()?;
                 match crate::commands::create::create_library_skill(&name, &paths) {
                     Ok(out) => {
-                        app.status = if let Err(err) = crate::editor::open(&out.skill_md) {
+                        let msg = if let Err(err) = crate::editor::open(&out.skill_md) {
                             eprintln!("edit: {err}");
                             format!("created {name}  (edit: {err})")
                         } else if let Err(err) = crate::commands::create::reindex(&out, &paths) {
@@ -199,12 +215,13 @@ pub async fn run(api_base: String) -> Result<()> {
                         } else {
                             format!("created {name}")
                         };
+                        app.set_status(msg);
                         app.query.clear();
                         app.reload();
                         app.select_named(&name);
                         let _ = crate::auto_sync::maybe_run(&api_base, &paths, "create").await;
                     }
-                    Err(err) => app.status = format!("create: {err}"),
+                    Err(err) => app.set_status(format!("create: {err}")),
                 }
                 term.resume()?;
             }
@@ -224,6 +241,7 @@ impl App {
             query: String::new(),
             create_name: String::new(),
             status: String::new(),
+            status_at: None,
             preview: Preview {
                 title: String::new(),
                 body: String::new(),
@@ -243,7 +261,7 @@ impl App {
                 self.refresh_preview();
             }
             Err(err) => {
-                self.status = format!("refresh: {err}");
+                self.set_status(format!("refresh: {err}"));
             }
         }
     }
@@ -276,6 +294,68 @@ impl App {
 
     pub fn header_line(&self, now: i64) -> String {
         format_header(&self.catalog, now)
+    }
+
+    pub fn set_status(&mut self, msg: impl Into<String>) {
+        self.status = msg.into();
+        self.status_at = if self.status.is_empty() {
+            None
+        } else {
+            Some(Instant::now())
+        };
+    }
+
+    pub fn clear_status(&mut self) {
+        self.status.clear();
+        self.status_at = None;
+    }
+
+    /// Status toast still on screen. Footer never includes this text.
+    pub fn visible_toast(&self) -> Option<&str> {
+        if self.status.is_empty() {
+            return None;
+        }
+        let at = self.status_at?;
+        if at.elapsed() >= TOAST_TTL {
+            return None;
+        }
+        Some(self.status.as_str())
+    }
+
+    /// Remaining toast time. `None` means block on the next key or resize.
+    pub fn toast_poll(&self) -> Option<Duration> {
+        let _ = self.visible_toast()?;
+        let at = self.status_at?;
+        Some(TOAST_TTL.saturating_sub(at.elapsed()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_catalog(catalog: Catalog) -> Self {
+        let mut app = Self {
+            catalog,
+            selected: 0,
+            preview_scroll: 0,
+            overlay: Overlay::None,
+            query: String::new(),
+            create_name: String::new(),
+            status: String::new(),
+            status_at: None,
+            preview: Preview {
+                title: String::new(),
+                body: "body".into(),
+                warning: None,
+            },
+            pending_auto_sync: None,
+        };
+        app.refresh_preview();
+        app
+    }
+
+    #[cfg(test)]
+    pub(crate) fn expire_toast(&mut self) {
+        if !self.status.is_empty() {
+            self.status_at = Some(Instant::now() - TOAST_TTL - Duration::from_secs(1));
+        }
     }
 
     fn clamp_selected(&mut self) {
@@ -382,13 +462,13 @@ impl App {
             }
             (KeyCode::Char('r'), _) => {
                 self.reload();
-                self.status = "refreshed".into();
+                self.set_status("refreshed");
                 Tick::Continue
             }
             (KeyCode::Char('n'), KeyModifiers::NONE) => {
                 self.overlay = Overlay::Create;
                 self.create_name.clear();
-                self.status.clear();
+                self.clear_status();
                 Tick::Continue
             }
             (KeyCode::Char('e'), _) => Tick::SuspendEdit,
@@ -402,10 +482,10 @@ impl App {
             }
             (KeyCode::Char('d'), KeyModifiers::NONE) => {
                 if self.selected_row().is_none() {
-                    self.status = "no skill selected".into();
+                    self.set_status("no skill selected");
                 } else {
                     self.overlay = Overlay::ConfirmDelete;
-                    self.status.clear();
+                    self.clear_status();
                 }
                 Tick::Continue
             }
@@ -422,7 +502,7 @@ impl App {
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Char('q') | KeyCode::Esc => {
                 self.overlay = Overlay::None;
-                self.status = "delete cancelled".into();
+                self.set_status("delete cancelled");
                 Tick::Continue
             }
             _ => Tick::Continue,
@@ -434,12 +514,12 @@ impl App {
             KeyCode::Esc => {
                 self.create_name.clear();
                 self.overlay = Overlay::None;
-                self.status = "create cancelled".into();
+                self.set_status("create cancelled");
             }
             KeyCode::Enter => {
                 match ready_create_name(&self.create_name, Paths::resolve().ok().as_ref()) {
                     Ok(_) => return Tick::SuspendCreate,
-                    Err(err) => self.status = err,
+                    Err(err) => self.set_status(err),
                 }
             }
             KeyCode::Backspace => {
@@ -486,31 +566,31 @@ impl App {
 
     fn activate_selected(&mut self) {
         let Some(name) = self.selected_row().map(|r| r.name.clone()) else {
-            self.status = "no skill selected".into();
+            self.set_status("no skill selected");
             return;
         };
         match activate_cwd(&name) {
             Ok(msg) => {
-                self.status = msg;
+                self.set_status(msg);
                 self.pending_auto_sync = Some("use");
                 self.reload();
             }
-            Err(err) => self.status = format!("use: {err}"),
+            Err(err) => self.set_status(format!("use: {err}")),
         }
     }
 
     fn deactivate_selected(&mut self) {
         let Some(name) = self.selected_row().map(|r| r.name.clone()) else {
-            self.status = "no skill selected".into();
+            self.set_status("no skill selected");
             return;
         };
         match deactivate_cwd(&name) {
             Ok(msg) => {
-                self.status = msg;
+                self.set_status(msg);
                 self.pending_auto_sync = Some("unuse");
                 self.reload();
             }
-            Err(err) => self.status = format!("unuse: {err}"),
+            Err(err) => self.set_status(format!("unuse: {err}")),
         }
     }
 }
@@ -825,23 +905,7 @@ mod tests {
     }
 
     fn app_with(catalog: Catalog) -> App {
-        let mut app = App {
-            catalog,
-            selected: 0,
-            preview_scroll: 0,
-            overlay: Overlay::None,
-            query: String::new(),
-            create_name: String::new(),
-            status: String::new(),
-            preview: Preview {
-                title: String::new(),
-                body: "body".into(),
-                warning: None,
-            },
-            pending_auto_sync: None,
-        };
-        app.refresh_preview();
-        app
+        App::from_catalog(catalog)
     }
 
     #[test]
@@ -968,6 +1032,94 @@ mod tests {
         app.handle_key(key(KeyCode::Char('d')));
         assert_eq!(app.handle_key(key(KeyCode::Char('y'))), Tick::DeleteRemote);
         assert_eq!(app.overlay, Overlay::None);
+    }
+
+    #[test]
+    fn status_is_a_toast_and_expires() {
+        let mut app = app_with(sample_catalog());
+        app.set_status("edited /tmp/alpha/SKILL.md");
+        assert_eq!(app.visible_toast(), Some("edited /tmp/alpha/SKILL.md"));
+        assert!(app.toast_poll().is_some());
+        app.expire_toast();
+        assert_eq!(app.visible_toast(), None);
+        assert_eq!(app.toast_poll(), None);
+        assert!(app.status.contains("edited"), "{}", app.status);
+    }
+
+    fn screen_lines(app: &App, width: u16, height: u16) -> Vec<String> {
+        let backend = ratatui::backend::TestBackend::new(width, height);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| crate::tui::render::draw(frame, app))
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        (0..height)
+            .map(|y| {
+                let mut line = String::new();
+                for x in 0..width {
+                    line.push_str(buf[(x, y)].symbol());
+                }
+                line
+            })
+            .collect()
+    }
+
+    fn footer_text(lines: &[String]) -> String {
+        lines[lines.len() - 2].trim().to_string()
+    }
+
+    #[test]
+    fn footer_stays_keys_when_status_is_set() {
+        let mut app = app_with(sample_catalog());
+        app.set_status("edited /tmp/alpha/SKILL.md");
+        let lines = screen_lines(&app, 120, 24);
+        let footer = footer_text(&lines);
+        assert!(
+            !footer.contains("edited"),
+            "status leaked into footer: {footer}"
+        );
+        assert!(footer.contains("/ search"), "{footer}");
+        let joined = lines.join("\n");
+        assert!(
+            joined.contains("edited /tmp/alpha/SKILL.md"),
+            "toast missing:\n{joined}"
+        );
+    }
+
+    #[test]
+    fn expired_toast_leaves_footer_only() {
+        let mut app = app_with(sample_catalog());
+        app.set_status("deleted alpha");
+        app.expire_toast();
+        let lines = screen_lines(&app, 120, 24);
+        let joined = lines.join("\n");
+        assert!(!joined.contains("deleted alpha"), "{joined}");
+        assert!(footer_text(&lines).contains("/ search"), "{joined}");
+    }
+
+    #[test]
+    fn delete_confirm_is_a_floating_dialog() {
+        let mut app = app_with(sample_catalog());
+        app.handle_key(key(KeyCode::Char('d')));
+        let lines = screen_lines(&app, 80, 24);
+        let joined = lines.join("\n");
+        assert!(joined.contains("Delete alpha?"), "{joined}");
+        assert!(joined.contains("Removes the library copy."), "{joined}");
+        let footer = footer_text(&lines);
+        assert!(!footer.contains("Delete alpha"), "{footer}");
+        assert!(!footer.contains("library copy"), "{footer}");
+        assert!(footer.contains("y confirm"), "{footer}");
+        assert!(footer.contains("n/Esc cancel"), "{footer}");
+    }
+
+    #[test]
+    fn narrow_footer_drops_labels() {
+        let app = app_with(sample_catalog());
+        let lines = screen_lines(&app, 40, 16);
+        let footer = footer_text(&lines);
+        assert!(!footer.contains("search"), "{footer}");
+        assert!(footer.contains('/'), "{footer}");
+        assert!(footer.contains('q'), "{footer}");
     }
 
     #[test]
