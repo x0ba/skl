@@ -21,7 +21,7 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
               Source
             </a>
             <a
-              href="https://docs.skl.sh"
+              href="https://docs.tryskl.fyi"
               className="text-muted-foreground underline decoration-from-font underline-offset-2 hover:text-foreground"
             >
               Docs
