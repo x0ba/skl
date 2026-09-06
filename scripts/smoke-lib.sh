@@ -237,7 +237,8 @@ PY
 }
 
 # Plant a leftover native keyring token (linux-keyutils, no DBus).
-# keyring 3 `linux-native` default description is `keyring:{service}@{user}`.
+# keyring 3 `linux-native` description is `keyring-rs:{user}@{service}`
+# (`user` = account = device_token, `service` = skl).
 # Prints the description that was written, or returns 1 if none worked.
 skl_plant_legacy_keyring() {
   local token="$1"
@@ -247,7 +248,7 @@ skl_plant_legacy_keyring() {
   fi
   # Clear first so a stale description does not shadow the plant.
   skl_clear_legacy_keyring || true
-  for desc in "keyring:skl@device_token" "skl:device_token" "skl"; do
+  for desc in "keyring-rs:device_token@skl" "keyring:skl@device_token" "skl:device_token" "skl"; do
     if python3 - "$token" "$desc" <<'PY'
 import ctypes
 import ctypes.util
@@ -268,23 +269,31 @@ add_key.argtypes = [
     ctypes.c_int,
 ]
 add_key.restype = ctypes.c_int
-KEY_SPEC_USER_KEYRING = -4
+# keyring-rs searches the session keyring (`@s` / KEY_SPEC_SESSION_KEYRING).
+KEY_SPEC_SESSION_KEYRING = -3
+KEY_SPEC_USER_SESSION_KEYRING = -5
 payload = token.encode()
-serial = add_key(
-    b"user",
-    desc.encode(),
-    payload,
-    len(payload),
-    KEY_SPEC_USER_KEYRING,
-)
-raise SystemExit(0 if serial > 0 else 1)
+ok = False
+for ring in (KEY_SPEC_SESSION_KEYRING, KEY_SPEC_USER_SESSION_KEYRING):
+    serial = add_key(
+        b"user",
+        desc.encode(),
+        payload,
+        len(payload),
+        ring,
+    )
+    if serial > 0:
+        ok = True
+        break
+raise SystemExit(0 if ok else 1)
 PY
     then
       printf '%s' "$desc"
       return 0
     fi
     if command -v keyctl >/dev/null 2>&1; then
-      if keyctl add user "$desc" "$token" @u >/dev/null 2>&1; then
+      if keyctl add user "$desc" "$token" @s >/dev/null 2>&1 \
+        || keyctl add user "$desc" "$token" @us >/dev/null 2>&1; then
         printf '%s' "$desc"
         return 0
       fi
@@ -299,7 +308,12 @@ import ctypes
 import ctypes.util
 import subprocess
 
-descs = ("keyring:skl@device_token", "skl:device_token", "skl")
+descs = (
+    "keyring-rs:device_token@skl",
+    "keyring:skl@device_token",
+    "skl:device_token",
+    "skl",
+)
 libname = ctypes.util.find_library("keyutils")
 if libname:
     try:
@@ -310,11 +324,18 @@ if libname:
         invalidate = lib.keyctl_invalidate
         invalidate.argtypes = [ctypes.c_int]
         invalidate.restype = ctypes.c_int
+        KEY_SPEC_SESSION_KEYRING = -3
+        KEY_SPEC_USER_SESSION_KEYRING = -5
         KEY_SPEC_USER_KEYRING = -4
-        for desc in descs:
-            serial = request(b"user", desc.encode(), None, KEY_SPEC_USER_KEYRING)
-            if serial > 0:
-                invalidate(serial)
+        for ring in (
+            KEY_SPEC_SESSION_KEYRING,
+            KEY_SPEC_USER_SESSION_KEYRING,
+            KEY_SPEC_USER_KEYRING,
+        ):
+            for desc in descs:
+                serial = request(b"user", desc.encode(), None, ring)
+                if serial > 0:
+                    invalidate(serial)
     except OSError:
         pass
 for desc in descs:
@@ -376,6 +397,8 @@ skl_run_store() {
 }
 
 # Persist a dev token into the local store (`skl login --dev-user`).
+# Callers that want auto-sync should write `[sync] auto=false` before login
+# so maybe_run does not consume the first due slot, then turn auto on after.
 # Usage: skl_login_store <home-dir> [token]
 skl_login_store() {
   local home="$1"

@@ -109,7 +109,8 @@ skl_login_store "$HOME_OVERRIDE" "$TOKEN_A" >/dev/null
 skl_assert_state_token "$HOME_OVERRIDE" "dev:$(user_of "$TOKEN_A")"
 
 env_out="$(
-  env SKL_TOKEN="dev:from-env" -u SKL_TOKEN_FILE \
+  env -u SKL_TOKEN_FILE \
+    SKL_TOKEN="dev:from-env" \
     HOME="$HOME_OVERRIDE" \
     SKL_DATA_DIR="$HOME_OVERRIDE/.local/share/skl" \
     SKL_CONFIG_DIR="$HOME_OVERRIDE/.config/skl" \
@@ -152,6 +153,8 @@ echo "$both_out"
 skl_assert_contains "$both_out" "dev:from-env"
 
 echo "==> [4] migrate-once from leftover keyring / adopt into empty store"
+skl_write_sync_prefs "$HOME_ADOPT" false 900
+skl_write_sync_prefs "$HOME_MIGRATE" false 900
 # 4a. Same meta key migrate-once writes (adopt when local empty).
 skl_seed_local_token "$HOME_ADOPT" "dev:from-adopt"
 adopt_status="$(skl_run_store "$HOME_ADOPT" status 2>&1)"

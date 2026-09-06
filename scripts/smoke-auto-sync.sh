@@ -60,8 +60,10 @@ prepare_machine() {
   local home="$1"
   local token="$2"
   # Local store path: login persists the token; verbs do not set SKL_TOKEN.
-  skl_write_sync_prefs "$home" true 900
+  # Keep auto off during login so maybe_run does not consume the first due slot.
+  skl_write_sync_prefs "$home" false 900
   skl_login_store "$home" "$token" >/dev/null
+  skl_write_sync_prefs "$home" true 900
 }
 
 # --- 1. Dual-HOME ----------------------------------------------------------

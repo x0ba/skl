@@ -382,8 +382,9 @@ smoke_fail_soft() {
 
 fail-soft capture
 "
-  skl_write_sync_prefs "$home" true 900
+  skl_write_sync_prefs "$home" false 900
   login_home "$home" "$TOKEN_A"
+  skl_write_sync_prefs "$home" true 900
 
   echo "    capture against dead API (due) — verb must succeed"
   local cap_out cap_rc
