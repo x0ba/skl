@@ -89,6 +89,10 @@ Non-TTY, `SKL_NO_TUI=1`, or `--no-tui` prints help and never enters raw mode (sa
 
 Header shows skill count, last sync age, and the cwd project name. Activated skills are marked `✓`, others `·`. Capture, init, collections, and mouse are not in this TUI.
 
+```bash
+./scripts/smoke-tui.sh   # no API: piped/CI help, TTY --no-tui, u == skl use, q restores
+```
+
 ### setup
 
 `skl setup` is the TTY first-run after `install.sh`: login `[Y/n]` (default yes), then init `[Y/n]` (default yes). Init shows the harness checklist (Universal `.agents` locked). `--non-interactive`, non-TTY, `CI`, `SKL_NO_PROMPT`, or `SKL_YES` skip prompts (binary / already-installed CLI only).
@@ -272,6 +276,7 @@ cargo build -p skl
 ./scripts/smoke-auto-sync.sh         # dual-HOME + throttle + fail-soft (no `skl sync`)
 ./scripts/smoke-capture.sh           # project skill → capture → sync B → use; clash / --force / --as / --keep-copy / fail-soft / non-TTY
 ./scripts/smoke-portable-use-all.sh  # two-HOME portable skills.toml → sync B → skl use --all
+./scripts/smoke-tui.sh               # non-TTY / SKL_NO_TUI / TTY `--no-tui`; TUI `u` == `skl use`; `q` restores cooked
 ./scripts/smoke-install.sh           # curl install.sh (fake release) → skl --help; no Rust; no prompts
 
 # Boot postgres + apps/api here

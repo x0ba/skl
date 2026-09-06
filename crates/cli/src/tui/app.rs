@@ -479,7 +479,10 @@ pub fn load_catalog_at(project: &Path, paths: Option<&Paths>, _now: i64) -> Resu
         match scan_library(&paths.library_dir()) {
             Ok(found) => {
                 for path in found {
-                    let Some(name) = path.file_name().and_then(|n| n.to_str()).map(str::to_string)
+                    let Some(name) = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(str::to_string)
                     else {
                         continue;
                     };
@@ -812,12 +815,16 @@ mod tests {
             tree: hash_skill_dir(&lib).unwrap(),
         }])
         .unwrap();
-        linker::activate(&project, &home, &DiscoveredSkill {
-            name: "greeter".into(),
-            source: "agents".into(),
-            path: lib.clone(),
-            tree: hash_skill_dir(&lib).unwrap(),
-        })
+        linker::activate(
+            &project,
+            &home,
+            &DiscoveredSkill {
+                name: "greeter".into(),
+                source: "agents".into(),
+                path: lib.clone(),
+                tree: hash_skill_dir(&lib).unwrap(),
+            },
+        )
         .unwrap();
 
         let paths = Paths {
@@ -880,9 +887,158 @@ mod tests {
         linker::deactivate(&project, &home, "greeter").unwrap();
         assert!(!project.join(".agents/skills/greeter").exists());
         let raw = fs::read_to_string(linker::manifest_path(&project)).unwrap();
-        assert!(!raw.contains("greeter") || !raw.contains("[[skills]]") || {
-            let m = linker::load_manifest(&project).unwrap();
-            !m.skills.iter().any(|s| s.name == "greeter")
-        });
+        assert!(
+            !raw.contains("greeter") || !raw.contains("[[skills]]") || {
+                let m = linker::load_manifest(&project).unwrap();
+                !m.skills.iter().any(|s| s.name == "greeter")
+            }
+        );
+    }
+
+    /// Serializes tests that mutate process `HOME` / cwd (same isolation as CLI).
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct IsolatedFs {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        prev_cwd: std::path::PathBuf,
+        prev_home: Option<std::ffi::OsString>,
+        prev_data: Option<std::ffi::OsString>,
+        prev_cfg: Option<std::ffi::OsString>,
+    }
+
+    impl IsolatedFs {
+        fn enter(home: &Path, data: &Path, cfg: &Path, cwd: &Path) -> Self {
+            let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let prev_cwd = std::env::current_dir().expect("cwd");
+            let this = Self {
+                _guard: guard,
+                prev_cwd,
+                prev_home: std::env::var_os("HOME"),
+                prev_data: std::env::var_os("SKL_DATA_DIR"),
+                prev_cfg: std::env::var_os("SKL_CONFIG_DIR"),
+            };
+            std::env::set_var("HOME", home);
+            std::env::set_var("SKL_DATA_DIR", data);
+            std::env::set_var("SKL_CONFIG_DIR", cfg);
+            std::env::set_current_dir(cwd).expect("chdir project");
+            this
+        }
+    }
+
+    impl Drop for IsolatedFs {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.prev_cwd);
+            match &self.prev_home {
+                Some(v) => std::env::set_var("HOME", v),
+                None => std::env::remove_var("HOME"),
+            }
+            match &self.prev_data {
+                Some(v) => std::env::set_var("SKL_DATA_DIR", v),
+                None => std::env::remove_var("SKL_DATA_DIR"),
+            }
+            match &self.prev_cfg {
+                Some(v) => std::env::set_var("SKL_CONFIG_DIR", v),
+                None => std::env::remove_var("SKL_CONFIG_DIR"),
+            }
+        }
+    }
+
+    fn plant_library_skill(data: &Path, name: &str, body: &str) -> PathBuf {
+        let dir = data.join("skills").join(name);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("SKILL.md"), body).unwrap();
+        dir
+    }
+
+    fn dest_real(project: &Path, name: &str) -> PathBuf {
+        let link = project.join(".agents/skills").join(name);
+        assert!(
+            link.exists() || link.symlink_metadata().is_ok(),
+            "missing dest {}",
+            link.display()
+        );
+        fs::canonicalize(&link).unwrap_or_else(|_| link)
+    }
+
+    /// `u` in the TUI must write the same portable `skills.toml` + dests as `skl use`.
+    #[test]
+    fn tui_u_matches_skl_use_manifest_and_links() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let data = home.join(".local/share/skl");
+        let cfg = home.join(".config/skl");
+        let project_tui = tmp.path().join("proj-tui");
+        let project_cli = tmp.path().join("proj-cli");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(&cfg).unwrap();
+        fs::create_dir_all(&project_tui).unwrap();
+        fs::create_dir_all(&project_cli).unwrap();
+        let lib = plant_library_skill(&data, "greeter", "# hello from greeter\n");
+
+        let _iso = IsolatedFs::enter(&home, &data, &cfg, &project_tui);
+        let mut app = App::load().expect("load catalog from library");
+        assert_eq!(
+            app.selected_row().map(|r| r.name.as_str()),
+            Some("greeter"),
+            "TUI list must show planted library skill"
+        );
+        assert_eq!(app.handle_key(key(KeyCode::Char('u'))), Tick::Continue);
+        assert!(
+            app.status.contains("using greeter"),
+            "u status: {}",
+            app.status
+        );
+
+        let skill = resolve_skill("greeter", &home, Some(&data.join("state.db"))).unwrap();
+        linker::activate_with_extras(&project_cli, &home, &skill, &[]).unwrap();
+
+        let tui_toml = fs::read_to_string(linker::manifest_path(&project_tui)).unwrap();
+        let cli_toml = fs::read_to_string(linker::manifest_path(&project_cli)).unwrap();
+        assert_eq!(
+            tui_toml, cli_toml,
+            "TUI u vs skl use skills.toml\nTUI:\n{tui_toml}\nCLI:\n{cli_toml}"
+        );
+        assert!(
+            !tui_toml.contains("path ="),
+            "portable manifest must not write path=: {tui_toml}"
+        );
+        assert!(tui_toml.contains("name = \"greeter\""), "{tui_toml}");
+        assert_eq!(
+            dest_real(&project_tui, "greeter"),
+            dest_real(&project_cli, "greeter")
+        );
+        let tui_dest = dest_real(&project_tui, "greeter");
+        let lib_real = fs::canonicalize(&lib).unwrap();
+        assert_eq!(tui_dest, lib_real, "dest should point at library skill");
+    }
+
+    #[test]
+    fn activate_cwd_matches_cli_use_without_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let data = home.join(".local/share/skl");
+        let cfg = home.join(".config/skl");
+        let project_tui = tmp.path().join("proj-tui");
+        let project_cli = tmp.path().join("proj-cli");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(&cfg).unwrap();
+        fs::create_dir_all(&project_tui).unwrap();
+        fs::create_dir_all(&project_cli).unwrap();
+        plant_library_skill(&data, "greeter", "# hello\n");
+
+        let _iso = IsolatedFs::enter(&home, &data, &cfg, &project_tui);
+        let msg = activate_cwd("greeter").expect("TUI activate_cwd");
+        assert!(msg.contains("using greeter"), "{msg}");
+
+        let skill = resolve_skill("greeter", &home, Some(&data.join("state.db"))).unwrap();
+        linker::activate_with_extras(&project_cli, &home, &skill, &[]).unwrap();
+
+        let tui_toml = fs::read_to_string(linker::manifest_path(&project_tui)).unwrap();
+        let cli_toml = fs::read_to_string(linker::manifest_path(&project_cli)).unwrap();
+        assert_eq!(tui_toml, cli_toml);
+        assert_eq!(
+            dest_real(&project_tui, "greeter"),
+            dest_real(&project_cli, "greeter")
+        );
     }
 }
