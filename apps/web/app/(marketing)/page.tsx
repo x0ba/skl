@@ -2,6 +2,65 @@ import Link from "next/link";
 import { InstallCommand } from "@/components/ui/install-command";
 import { Heading, Label } from "@/components/ui/text";
 import { Transcript } from "@/components/ui/transcript";
+import { TuiFrame } from "@/components/ui/tui-frame";
+
+const DEMO_SKILLS = [
+  {
+    name: "writing-tests",
+    used: true,
+    preview: `---
+name: writing-tests
+description: Failing test first.
+---
+
+Write the failing test first. Name it after
+the behavior, not the function.
+One assertion per case. No shared
+mutable fixtures.`,
+  },
+  {
+    name: "code-review",
+    used: false,
+    preview: `---
+name: code-review
+description: Review the diff, not the author.
+---
+
+Read the change as a user would.
+Ask what breaks if this ships.
+Skip style nits the linter already
+covers.`,
+  },
+  {
+    name: "commit-messages",
+    used: false,
+    preview: `---
+name: commit-messages
+description: Subject line is the why.
+---
+
+One logical change per commit.
+Subject under 72 characters.
+Body says why, not what git already
+shows.`,
+  },
+  {
+    name: "secret-scrub",
+    used: false,
+    preview: `---
+name: secret-scrub
+description: Block obvious secrets on sync.
+---
+
+Scan SKILL.md and sidecars before
+upload. Warn on keys, tokens, and
+PEM blocks. Still read the files
+yourself.`,
+  },
+] as const;
+
+const DEMO_KEYS =
+  "/ search  n new  ↑↓/jk move  [] scroll  e edit  u/U use  d delete  s sync  q quit";
 
 const STEPS = [
   {
@@ -28,44 +87,35 @@ export default function LandingPage() {
   return (
     <>
       <section className="mx-auto w-full max-w-content px-6 pb-20 pt-16 sm:pt-24">
-        <div className="grid gap-14 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center lg:gap-16">
-          <div>
-            <h1 className="max-w-xl text-balance font-sans text-display font-bold text-foreground">
-              Your skills, on every machine.
-            </h1>
-            <p className="mt-6 max-w-md text-[17px] leading-relaxed text-muted-foreground">
-              Seamlessly sync and manage your agent skills across machines and projects.
-            </p>
-            <div className="mt-9">
-              <InstallCommand />
-            </div>
-            <p className="mt-4 font-mono text-[12px] text-faint">
-              available for macOS, Linux, and Windows
-            </p>
-          </div>
+        <h1 className="max-w-xl text-balance font-sans text-display font-bold text-foreground">
+          Your skills, on every machine.
+        </h1>
+        <p className="mt-6 max-w-md text-[17px] leading-relaxed text-muted-foreground">
+          Seamlessly sync and manage your agent skills across machines and projects.
+        </p>
+        <div className="mt-9">
+          <InstallCommand />
+        </div>
+        <p className="mt-4 font-mono text-[12px] text-faint">
+          available for macOS, Linux, and Windows
+        </p>
 
-          <div className="space-y-6">
-            <Transcript
-              caption="First run on a new machine"
-              lines={[
-                { kind: "command", text: "skl login" },
-                { kind: "output", text: "code: BQDF-7T2M" },
-                { kind: "output", text: "open https://tryskl.fyi/device" },
-                { kind: "note", text: "" },
-                { kind: "note", text: "approved — device: mbp-16" },
-              ]}
-            />
-            <Transcript
-              caption="Pulling a skill into the current project"
-              lines={[
-                { kind: "command", text: "skl sync" },
-                { kind: "output", text: "↓ 3 skills   ↑ 1 skill   0 conflicts" },
-                { kind: "note", text: "" },
-                { kind: "command", text: "skl use writing-tests" },
-                { kind: "output", text: "→ .agents/skills/writing-tests" },
-              ]}
-            />
-          </div>
+        <div className="mt-10 space-y-6">
+          <TuiFrame
+            lastSync="2m ago"
+            project="skl"
+            skills={DEMO_SKILLS}
+            initialSelected="writing-tests"
+            keys={DEMO_KEYS}
+            caption="skl"
+          />
+          <Transcript
+            caption="Current project"
+            lines={[
+              { kind: "command", text: "skl use writing-tests" },
+              { kind: "output", text: "→ .agents/skills/writing-tests" },
+            ]}
+          />
         </div>
       </section>
 

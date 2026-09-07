@@ -5,11 +5,6 @@ canonical = ["agents"]
 extra = ["claude-code"]
 
 [[skills]]
-name = "babysit-pr"
-source = "library"
-mode = "copy"
-
-[[skills]]
 name = "file-pr"
 source = "library"
 mode = "copy"
@@ -26,10 +21,5 @@ mode = "copy"
 
 [[skills]]
 name = "html-communication"
-source = "library"
-mode = "copy"
-
-[[skills]]
-name = "web-design-guidelines"
 source = "library"
 mode = "copy"

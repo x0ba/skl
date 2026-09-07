@@ -26,6 +26,29 @@ Create one self-contained HTML file, capped at 512 KB.
 
 Never include external or module scripts, inline event handlers, 'javascript:' URLs, forms, frames, embeds, objects, applets, meta refresh, linked stylesheets, secrets, private URLs, or local filesystem paths.
 
+## Publish
+
+Host the HTML as a public GitHub gist. Do not commit it to the product repo, and do not deploy it through the app's Vercel project.
+
+Write the file outside the repo (for example `/tmp/plan.html`). Create the gist with `gh` (`gist` scope required):
+
+```
+gh gist create --public --desc "short description" /tmp/plan.html
+```
+
+Raw gist URLs are `text/plain` and will not render in a browser. Report the htmlpreview URL, which is the document the human opens:
+
+```
+https://htmlpreview.github.io/?https://gist.githubusercontent.com/<user>/<id>/raw/<filename>
+```
+
+Keep one gist across iterations so that URL stays stable. Edit in place:
+
+```
+gh gist edit <id> /tmp/plan.html
+```
+
+
 ## UI Mocks
 
 When the user asks for variants:
