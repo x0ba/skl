@@ -45,8 +45,8 @@ export default function MarketingLayout({ children }: LayoutProps<"/">) {
             <a href={REPO} className="hover:text-foreground">
               GitHub
             </a>
-            <Link href="/design" className="hover:text-foreground">
-              Design system
+            <Link href="https://docs.tryskl.fyi" className="hover:text-foreground">
+              Docs
             </Link>
           </div>
         </div>

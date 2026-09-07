@@ -1,26 +1,26 @@
 import Link from "next/link";
 import { InstallCommand } from "@/components/ui/install-command";
-import { Label } from "@/components/ui/text";
+import { Heading, Label } from "@/components/ui/text";
 import { Transcript } from "@/components/ui/transcript";
 
 const STEPS = [
   {
     n: "01",
-    title: "Authorize a machine",
-    body: "Sign in to your account and authorize a machine to access your skills.",
-    command: "skl login",
+    title: "Personal skill library",
+    body: "One single source of truth for your skill files synced across all your libraries.",
+    command: "skl list",
   },
   {
     n: "02",
-    title: "Sync by content hash",
-    body: "Pull the latest skills into your project. Only the files you are actually missing will be transferred.",
-    command: "skl sync",
+    title: "Declarative per-project skills",
+    body: ".toml-backed per-project skill configs.",
+    command: "skl use",
   },
   {
     n: "03",
-    title: "Activate in the project",
-    body: "skl use writes into .agents/skills — the directory Cursor, Codex, and other agents already read. Opt in to extras like Claude's .claude/skills when you need them.",
-    command: "skl use writing-tests",
+    title: "TUI and web app",
+    body: "Fully-featured TUI and web application to browse, manage, and sync your skill library.",
+    command: "skl tui",
   },
 ];
 
@@ -40,7 +40,7 @@ export default function LandingPage() {
               <InstallCommand />
             </div>
             <p className="mt-4 font-mono text-[12px] text-faint">
-              or from source: cargo install --path crates/cli
+              available for macOS, Linux, and Windows
             </p>
           </div>
 
@@ -71,7 +71,7 @@ export default function LandingPage() {
 
       <section className="border-t border-border">
         <div className="mx-auto w-full max-w-content px-6 py-16">
-          <Label className="mb-8">How it works</Label>
+          <Label className="mb-8">Killer Features</Label>
           <ol className="border-t border-border">
             {STEPS.map((step) => (
               <li
@@ -98,13 +98,25 @@ export default function LandingPage() {
       </section>
 
       <section className="border-t border-border">
+        <div className="mx-auto grid w-full max-w-content items-center gap-4 px-6 py-9 md:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto] md:gap-x-8">
+          <Heading>Get started</Heading>
+          <InstallCommand />
+          <a
+            href="https://docs.tryskl.fyi/guide/getting-started"
+            className="font-mono text-[13px] text-primary underline decoration-from-font underline-offset-2 hover:decoration-2"
+          >
+            Read the docs if you want more detail
+          </a>
+        </div>
+      </section>
+
+      <section className="border-t border-border">
         <div className="mx-auto w-full max-w-content px-6 py-20">
           <h2 className="max-w-lg text-balance font-sans text-[31px] font-bold tracking-[-0.035em] text-foreground">
             Stop copy-pasting skill folders between machines.
           </h2>
           <p className="mt-4 max-w-md text-[15px] leading-relaxed text-muted-foreground">
-            Install the CLI, approve one device, and run{" "}
-            <code className="font-mono text-foreground">skl sync</code>.
+            Install the CLI and stop worrying about where your skill files are.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-3 font-mono text-[13px]">
             <Link
