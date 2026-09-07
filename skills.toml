@@ -15,11 +15,21 @@ source = "library"
 mode = "copy"
 
 [[skills]]
+name = "frontend-design"
+source = "library"
+mode = "copy"
+
+[[skills]]
 name = "greploop"
 source = "library"
 mode = "copy"
 
 [[skills]]
 name = "html-communication"
+source = "library"
+mode = "copy"
+
+[[skills]]
+name = "web-design-guidelines"
 source = "library"
 mode = "copy"
