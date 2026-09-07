@@ -34,7 +34,7 @@ export default function LandingPage() {
               Your skills, on every machine.
             </h1>
             <p className="mt-6 max-w-md text-[17px] leading-relaxed text-muted-foreground">
-              Sync your agent skills across machines and projects.
+              Seamlessly sync and manage your agent skills across machines and projects.
             </p>
             <div className="mt-9">
               <InstallCommand />
