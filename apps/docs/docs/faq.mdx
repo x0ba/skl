@@ -27,6 +27,14 @@ For Cursor Cloud, commit the materialized `.agents/skills/<name>/` trees. Names 
 
 Cursor and Codex already read `.agents/skills`. Use `-a` only for agents with their own project directory, such as Claude Code.
 
+## Do I need `--force` to refresh a project after a library edit?
+
+No. `skl use --all` (or `skl refresh`) rematerializes managed projections: missing dests, skl symlinks, and real dirs listed in `skills.toml` with `mode = "copy"`. `--force` on `use` only clobbers unmanaged dests. `--force` on `capture` overwrites the canonical library.
+
+## I edited `.agents/skills/...` and my change disappeared
+
+Project dests are projections. Edit the library with `skl edit <name>`, then `skl use --all`. If the project copy temporarily won, `skl capture <name>` (or `skl capture <name> --force` to overwrite the library) and then refresh.
+
 ## Why didn't sync change my project?
 
 `skl sync` handles only the personal library. Project directories change when you run `skl use` or `skl use --all`. After syncing on another machine, rematerialize with `skl use --all` and commit `.agents/skills` if remote agents should see the files.

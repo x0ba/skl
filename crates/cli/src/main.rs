@@ -86,18 +86,18 @@ enum Command {
         #[command(subcommand)]
         action: Option<TargetsCommand>,
     },
-    /// Activate a skill, list activated skills, or restore all (`--all`).
+    /// Activate a skill, list activated skills, or refresh all (`--all`).
     Use {
         /// Skill names. With none, list skills already activated in the project.
         #[arg(value_name = "SKILL")]
         skills: Vec<String>,
-        /// Rematerialize every skill listed in skills.toml from this machine's library.
+        /// Refresh every skill listed in skills.toml from this machine's library.
         #[arg(long)]
         all: bool,
         /// Symlink into the project instead of copying (local-only; broken for Cursor Cloud).
         #[arg(long)]
         link: bool,
-        /// Overwrite an unmanaged real directory at the dest.
+        /// Clobber unmanaged paths. Not required to refresh a managed projection.
         #[arg(long)]
         force: bool,
         /// Project directory (default: cwd).
@@ -113,12 +113,32 @@ enum Command {
         #[arg(value_name = "SKILL")]
         name: String,
     },
+    /// Open a personal-library skill in `$VISUAL` / `$EDITOR` (never a project copy).
+    Edit {
+        #[arg(value_name = "SKILL")]
+        name: String,
+    },
+    /// Refresh managed project projections (same as `use --all`).
+    Refresh {
+        /// Symlink into the project instead of copying (local-only; broken for Cursor Cloud).
+        #[arg(long)]
+        link: bool,
+        /// Clobber unmanaged paths. Not required to refresh a managed projection.
+        #[arg(long)]
+        force: bool,
+        /// Project directory (default: cwd).
+        #[arg(long, value_name = "DIR")]
+        project: Option<PathBuf>,
+        /// Extra dest for this refresh (custom catalog id, e.g. `claude-code`). Repeatable.
+        #[arg(short = 'a', long = "agent", value_name = "ID")]
+        agents: Vec<String>,
+    },
     /// Promote a project skill into the personal library (`~/.local/share/skl/skills`).
     Capture {
         /// Project skill path or name (resolved under `.agents/skills` + sticky extras).
         #[arg(value_name = "PATH")]
         path: PathBuf,
-        /// Overwrite an existing library skill of the same name.
+        /// Overwrite the canonical library skill of the same name.
         #[arg(long)]
         force: bool,
         /// Capture under a different skill name.
@@ -280,6 +300,26 @@ async fn run() -> Result<(), SklError> {
             .await
         }
         Command::Create { name } => commands::create::run(&name, &api_base).await,
+        Command::Edit { name } => commands::edit::run(&name, &api_base).await,
+        Command::Refresh {
+            link,
+            force,
+            project,
+            agents,
+        } => {
+            commands::use_cmd::run(
+                &[],
+                project,
+                &agents,
+                commands::use_cmd::UseOpts {
+                    all: true,
+                    link,
+                    force,
+                },
+                &api_base,
+            )
+            .await
+        }
         Command::Capture {
             path,
             force,
@@ -420,6 +460,30 @@ mod cli_parse_tests {
                 .unwrap()
                 .command,
             Some(Command::Create { .. })
+        ));
+        assert!(matches!(
+            Cli::try_parse_from(["skl", "edit", "greeter"])
+                .unwrap()
+                .command,
+            Some(Command::Edit { .. })
+        ));
+        let refresh = Cli::try_parse_from(["skl", "refresh"]).unwrap();
+        assert!(matches!(
+            refresh.command,
+            Some(Command::Refresh {
+                force: false,
+                link: false,
+                ..
+            })
+        ));
+        let use_all = Cli::try_parse_from(["skl", "use", "--all"]).unwrap();
+        assert!(matches!(
+            use_all.command,
+            Some(Command::Use {
+                all: true,
+                force: false,
+                ..
+            })
         ));
         assert!(matches!(
             Cli::try_parse_from(["skl", "update"]).unwrap().command,

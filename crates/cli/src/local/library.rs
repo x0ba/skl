@@ -1,8 +1,8 @@
 //! Canonical personal skill library (`{data_dir}/skills`).
 //!
-//! Roles: the library is canonical; `skl create` writes new skills; `skl init` /
-//! `skl capture` import foreign trees into it; `skl use` / `skl use --all`
-//! project from it. `skl sync` is
+//! Roles: the library is canonical; `skl edit` / `skl create` write it; `skl init` /
+//! `skl capture` import foreign trees into it; `skl use` / `skl use --all` /
+//! `skl refresh` project from it. `skl sync` is
 //! content-addressed against this library only — never agent homes
 //! (`~/.agents/skills`, `~/.claude/skills`, …) or project dests.
 

@@ -1,0 +1,26 @@
+---
+title: skl refresh
+description: Refresh managed project projections from the personal library.
+---
+
+# skl refresh
+
+Alias of [`skl use --all`](/reference/use). Rematerialize every skill listed in `skills.toml` from this machine's library.
+
+## Synopsis
+
+```bash
+skl refresh
+skl refresh --project <dir> -a <id>
+```
+
+## Flags
+
+Same as `skl use --all`:
+
+- `--link` — symlink instead of copying
+- `--force` — clobber unmanaged paths. Not required to refresh a managed projection
+- `--project DIR` — project directory (default: current directory)
+- `-a`, `--agent ID` — add an extra agent directory for this refresh
+
+Happy-path refresh never needs `--force`. See [skl use](/reference/use).

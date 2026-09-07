@@ -114,7 +114,7 @@ pub fn inspect(project: &Path, home: &Path, paths: Option<&Paths>) -> Vec<Projec
                             skill: entry.name.clone(),
                             dest: Some(candidate.clone()),
                             message: format!(
-                                "{}: materialized copy differs from the library. `skl use --all` to refresh, or `skl capture` to import project edits.",
+                                "{}: materialized copy differs from the library. Run `skl use --all` to refresh (no --force). `skl capture` only if the project temporarily won.",
                                 entry.name
                             ),
                         });

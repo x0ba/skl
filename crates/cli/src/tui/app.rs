@@ -28,7 +28,7 @@ skl — local skill browser
 Ctrl-j / Ctrl-k  scroll preview
 /              search (filter names)
 n              new skill (same as `skl create <name>`)
-e              edit SKILL.md ($VISUAL or $EDITOR)
+e              edit library SKILL.md (same as `skl edit <name>`)
 u              use in this project (same as `skl use <name>`)
 U              unuse in this project (same as `skl unuse <name>`)
 d              delete from SKL and the local library (same as `skl delete <name>`)

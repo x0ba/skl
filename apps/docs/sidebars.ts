@@ -38,6 +38,8 @@ const sidebars: SidebarsConfig = {
         'reference/targets',
         'reference/use',
         'reference/create',
+        'reference/edit',
+        'reference/refresh',
         'reference/capture',
         'reference/delete',
         'reference/unuse',

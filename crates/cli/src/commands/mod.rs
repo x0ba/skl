@@ -2,6 +2,7 @@ pub mod capture;
 pub mod create;
 pub mod delete;
 pub mod doctor;
+pub mod edit;
 pub mod init;
 pub mod list;
 pub mod login;

@@ -418,7 +418,7 @@ fn print_report(report: &DoctorReport) {
     println!();
     println!("== Linking");
     println!(
-        "roles        personal library is canonical; use materializes (copy) into .agents/skills; --link for local symlinks"
+        "roles        edit the library (`skl edit`); refresh projects with `skl use --all` (no --force); capture only when the project temporarily won"
     );
     if report.symlink {
         println!("symlink      ok");
