@@ -1,0 +1,32 @@
+---
+title: skl edit
+description: Open a personal-library skill in the editor.
+---
+
+# skl edit
+
+Open the canonical library copy of a skill in `$VISUAL` or `$EDITOR`. This does not open a project projection under `.agents/skills` or sticky extras.
+
+## Synopsis
+
+```bash
+skl edit <skill>
+```
+
+## Flags
+
+- `SKILL` — required name, resolved from the personal library with the same identity rules as `skl use`
+
+`$VISUAL` wins over `$EDITOR`. There is no `vi` fallback. If both are unset, the command fails and leaves the skill unchanged.
+
+After the editor exits, skl reindexes the library skill. If the current directory (or its git root) already lists that skill in `skills.toml`, it prints a hint to run `skl use --all`.
+
+It does not change project directories.
+
+## Errors
+
+- `invalid skill name`
+- skill is not in the personal library on this machine
+- library skill is missing `SKILL.md`
+- `$VISUAL` and `$EDITOR` are unset
+- editor binary not found, or the editor exits nonzero

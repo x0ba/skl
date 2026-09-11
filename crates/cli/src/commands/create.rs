@@ -94,7 +94,7 @@ fn claim_library_dir(name: &str, library_path: &Path) -> Result<()> {
     match fs::create_dir(library_path) {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == ErrorKind::AlreadyExists => Err(SklError::LocalState(format!(
-            "skill `{name}` already exists in the personal library at {}",
+            "skill `{name}` already exists in the personal library at {} (run `skl edit {name}`)",
             library_path.display()
         ))),
         Err(err) => Err(err.into()),

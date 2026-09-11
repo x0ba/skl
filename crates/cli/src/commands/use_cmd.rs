@@ -460,6 +460,94 @@ mode = "symlink"
     }
 
     #[test]
+    fn restore_all_refreshes_sticky_extras_without_force() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let data_dir = tmp.path().join("data");
+        let skill_dir = data_dir.join("skills/greeter");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "original\n").unwrap();
+        let db_file = data_dir.join("state.db");
+
+        let skill = resolve_skill("greeter", &home, Some(&db_file)).unwrap();
+        linker::activate_with(
+            &project,
+            &home,
+            &skill,
+            ActivateOpts {
+                extras: &["claude-code".into()],
+                mode: ProjectionMode::Copy,
+                force: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            "original\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(project.join(".claude/skills/greeter/SKILL.md")).unwrap(),
+            "original\n"
+        );
+
+        std::fs::write(skill_dir.join("SKILL.md"), "mutated library\n").unwrap();
+        let outs = restore_all(
+            &project,
+            &home,
+            Some(&db_file),
+            &["claude-code".into()],
+            ProjectionMode::Copy,
+            false,
+        )
+        .unwrap();
+        assert_eq!(outs.len(), 1);
+        assert_eq!(
+            std::fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            "mutated library\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(project.join(".claude/skills/greeter/SKILL.md")).unwrap(),
+            "mutated library\n"
+        );
+    }
+
+    #[test]
+    fn single_skill_use_refreshes_managed_copy_without_force() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("home");
+        let project = tmp.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let data_dir = tmp.path().join("data");
+        let skill_dir = data_dir.join("skills/greeter");
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "original\n").unwrap();
+        let db_file = data_dir.join("state.db");
+        let skill = resolve_skill("greeter", &home, Some(&db_file)).unwrap();
+        linker::activate(&project, &home, &skill).unwrap();
+
+        std::fs::write(skill_dir.join("SKILL.md"), "mutated\n").unwrap();
+        let skill = resolve_skill("greeter", &home, Some(&db_file)).unwrap();
+        let out = linker::activate_with(
+            &project,
+            &home,
+            &skill,
+            ActivateOpts {
+                extras: &[],
+                mode: ProjectionMode::Copy,
+                force: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(out.links[0].action, LinkAction::CopyReplaced);
+        assert_eq!(
+            std::fs::read_to_string(project.join(".agents/skills/greeter/SKILL.md")).unwrap(),
+            "mutated\n"
+        );
+    }
+
+    #[test]
     fn restore_all_after_library_mutation_uses_new_content() {
         let tmp = tempfile::tempdir().unwrap();
         let home = tmp.path().join("home");

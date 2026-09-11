@@ -5,7 +5,7 @@ description: Promote a project skill into the personal library.
 
 # skl capture
 
-Copy a project skill into the personal library (`~/.local/share/skl/skills`).
+Promote a project skill into the personal library (`~/.local/share/skl/skills`) when the project temporarily won. Day-to-day edits belong in the library (`skl edit`), then `skl use --all`.
 
 ## Synopsis
 
@@ -17,7 +17,7 @@ skl capture <path> --force --as <name> --keep-copy --project <dir>
 ## Flags
 
 - `PATH` — project skill path or name, resolved from `.agents/skills` and configured extra directories
-- `--force` — overwrite a library skill with the same name
+- `--force` — overwrite the **canonical library** skill with the same name (rare)
 - `--as NAME` — use a different name in the library
 - `--keep-copy` — leave the project directory as a real copy
 - `--project DIR` — project directory (default: current directory)

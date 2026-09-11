@@ -71,7 +71,7 @@ fn unix_now() -> i64 {
 
 /// Fail-soft piggyback. Loads `[sync]` from `paths`, then maybe runs hash-sync.
 ///
-/// `reason` is the parent verb (`login`, `init`, `use`, `unuse`, `capture`, `create`, `status`, `list`).
+/// `reason` is the parent verb (`login`, `init`, `use`, `unuse`, `capture`, `create`, `edit`, `status`, `list`).
 pub async fn maybe_run(api_base: &str, paths: &Paths, reason: &str) -> AutoSyncResult {
     maybe_run_with(api_base, paths, reason, None).await
 }

@@ -28,7 +28,7 @@ skl — local skill browser
 Ctrl-j / Ctrl-k  scroll preview
 /              search (filter names)
 n              new skill (same as `skl create <name>`)
-e              edit SKILL.md ($VISUAL or $EDITOR)
+e              edit library SKILL.md (same as `skl edit <name>`)
 u              use in this project (same as `skl use <name>`)
 U              unuse in this project (same as `skl unuse <name>`)
 d              delete from SKL and the local library (same as `skl delete <name>`)
@@ -177,16 +177,37 @@ pub async fn run(api_base: String) -> Result<()> {
                 }
             }
             Tick::SuspendEdit => {
-                let Some(path) = app.selected_skill_md_path() else {
-                    app.set_status("no skill selected");
-                    continue;
+                let paths = match Paths::resolve() {
+                    Ok(paths) => paths,
+                    Err(err) => {
+                        app.set_status(format!("edit: {err}"));
+                        continue;
+                    }
+                };
+                let out = match app.selected_library_edit(&paths) {
+                    Ok(out) => out,
+                    Err(err) => {
+                        app.set_status(format!("edit: {err}"));
+                        continue;
+                    }
                 };
                 term.suspend()?;
-                if let Err(err) = crate::editor::open(&path) {
+                if let Err(err) = crate::editor::open(&out.skill_md) {
                     eprintln!("edit: {err}");
                     app.set_status(format!("edit: {err}"));
+                } else if let Err(err) = crate::commands::create::reindex(
+                    &crate::commands::create::CreateOutcome {
+                        name: out.name.clone(),
+                        library_path: out.library_path.clone(),
+                        skill_md: out.skill_md.clone(),
+                    },
+                    &paths,
+                ) {
+                    let hint = crate::commands::create::stale_index_hint(&err);
+                    eprintln!("{hint}");
+                    app.set_status(format!("edited {}  ({hint})", out.skill_md.display()));
                 } else {
-                    app.set_status(format!("edited {}", path.display()));
+                    app.set_status(format!("edited {}", out.skill_md.display()));
                 }
                 term.resume()?;
                 app.reload();
@@ -276,8 +297,15 @@ impl App {
             .and_then(|i| self.catalog.skills.get(*i))
     }
 
-    pub fn selected_skill_md_path(&self) -> Option<PathBuf> {
-        self.selected_row().map(|row| row.path.join("SKILL.md"))
+    /// Library `SKILL.md` for the selected skill. Never a project/harness path.
+    pub fn selected_library_edit(
+        &self,
+        paths: &Paths,
+    ) -> Result<crate::commands::edit::EditOutcome> {
+        let Some(name) = self.selected_row().map(|r| r.name.as_str()) else {
+            return Err(SklError::LocalState("no skill selected".into()));
+        };
+        crate::commands::edit::resolve_library_edit(name, paths)
     }
 
     pub fn select_named(&mut self, name: &str) {
@@ -976,6 +1004,91 @@ mod tests {
         let mut app = app_with(sample_catalog());
         assert_eq!(app.handle_key(key(KeyCode::Char('e'))), Tick::SuspendEdit);
         assert_eq!(app.handle_key(key(KeyCode::Char('s'))), Tick::SuspendSync);
+    }
+
+    #[test]
+    fn tui_edit_opens_library_not_projection_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        let lib = data.join("skills/greeter");
+        fs::create_dir_all(&lib).unwrap();
+        fs::write(lib.join("SKILL.md"), "# library\n").unwrap();
+        let projection = tmp.path().join("proj/.agents/skills/greeter");
+        fs::create_dir_all(&projection).unwrap();
+        fs::write(projection.join("SKILL.md"), "# projection\n").unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: data,
+            db_file: tmp.path().join("data/state.db"),
+        };
+        LocalDb::open(&paths.db_file)
+            .unwrap()
+            .upsert_skill(&DiscoveredSkill {
+                name: "greeter".into(),
+                source: "claude".into(),
+                path: projection.clone(),
+                tree: hash_skill_dir(&projection).unwrap(),
+            })
+            .unwrap();
+
+        let mut app = app_with(Catalog {
+            skills: vec![SkillRow {
+                name: "greeter".into(),
+                path: projection,
+                activated: true,
+            }],
+            last_sync_at: None,
+            project: tmp.path().join("proj"),
+            project_label: "proj".into(),
+            empty_hint: None,
+            load_error: None,
+        });
+        assert_eq!(app.handle_key(key(KeyCode::Char('e'))), Tick::SuspendEdit);
+        let out = app.selected_library_edit(&paths).unwrap();
+        assert_eq!(out.skill_md, lib.join("SKILL.md"));
+        assert_eq!(fs::read_to_string(&out.skill_md).unwrap(), "# library\n");
+        assert!(!out.skill_md.starts_with(tmp.path().join("proj")));
+    }
+
+    #[test]
+    fn tui_edit_rejects_projection_only_skill() {
+        let tmp = tempfile::tempdir().unwrap();
+        let data = tmp.path().join("data");
+        fs::create_dir_all(data.join("skills")).unwrap();
+        let projection = tmp.path().join("proj/.agents/skills/greeter");
+        fs::create_dir_all(&projection).unwrap();
+        fs::write(projection.join("SKILL.md"), "# projection\n").unwrap();
+        let paths = Paths {
+            config_dir: tmp.path().join("cfg"),
+            config_file: tmp.path().join("cfg/config.toml"),
+            data_dir: data,
+            db_file: tmp.path().join("data/state.db"),
+        };
+        LocalDb::open(&paths.db_file)
+            .unwrap()
+            .upsert_skill(&DiscoveredSkill {
+                name: "greeter".into(),
+                source: "claude".into(),
+                path: projection.clone(),
+                tree: hash_skill_dir(&projection).unwrap(),
+            })
+            .unwrap();
+
+        let app = app_with(Catalog {
+            skills: vec![SkillRow {
+                name: "greeter".into(),
+                path: projection,
+                activated: true,
+            }],
+            last_sync_at: None,
+            project: tmp.path().join("proj"),
+            project_label: "proj".into(),
+            empty_hint: None,
+            load_error: None,
+        });
+        let err = app.selected_library_edit(&paths).unwrap_err().to_string();
+        assert!(err.contains("personal library"), "{err}");
     }
 
     #[test]

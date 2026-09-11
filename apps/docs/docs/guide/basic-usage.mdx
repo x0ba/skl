@@ -1,11 +1,21 @@
 ---
 title: Basic usage
-description: Create, use, unuse, list, status, delete, migrate, and update skills.
+description: Create, edit, use, unuse, list, status, delete, migrate, and update skills.
 ---
 
 # Basic usage
 
 These commands assume skl is installed. For sync, see [Setting up sync](/guide/sync).
+
+One-liner: **edit the library. Refresh projects. Capture only when the project temporarily won.**
+
+```bash
+skl edit writing-tests   # library in $EDITOR
+skl sync                 # optional; other machines
+skl use --all            # or skl refresh
+```
+
+No `--force` on that path.
 
 ## Create
 
@@ -15,9 +25,27 @@ skl create writing-tests
 
 `skl new` is an alias. The command creates `~/.local/share/skl/skills/writing-tests/SKILL.md` with `name` and `description` frontmatter, then opens `$VISUAL` or `$EDITOR` (falling back to `vi`).
 
-Names cannot start with `.` or contain `/` or `\`. Creating a name already in the library fails; edit that skill instead.
+Names cannot start with `.` or contain `/` or `\`. Creating a name already in the library fails; run `skl edit writing-tests` instead.
 
 If the editor fails, the skill is still on disk.
+
+## Edit
+
+```bash
+skl edit writing-tests
+```
+
+Opens the **library** `SKILL.md` in `$VISUAL` or `$EDITOR`. It does not open `.agents/skills` or other project copies. Both editor variables unset is an error.
+
+If the current git root (or cwd) already lists the skill in `skills.toml`, skl hints `skl use --all`.
+
+If you edited a project copy by mistake:
+
+```bash
+skl capture writing-tests           # promote; fails on clash
+skl capture writing-tests --force   # overwrite the library
+skl use --all
+```
 
 ## Use
 
@@ -25,7 +53,7 @@ If the editor fails, the skill is still on disk.
 skl use writing-tests
 ```
 
-`skl use` makes a library skill available in the current project. It creates `.agents/skills/writing-tests` as a real copy (materialize) and adds the name to `skills.toml`. Use `--link` for a local symlink. `--all` rematerializes every listed skill from this machine's library.
+`skl use` makes a library skill available in the current project. It creates `.agents/skills/writing-tests` as a real copy (materialize) and adds the name to `skills.toml`. Use `--link` for a local symlink. `--all` rematerializes every listed skill from this machine's library, including sticky extras such as `.claude`. Managed projections refresh without `--force`.
 
 ```bash
 skl use
@@ -37,7 +65,7 @@ With no arguments, `skl use` lists skills already active in the current project.
 skl use --all
 ```
 
-`--all` recreates every skill listed in `skills.toml` from this machine's personal library. If a listed skill is missing locally, sync first, then run `skl use --all` again.
+`--all` (also `skl refresh`) recreates every skill listed in `skills.toml` from this machine's personal library. If a listed skill is missing locally, sync first, then run `skl use --all` again. `--force` is only for clobbering unmanaged dests, not everyday refresh.
 
 ```bash
 skl use writing-tests -a claude-code

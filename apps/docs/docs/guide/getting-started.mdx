@@ -68,6 +68,15 @@ skl use writing-tests
 
 `skl use` creates `.agents/skills/writing-tests` as a real copy and adds the name to `skills.toml`. Commit that tree so Cursor Cloud can load the skill. `--link` keeps a local symlink instead.
 
+Later edits go in the library, then refresh the project:
+
+```bash
+skl edit writing-tests
+skl use --all
+```
+
+`skl refresh` is the same as `skl use --all`. Neither needs `--force` for managed projections.
+
 Running `skl` opens the two-pane browser. See [The TUI](/guide/tui) for keybindings and [Basic usage](/guide/basic-usage) for everyday commands.
 
 ## Getting help

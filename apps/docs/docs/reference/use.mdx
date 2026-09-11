@@ -5,7 +5,9 @@ description: Activate a skill, list activated skills, or restore all from skills
 
 # skl use
 
-Make a skill available in a project, list active skills, or restore all listed skills (`--all`).
+Make a skill available in a project, list active skills, or refresh all listed skills (`--all`). `skl refresh` is an alias of `skl use --all`.
+
+Edit the library (`skl edit`), then refresh projects. `--force` is only for clobbering unmanaged paths.
 
 ## Synopsis
 
@@ -13,6 +15,7 @@ Make a skill available in a project, list active skills, or restore all listed s
 skl use
 skl use <skill>…
 skl use --all
+skl refresh
 skl use --link <skill>
 skl use <skill> --project <dir> -a <id>
 ```
@@ -20,9 +23,9 @@ skl use <skill> --project <dir> -a <id>
 ## Flags
 
 - `SKILL…` — skill names. Without names, list skills already active in the project.
-- `--all` — rematerialize every skill in `skills.toml` from this machine's library (default: copy).
+- `--all` — rematerialize every skill in `skills.toml` from this machine's library (default: copy). Covers `.agents` and sticky extras already used by the project. Managed projections refresh without `--force`.
 - `--link` — symlink instead of copying. Local live-edit only; Cursor Cloud cannot follow `$HOME` links.
-- `--force` — overwrite an unmanaged real directory at the destination.
+- `--force` — clobber an unmanaged real directory or unexpected file. Not required to refresh a symlink or a `mode = "copy"` dest listed in `skills.toml`.
 - `--project DIR` — project directory (default: current directory).
 - `-a`, `--agent ID` — add an extra agent directory for this activation. Repeatable.
 
@@ -48,5 +51,5 @@ For Cursor Cloud, commit `.agents/skills/<name>/` and `skills.toml`. See the REA
 - `use either skl use --all or skl use <skill>`
 - skill is not in the personal library on this machine
 - skill listed in `skills.toml` but not found in the personal library
-- dest exists and is not a managed projection (refuses to overwrite a real directory unless `--force`)
+- dest exists and is not a managed projection (refuses to overwrite a real directory unless `--force`). `--force` on `use` clobbers unmanaged dests; it does not mean overwrite-library (that is `capture --force`)
 - invalid skill name (leading `.`, `/`, or `\`)
