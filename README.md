@@ -41,7 +41,7 @@ The repo is a Cargo workspace plus three Node apps.
 | `apps/api` | Hono API on Postgres. Device auth, sync, blobs, skills, devices. `/v1` |
 | `apps/web` | Next.js dashboard, device approval page, and the install script at `apps/web/public/install.sh` |
 | `apps/docs` | Docusaurus user docs |
-| `scripts` | Smoke tests that drive two fake homes against a local API |
+| `scripts` | Cross-compile, install, and catalog-sync helpers |
 
 Build and test the CLI:
 
@@ -64,6 +64,6 @@ docker compose up -d postgres
 
 The API listens on `http://localhost:8787`, the web app on `http://localhost:3000`, and the docs on `http://localhost:3001`. With `CLERK_SECRET_KEY` empty, the API accepts `Authorization: Bearer dev:<user_id>`, and `skl login --dev-user <user_id>` stores that token without a device poll.
 
-The smoke tests in `scripts/smoke-*.sh` drive the debug binary from two throwaway homes against the API on `localhost:8787`. For example, `./scripts/smoke-clash.sh` covers sync conflicts and the secret scanner. Each script's header names what it covers and what it needs. `.cursor/skills/verify-skl` is an agent skill that builds the CLI, launches a throwaway data directory, and drives `create`, `use`, `capture`, `unuse`, `list`, `status`, and `doctor` the way a user does. Never point a smoke test or `--project` at your real library or at this checkout.
+`.cursor/skills/verify-skl` is an agent skill that builds the CLI, launches a throwaway data directory, and drives `create`, `use`, `capture`, `unuse`, `list`, `status`, and `doctor` the way a user does. Never point `--project` at your real library or at this checkout.
 
 To self-host the API and web app, see [Self-host the server](https://docs.tryskl.fyi/how-to/self-host).
