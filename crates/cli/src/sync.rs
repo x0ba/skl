@@ -24,9 +24,6 @@ use crate::local::skills::{hash_bytes, write_blob_file};
 
 /// Who asked for this sync. The variant fixes conflict policy, scrub consent,
 /// and whether HTTP request lines reach stderr.
-///
-/// `Auto` has no knobs. A background run cannot prompt, cannot consent to
-/// scrub warnings, and cannot narrate requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncOptions {
     Explicit {
