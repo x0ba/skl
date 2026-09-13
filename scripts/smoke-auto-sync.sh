@@ -168,37 +168,32 @@ throttle seed
   local first
   first="$(run_home "$home" "$TOKEN_A" init 2>&1)"
   echo "$first"
-  local first_runs
-  first_runs="$(skl_count_sync_runs "$first")"
-  if [[ "$first_runs" -lt 1 ]]; then
-    echo "expected first due verb to print sync done" >&2
-    exit 1
-  fi
+  skl_assert_sync_runs "$first" 1
 
-  echo "    status immediately → no POST"
+  echo "    status immediately → no sync run"
   local second
   second="$(run_home "$home" "$TOKEN_A" status 2>&1)"
   echo "$second"
-  skl_assert_sync_posts "$second" 0
+  skl_assert_sync_runs "$second" 0
   skl_assert_contains "$second" "last_sync"
   skl_assert_contains "$second" "auto_sync    on"
   skl_assert_contains "$second" "sync_frequency 900s"
 
-  echo "    use immediately → no POST (link still succeeds)"
+  echo "    use immediately → no sync run (link still succeeds)"
   local third
   third="$(run_home "$home" "$TOKEN_A" use "$skill" --project "$project" 2>&1)"
   echo "$third"
-  skl_assert_sync_posts "$third" 0
+  skl_assert_sync_runs "$third" 0
   skl_assert_contains "$third" "using $skill"
   skl_assert_symlink_to \
     "$project/.agents/skills/${skill}" \
     "$(skl_library_of "$home" "$skill")"
 
-  echo "    doctor → no POST /v1/sync; display last_sync only"
+  echo "    doctor → no sync run; display last_sync only"
   local doctor
   doctor="$(run_home "$home" "$TOKEN_A" doctor 2>&1)"
   echo "$doctor"
-  skl_assert_sync_posts "$doctor" 0
+  skl_assert_sync_runs "$doctor" 0
   skl_assert_contains "$doctor" "last_sync"
 
   echo "OK: throttle — only the first due verb hit the network"
