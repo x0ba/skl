@@ -1,11 +1,11 @@
 ---
 title: skl setup
-description: First-run prompts for login and init.
+description: First-run prompts for login and import. The installer runs this in a terminal.
 ---
 
 # skl setup
 
-Run the initial prompts after installation: login, then import.
+Ask whether to log in and whether to import skills, then run the accepted steps. The install script runs `skl setup` in a terminal.
 
 ## Synopsis
 
@@ -16,21 +16,25 @@ skl setup --non-interactive
 
 ## Flags
 
-- `--non-interactive` — skip login, import, and extra-agent prompts. Prints `skl login && skl init` as the next step.
+- `--non-interactive`. Skip every prompt. Print `Binary is installed. Next: skl login && skl init` and exit.
 
-Prompts are also skipped when `CI`, `SKL_NO_PROMPT`, or `SKL_YES` is set, or when stdin is not interactive.
+Prompts are also skipped when `CI`, `SKL_NO_PROMPT`, or `SKL_YES` is set, or when stdin is not a terminal.
 
-## What it writes
+## Prompts
 
-If `config.toml` has no `api_base`, setup writes the process `api_base`. This preserves the hosted API setting even when login is skipped.
-
-Accepted prompts run `skl login` and then `skl init`. Both are optional and default to yes.
+Both default to yes.
 
 ```text
 Log in now? [Y/n]
 Import existing skills (skl init)? [Y/n]
 ```
 
+An accepted first prompt runs [`skl login`](/reference/login). An accepted second prompt runs [`skl init`](/reference/init), which may show the extras checklist.
+
+## What it writes
+
+If `config.toml` has no `api_base`, setup writes the API origin the process used. This keeps the hosted API setting even when you skip login.
+
 ## Errors
 
-Returns any error from an accepted `skl login` or `skl init` step.
+Any error from an accepted `skl login` or `skl init` step.

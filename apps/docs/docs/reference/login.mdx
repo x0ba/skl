@@ -1,32 +1,44 @@
 ---
 title: skl login
-description: Device authorization. Stores the device token in state.db.
+description: Approve this device through a browser and store its token in state.db.
 ---
 
 # skl login
 
-Authorize this device, then store its token in local state.
+Request a device code, wait for approval in the browser, and store the device token.
 
 ## Synopsis
 
 ```bash
 skl login
+skl login --dev-user <user_id>
 ```
 
 ## Flags
 
-None.
+- `--dev-user <user_id>`. Store `Authorization: Bearer dev:<user_id>` without a device poll. The API accepts this token only when `CLERK_SECRET_KEY` is unset, which is the local development setup. See [Self-host the server](/how-to/self-host).
+
+## Output
+
+```text
+To approve this device, open:
+  https://tryskl.fyi/device?user_code=ABCD-2345
+And enter code:  ABCD-2345
+
+Waiting for approval (poll /v1/auth/device/token) ...
+Logged in. Device token stored in local state
+```
+
+The device appears on the server as `skl@<hostname>`.
 
 ## What it writes
 
-- Stores the device token in `state.db` (`meta.device_token`)
-- Writes `api_base` to `config.toml`
-- May start automatic sync after a successful login
-
-Prints `verification_uri_complete` and `user_code`. The client name sent to the API is `skl@<hostname>`.
+- The device token, as `meta.device_token` in `state.db`.
+- `api_base` in `config.toml`, set to the API origin this command used.
+- A background sync may run after login.
 
 ## Errors
 
-- `device authorization expired; run skl login again`
-- `device authorization was denied`
-- `cannot reach API at <url>`
+- `device authorization expired; run skl login again`. The code was not approved in time.
+- `device authorization was denied`. You denied the request in the browser.
+- `cannot reach API at <url>`.

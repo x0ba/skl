@@ -1,11 +1,11 @@
 ---
 title: skl update
-description: Replace this skl binary with the latest GitHub Release.
+description: Replace the running skl binary with the latest GitHub Release.
 ---
 
 # skl update
 
-Download the latest GitHub Release for this machine and replace the `skl` binary that is running.
+Download the latest GitHub Release for this machine and replace the binary that is running. `skl upgrade` is an alias.
 
 ## Synopsis
 
@@ -15,38 +15,40 @@ skl update --force
 skl upgrade
 ```
 
-`skl upgrade` is an alias.
-
 ## Flags
 
-- `--force` — download and replace even when this binary already matches the latest release checksum.
-
-## What it writes
-
-`skl update` replaces the invoked binary in place (the path printed by `skl update`, usually `~/.local/bin/skl`). It does not change config, `state.db`, the personal library, or shell rc files.
-
-The command:
-
-1. Resolves this machine's GitHub Release triple (same triples as [install.sh](/guide/installation)).
-2. Downloads `SHA256SUMS` from the asset origin.
-3. Skips the download when the current file already matches the latest checksum, unless `--force` is set.
-4. Downloads `skl-<triple>` (or `skl-<triple>.exe` on Windows).
-5. Verifies the SHA-256, stages the download next to the current binary, and runs `--version` on the staged file.
-6. Replaces the binary only after that launch check succeeds.
-
-A checksum mismatch, or a download that cannot start, leaves the existing binary in place. Two `skl update` processes targeting the same install use unique staging files and a lock around the replacement.
+- `--force`. Download and replace even when the installed binary already matches the latest release checksum.
 
 ## Environment
 
-- `SKL_DOWNLOAD_BASE` sets the asset origin. The default is GitHub Releases `latest/download`, the same default as the installer.
+- `SKL_DOWNLOAD_BASE`. Asset origin. Default is `https://github.com/x0ba/skl/releases/latest/download`, the same as the installer.
+
+## What it does
+
+1. Resolves the release triple for this OS and architecture: `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl`, `x86_64-apple-darwin`, `aarch64-apple-darwin`, or `x86_64-pc-windows-gnu`.
+2. Downloads `SHA256SUMS` from the asset origin.
+3. Stops with `already up to date` when the current binary matches the checksum for its triple, unless `--force` is set.
+4. Downloads `skl-<triple>`, or `skl-<triple>.exe` on Windows, and checks its SHA-256.
+5. Writes the download next to the current binary, runs `--version` on it, and replaces the binary only when that succeeds.
+
+Config, `state.db`, the library, and shell configuration files do not change. A checksum mismatch or a failed download leaves the current binary in place. Two `skl update` processes on the same install use separate staging files and a lock around the replacement.
+
+## Output
+
+```text
+==> latest  v0.4.2
+==> fetching SHA256SUMS
+==> downloading https://github.com/x0ba/skl/releases/latest/download/skl-aarch64-apple-darwin
+==> checksum ok (skl-aarch64-apple-darwin)
+==> updated /home/you/.local/bin/skl (0.4.1 -> v0.4.2)
+    skl 0.4.2
+```
 
 ## Errors
 
-- `unsupported platform … for skl update` — this OS/arch is not in the release matrix.
-- `SHA256SUMS has no entry for …` — the asset origin is missing this triple.
-- `checksum mismatch for …` — the downloaded bytes did not match `SHA256SUMS`.
-- `downloaded update is not runnable` — SHA-256 matched but the file could not be started; the previous binary is unchanged.
-- `cannot resolve this skl binary` — `skl` could not find its own path.
-- Network or GitHub errors from the asset origin.
-
-You can still upgrade by rerunning the [install script](/guide/installation).
+- `config: unsupported platform <os>/<arch> for skl update (need a GitHub Release triple)`
+- `config: SHA256SUMS has no entry for <asset>`
+- `config: checksum mismatch for <asset> (got <hash>, want <hash>)`
+- `config: new binary failed --version (<detail>)`. The download matched its checksum but did not run. The previous binary is unchanged.
+- `config: cannot resolve this skl binary: <error>`
+- Network errors from the asset origin.

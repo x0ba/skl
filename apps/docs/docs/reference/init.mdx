@@ -1,11 +1,11 @@
 ---
 title: skl init
-description: Import foreign home skills into the personal library.
+description: Import skills from home agent directories into the library.
 ---
 
 # skl init
 
-Import skills from home agent directories into the personal library (`~/.local/share/skl/skills`).
+Copy skills from home agent directories into the library at `~/.local/share/skl/skills`.
 
 ## Synopsis
 
@@ -15,16 +15,30 @@ skl init
 
 ## Flags
 
-None.
+None beyond the [global flags](/reference#global-flags).
+
+## Directories scanned
+
+`~/.agents/skills`, `~/.config/agents/skills`, and the home skills directory of every agent in skl's catalog, including `~/.claude/skills`, `~/.cursor/skills`, and `~/.codex/skills`. `skl doctor` prints the full list under `== Agent skill roots` with a skill count for each directory that exists.
 
 ## What it writes
 
-Copies missing skills from home directories into `{data_dir}/skills`. Rebuilds the `state.db` import index from the library only. It leaves source directories and existing library skills unchanged.
+- Copies each skill that is not already in the library to `{data_dir}/skills/<name>/`. A skill is a directory that contains `SKILL.md`.
+- Rebuilds the index in `state.db` from the library.
+- Leaves source directories and existing library skills unchanged.
+- In a terminal, shows the extras checklist once and writes the answer to `[targets]` in `config.toml`. See [Add an extra agent directory](/how-to/extras).
+- A background sync may run afterwards.
 
-May prompt once to configure extra agent directories and write `[targets]` in `config.toml`. It may also start automatic sync.
+## Output
 
-Home roots include `~/.agents/skills`, `~/.config/agents/skills`, `~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`, and other catalog globals.
+```text
+Discovered 3 skill(s):
+  ...
+```
+
+or `No skills found under:` followed by the directories checked.
 
 ## Errors
 
-Config or data dir resolution failures. Filesystem errors while copying.
+- `config: ...` when the config or data directory cannot be resolved.
+- Filesystem errors while copying.

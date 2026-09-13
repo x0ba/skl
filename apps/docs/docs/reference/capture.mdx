@@ -1,40 +1,55 @@
 ---
 title: skl capture
-description: Promote a project skill into the personal library.
+description: Copy a project skill into the library and replace the project directory with a symlink.
 ---
 
 # skl capture
 
-Copy a project skill into the personal library (`~/.local/share/skl/skills`).
+Copy a skill from the current project into the library at `~/.local/share/skl/skills`.
 
 ## Synopsis
 
 ```bash
 skl capture <path>
-skl capture <path> --force --as <name> --keep-copy --project <dir>
+skl capture <path> --force
+skl capture <path> --as <name>
+skl capture <path> --keep-copy
+skl capture <path> --project <dir>
 ```
 
-## Flags
+## Arguments and flags
 
-- `PATH` — project skill path or name, resolved from `.agents/skills` and configured extra directories
-- `--force` — overwrite a library skill with the same name
-- `--as NAME` — use a different name in the library
-- `--keep-copy` — leave the project directory as a real copy
-- `--project DIR` — project directory (default: current directory)
+- `<path>`. A path to the skill directory, or a skill name. A name resolves under `.agents/skills`, under the extras listed in the project's `skills.toml`, and under the extras saved in `config.toml`.
+- `--force`. Overwrite a library skill with the same name.
+- `--as <name>`. Store the skill in the library under `<name>`.
+- `--keep-copy`. Leave the project directory as a real copy. Without it, skl replaces the project directory with a symlink to the library copy.
+- `--project <dir>`. Project root. Default is the current directory.
 
-Does not prompt.
+The command never prompts.
 
 ## What it writes
 
-Copies the source tree to `{data_dir}/skills/<name>/`, indexes it in `state.db`, and adds a name-only entry to `skills.toml`. Unless you pass `--keep-copy`, it replaces the project directory with a symlink to the library copy. It may also start automatic sync.
+- `{data_dir}/skills/<name>/`, a copy of the source tree.
+- The skill's entry in `state.db`.
+- The skill's entry in `skills.toml`, with `mode = "symlink"`, or `mode = "copy"` with `--keep-copy`.
+- The project directory, replaced with a symlink unless `--keep-copy` is set.
+- A background sync may run afterwards.
 
-If the source already symlinks to the library skill, capture only reindexes it.
+If the project directory already is a symlink to that library skill, capture only refreshes the index and prints `already linked`.
+
+## Output
+
+```text
+captured writing-tests  (/home/you/.local/share/skl/skills/writing-tests)
+```
+
+`(kept project copy)` or `(overwrote library)` follows when `--keep-copy` or `--force` applied.
 
 ## Errors
 
-- `capture path is not a skill directory`
-- `skill directory … is missing SKILL.md`
-- skill already exists in the personal library (needs `--force` or `--as`)
-- `skill not found` when the argument is neither a path nor a name in a project skill directory
-- `invalid skill name`
-- `project skill … already links … but that library skill is missing`
+- `local state: skill <name> not found under <project>/.agents/skills or extra project dests`
+- `local state: capture path is not a skill directory`
+- `local state: skill directory <path> is missing SKILL.md`
+- `local state: skill <name> already exists in the personal library at <path>; pass --force to overwrite or --as <name>`
+- `local state: invalid skill name <name>`
+- `local state: project skill <path> already links at <target> but that library skill is missing`

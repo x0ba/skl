@@ -1,0 +1,61 @@
+---
+title: Installer
+description: Flags, environment variables, platforms, and behavior of install.sh.
+---
+
+# Installer
+
+`https://tryskl.fyi/install.sh` is a POSIX `sh` script. It downloads the release binary for this machine, verifies it, installs it without `sudo`, and in a terminal runs `skl setup`.
+
+```bash
+curl -fsSL https://tryskl.fyi/install.sh | sh
+curl -fsSL https://tryskl.fyi/install.sh | sh -s -- --non-interactive
+```
+
+## Flags
+
+- `--non-interactive`, `-n`. Install the binary only. Skip `skl setup`.
+- `--print-target`. Print the release triple for this machine and exit.
+- `--help`, `-h`. Print the installer help and exit.
+
+Any other argument fails with `unknown argument`.
+
+## Environment variables
+
+| Variable | Effect | Default |
+|---|---|---|
+| `SKL_DOWNLOAD_BASE` | Origin for the binary and `SHA256SUMS` | `https://github.com/x0ba/skl/releases/latest/download` |
+| `SKL_INSTALL_DIR` | Install directory | `~/.local/bin` |
+| `SKL_NON_INTERACTIVE` | When set, same as `--non-interactive` | unset |
+| `API_BASE` | API origin passed to `skl setup` | `https://api.tryskl.fyi` |
+| `CI` | When set, install the binary only | unset |
+
+## Platforms
+
+| `uname -s` | `uname -m` | Release triple | Installed name |
+|---|---|---|---|
+| `Linux` | `x86_64`, `amd64` | `x86_64-unknown-linux-musl` | `skl` |
+| `Linux` | `aarch64`, `arm64` | `aarch64-unknown-linux-musl` | `skl` |
+| `Darwin` | `x86_64` | `x86_64-apple-darwin` | `skl` |
+| `Darwin` | `arm64`, `aarch64` | `aarch64-apple-darwin` | `skl` |
+| `MINGW*`, `MSYS*`, `CYGWIN*` | `x86_64`, `amd64`, `i686`, `i386` | `x86_64-pc-windows-gnu` | `skl.exe` |
+
+Any other combination fails with `unsupported OS` or `unsupported ... architecture`.
+
+## What it does
+
+1. Downloads `skl-<triple>` from `SKL_DOWNLOAD_BASE` with `curl`. `curl` is required.
+2. Downloads `SHA256SUMS` and compares the file with `sha256sum` or `shasum -a 256`. A mismatch fails with `checksum mismatch`. A missing `SHA256SUMS` or missing entry prints a warning and continues.
+3. Moves the file to `SKL_INSTALL_DIR` and marks it executable.
+4. When `SKL_INSTALL_DIR` is not on `PATH`, prints the `export PATH=...` line to add. It never edits `.bashrc`, `.zshrc`, or fish configuration.
+5. When stdout is a terminal, `/dev/tty` is readable, and neither `CI` nor non-interactive mode is set, runs `skl setup` attached to `/dev/tty`. Otherwise prints `non-interactive / non-TTY: binary only`.
+
+## Output
+
+```text
+==> downloading https://github.com/x0ba/skl/releases/latest/download/skl-x86_64-unknown-linux-musl
+==> checksum ok (skl-x86_64-unknown-linux-musl)
+==> installed /home/you/.local/bin/skl
+==> first-run: invoking /home/you/.local/bin/skl setup (login / init / harness checklist)
+==> done. try: skl --help
+```

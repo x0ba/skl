@@ -1,11 +1,11 @@
 ---
 title: skl logout
-description: Clears the local device token in state.db.
+description: Clear the local device token from state.db.
 ---
 
 # skl logout
 
-Clear the local device token from `state.db`. The OS keyring is not required.
+Clear the device token from `state.db`.
 
 ## Synopsis
 
@@ -15,12 +15,12 @@ skl logout
 
 ## Flags
 
-None.
+None beyond the [global flags](/reference#global-flags).
 
 ## What it writes
 
-Deletes `meta.device_token` from `state.db`. It does not edit `config.toml` or revoke the device on the server. Any leftover OS keyring entries are unused.
+Deletes `meta.device_token` from `state.db`. It does not edit `config.toml` and does not revoke the device on the server. Revoke devices on the [devices page](https://www.tryskl.fyi/devices).
 
 ## Errors
 
-Path resolution failures from a missing config or data dir.
+- `config: cannot resolve XDG config dir` or `config: cannot resolve XDG data dir` when neither the XDG directories nor `SKL_CONFIG_DIR` and `SKL_DATA_DIR` resolve.

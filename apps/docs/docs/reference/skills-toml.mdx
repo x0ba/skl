@@ -1,0 +1,43 @@
+---
+title: skills.toml
+description: The project file skl use, skl unuse, and skl capture write. Names only.
+---
+
+# skills.toml
+
+`skills.toml` sits at the project root next to `.agents/skills`. `skl use`, `skl unuse`, `skl capture`, and `skl migrate` write it. It lists which skills the project uses and which agent directories skl writes. It holds no paths into your home directory, so it works unchanged on every machine.
+
+A file written by `skl use writing-tests -a claude-code`:
+
+```toml
+# Managed by `skl use` / `skl unuse` / `skl use --all`. Names only — resolve from this machine's library.
+
+[targets]
+canonical = ["agents"]
+extra = ["claude-code"]
+
+[[skills]]
+name = "writing-tests"
+source = "library"
+mode = "copy"
+```
+
+## `[targets]`
+
+- `canonical`. Always `["agents"]`, which is `.agents/skills`. skl rewrites this on every save.
+- `extra`. Agent ids whose project directory skl also writes for this project. `skl use -a <id>` adds to it. `claude` is rewritten to `claude-code`. `cursor`, `codex`, and other ids that already read `.agents/skills` are dropped on load with a warning. Missing table means `.agents/skills` only.
+
+## `[[skills]]`
+
+One entry per skill the project uses.
+
+- `name`. The library skill name.
+- `source`. Always `"library"`. skl resolves the skill from the library of the machine that runs the command.
+- `mode`. `"copy"` for a directory copy, `"symlink"` for a symlink. Missing means `"symlink"`, which is what early versions wrote.
+- `path`. Absolute host path written by early versions. Ignored on read and never written. `skl doctor` warns when it is present. `skl use --all` rewrites the file without it.
+
+## Rules
+
+- `skl use --all` reads this file and recreates every entry from this machine's library. It fails, and changes nothing, when a listed skill is missing from the library.
+- `skl sync` never reads or writes this file.
+- Commit `skills.toml` together with `.agents/skills`. Names alone are not enough for a remote checkout, because the remote machine has no library to resolve them from.
