@@ -1,11 +1,11 @@
 ---
 title: skl list
-description: List local skills from state.db, plus remote presence when logged in.
+description: List library skills from state.db, with server presence when logged in.
 ---
 
 # skl list
 
-List locally indexed skills from `state.db`. When logged in, also show whether they are present remotely.
+List the skills in the local index. When logged in, also show whether each skill is on the server.
 
 ## Synopsis
 
@@ -15,14 +15,27 @@ skl list
 
 ## Flags
 
-None.
+None beyond the [global flags](/reference#global-flags).
+
+## Output
+
+```text
+name                     tree_hash        source   path                                             remote
+writing-tests            ea511f59866d     agents   /home/you/.local/share/skl/skills/writing-tests  yes
+```
+
+- `tree_hash` is the first 12 characters of the skill's content hash.
+- `source` is the index source label. Library skills show `agents`.
+- `remote` is `yes`, `no`, or `-` when not logged in or the server could not be reached.
+- Skills that exist only on the server are listed under `remote only:`.
+
+Without `state.db`, the command prints `no local skill index; run skl init first` and exits `0`. With an empty index it prints `(no local skills)`.
 
 ## What it writes
 
-Does not write to disk, apart from a possible scheduled automatic sync. Prints `name`, short `tree_hash`, `source`, `path`, and `remote` (`yes`, `no`, or `-`). Skills that exist only on the server appear under `remote only`.
-
-Without `state.db`, prints `no local skill index; run skl init first` and exits 0.
+Nothing on disk, apart from a background sync when one is due.
 
 ## Errors
 
-Remote list failures print `remote list skipped` and still show the local table. Config or database open failures return an error.
+- When the server list fails, the command prints `remote list skipped: <error>` and still shows the local table.
+- `config: ...` when the config or data directory cannot be resolved.

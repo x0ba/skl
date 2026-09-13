@@ -1,0 +1,34 @@
+---
+title: How skl stores skills
+description: The library, the index, project copies, and home agent directories, and which one is the source of truth.
+---
+
+# How skl stores skills
+
+skl keeps skills in four kinds of places. Only one of them is the source of truth.
+
+## The library
+
+The library is `~/.local/share/skl/skills`, or `{SKL_DATA_DIR}/skills`. One directory per skill, each with `SKILL.md` at its root. This is the only directory `skl sync` reads and writes, and the only place `skl use` copies from. When two copies of a skill disagree, the library copy wins. There is no merge.
+
+Files on disk are the truth. skl never puts skill content inside a database.
+
+## The index
+
+`state.db` next to the library is a SQLite file. It holds the content hash of each library skill, the device token, and sync timestamps. `skl list` reads it. If it goes missing, `skl init` rebuilds the skill rows from the library, and `skl login` stores a new token. Deleting `state.db` does not lose a skill.
+
+## Project copies
+
+`skl use` writes a skill into `.agents/skills/<name>` inside a project and lists the name in `skills.toml`. The copy is a snapshot. Editing the library does not change it, and editing it does not change the library. `skl use --all` rewrites the copies from the library. `skl capture` goes the other way and copies a project skill into the library.
+
+`skills.toml` holds names, not paths. Any machine with those skills in its library can run `skl use --all` and get the same project layout. A machine without them cannot, so a remote checkout needs the copies committed. [Why skl use writes copies](/explanation/copies) has the reasoning.
+
+A project can also hold symlinks into the library when you pass `--link`. Then edits show in both places at once, on this machine only.
+
+## Home agent directories
+
+Agents keep their own global skill directories, such as `~/.claude/skills`, `~/.cursor/skills`, and `~/.agents/skills`. skl treats these as places to import from. `skl init` copies their skills into the library and leaves them as they are. `skl sync` and `skl use` never read or write them. After the import, edit the library copy, not the home directory. `skl init` never overwrites a library skill, so a later edit in `~/.claude/skills` stays there.
+
+## Why one source of truth
+
+A tool that syncs several directories in both directions has to decide what happens when they disagree, and the answer is a merge or a prompt on every run. skl avoids that by making the library the only thing that syncs. Projects and home directories are inputs or outputs of the library, never peers. The cost is one extra command, `skl use --all`, after a sync changes a skill you use. The benefit is that `skl sync` can never touch a project you did not ask it to.

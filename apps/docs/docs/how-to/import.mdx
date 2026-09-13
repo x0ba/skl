@@ -1,0 +1,54 @@
+---
+title: Import skills you already have
+description: Copy skills from home agent directories with skl init, or capture a skill from a project.
+---
+
+# Import skills you already have
+
+The library is the only place `skl use` and `skl sync` read from. Skills in `~/.claude/skills`, `~/.cursor/skills`, or inside a project have to be imported first.
+
+## Import from home agent directories
+
+To copy every skill from your home agent directories into the library, run:
+
+```bash
+skl init
+```
+
+`skl init` scans `~/.agents/skills`, `~/.config/agents/skills`, `~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`, and the home directory of every other agent skl knows. It copies each skill that is not already in the library. It leaves the source directories as they are and never overwrites a library skill. Run `skl doctor` to see which directories exist on this machine and how many skills each holds.
+
+The first time you run `skl init` or `skl doctor` in a terminal, skl may ask once whether to add extras such as Claude Code. See [Add an extra agent directory](/how-to/extras).
+
+## Capture a skill from a project
+
+To copy a skill that lives inside a project into the library, run `skl capture` from the project root with the skill name or path:
+
+```bash
+skl capture writing-tests
+skl capture .agents/skills/writing-tests
+```
+
+A name resolves under `.agents/skills` and under any extra agent directory, whether saved in your config or listed in the project's `skills.toml`. The source must be a directory that contains `SKILL.md`.
+
+After the copy, skl adds the name to `skills.toml` and replaces the project directory with a symlink to the library copy. To leave the project directory as a real copy instead, pass `--keep-copy`:
+
+```bash
+skl capture writing-tests --keep-copy
+```
+
+If the library already has a skill with that name, capture fails. Pass `--force` to overwrite the library copy, or `--as` to store it under another name:
+
+```bash
+skl capture writing-tests --force
+skl capture writing-tests --as writing-tests-v2
+```
+
+Pass `--project <dir>` to capture from a project other than the current directory.
+
+## Check the result
+
+```bash
+skl list
+```
+
+Every imported skill appears with its path under `~/.local/share/skl/skills`. If you are logged in and auto-sync is on, the next command that syncs uploads the new skills. Run `skl sync` to upload them now.

@@ -1,52 +1,64 @@
 ---
 title: skl use
-description: Activate a skill, list activated skills, or restore all from skills.toml.
+description: Copy a library skill into a project, list the skills a project uses, or refresh them all.
 ---
 
 # skl use
 
-Make a skill available in a project, list active skills, or restore all listed skills (`--all`).
+Copy a library skill into the project, list the skills the project uses, or rewrite every listed skill with `--all`.
 
 ## Synopsis
 
 ```bash
 skl use
-skl use <skill>…
+skl use <skill>...
 skl use --all
-skl use --link <skill>
+skl use <skill> --link
+skl use <skill> --force
 skl use <skill> --project <dir> -a <id>
 ```
 
-## Flags
+## Arguments and flags
 
-- `SKILL…` — skill names. Without names, list skills already active in the project.
-- `--all` — rematerialize every skill in `skills.toml` from this machine's library (default: copy).
-- `--link` — symlink instead of copying. Local live-edit only; Cursor Cloud cannot follow `$HOME` links.
-- `--force` — overwrite an unmanaged real directory at the destination.
-- `--project DIR` — project directory (default: current directory).
-- `-a`, `--agent ID` — add an extra agent directory for this activation. Repeatable.
+- `<skill>...`. Library skill names. With none, list the skills in `skills.toml`.
+- `--all`. Rewrite every skill listed in `skills.toml` from this machine's library. Cannot be combined with names.
+- `--link`. Write a symlink into the library instead of a copy. Remote checkouts such as Cursor Cloud cannot follow it. When the symlink cannot be created, skl falls back to a copy and records `mode = "copy"`.
+- `--force`. Overwrite a real directory at the target path that skl does not manage.
+- `--project <dir>`. Project root. Default is the current directory.
+- `-a`, `--agent <id>`. Also write the project directory of the agent `<id>`, such as `claude-code`. Repeatable. `claude` is accepted as `claude-code`. `cursor` and `codex` are rejected because they already read `.agents/skills`.
 
-`claude` is accepted as `claude-code`. `cursor` and `codex` cannot be extra destinations because they already use `.agents/skills`.
+The default mode is copy. `projection = "link"` under `[project]` in `config.toml` makes symlink the default. `--link` wins over the config.
 
-`--all` cannot be combined with skill names.
+## Output
 
-Default projection is **copy** (materialize). `project.projection = "link"` in `~/.config/skl/config.toml` makes symlink the default; `--link` still wins on one command.
+```text
+using writing-tests  (agents  /home/you/.local/share/skl/skills/writing-tests)
+  copy     agents   /path/to/project/.agents/skills/writing-tests
+  updated  /path/to/project/skills.toml
+```
+
+The first column of each directory line is the action. `copy` and `link` mean a new directory or symlink. `copy*` means an existing symlink or stale copy was replaced with a fresh copy. `replace` means an existing symlink was replaced. `ok` means the directory already matched.
+
+With no names:
+
+```text
+name                     source     mode
+writing-tests            library    copy
+```
 
 ## What it writes
 
-- Creates `.agents/skills/<name>` as a real directory (copy). `--link` creates a symlink, with a copy fallback if the symlink cannot be created
-- Creates extra destinations from `-a` and configured extras
-- Updates the project's `skills.toml` (`mode = "copy"` or `mode = "symlink"`)
-- May start automatic sync
+- `.agents/skills/<name>` as a directory copy, or as a symlink with `--link`.
+- The project directory of each extra from `-a`, from `[targets].extra` in the project's `skills.toml`, and from `[targets].extra` in `config.toml`.
+- `skills.toml`: the skill entry with `source = "library"` and `mode = "copy"` or `mode = "symlink"`, plus any new extras under `[targets].extra`.
+- A background sync may run afterwards.
 
-Does not run `skl migrate`. Does not `git add`.
-
-For Cursor Cloud, commit `.agents/skills/<name>/` and `skills.toml`. See the README section "Using skills with Cursor Cloud agents".
+`skl use` does not run `skl migrate` and does not run `git add`.
 
 ## Errors
 
-- `use either skl use --all or skl use <skill>`
-- skill is not in the personal library on this machine
-- skill listed in `skills.toml` but not found in the personal library
-- dest exists and is not a managed projection (refuses to overwrite a real directory unless `--force`)
-- invalid skill name (leading `.`, `/`, or `\`)
+- `local state: use either skl use --all or skl use <skill>`
+- `local state: skill <name> is not in the personal library on this machine. Run skl init or skl capture to import it, or skl sync to pull the library, then skl use --all.`
+- `local state: skill <name> listed in <skills.toml> but not found in the personal library on this machine. Run skl sync to pull it, then skl use --all.`
+- `local state: <path> exists and is not a managed projection; refusing to overwrite (pass --force to clobber a real directory)`
+- `local state: invalid skill name <name>` for a name that is empty, starts with `.`, or contains `/` or `\`.

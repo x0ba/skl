@@ -1,0 +1,61 @@
+---
+title: Install skl
+description: Install the skl binary with the install script or from source.
+---
+
+# Install skl
+
+To install the latest release, run:
+
+```bash
+curl -fsSL https://tryskl.fyi/install.sh | sh
+```
+
+The script writes `~/.local/bin/skl`, or `~/.local/bin/skl.exe` on Windows Git Bash. It supports Linux `x86_64` and `aarch64`, macOS on Intel and Apple silicon, and Windows `x86_64`. It does not edit `.bashrc`, `.zshrc`, or fish configuration.
+
+In a terminal, the script then runs `skl setup`, which asks whether to log in and whether to import skills from home agent directories. Both default to yes. Answer `n` to skip a step. You can run `skl login` and `skl init` later.
+
+If `~/.local/bin` is not on your `PATH`, the script prints the line to add:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Add that line to your shell configuration yourself.
+
+## Install the binary only
+
+To skip the setup prompts, for example in a script or on a CI runner, pass `--non-interactive`:
+
+```bash
+curl -fsSL https://tryskl.fyi/install.sh | sh -s -- --non-interactive
+```
+
+Setting `CI` or `SKL_NON_INTERACTIVE` has the same effect. A pipe or a non-terminal stdout also installs the binary only. See [Installer](/reference/installer) for every flag and variable.
+
+## Install to another directory
+
+Set `SKL_INSTALL_DIR` before running the script:
+
+```bash
+curl -fsSL https://tryskl.fyi/install.sh | SKL_INSTALL_DIR=/opt/bin sh
+```
+
+## Build from source
+
+Clone [x0ba/skl](https://github.com/x0ba/skl) and run:
+
+```bash
+cargo install --path crates/cli
+```
+
+Debug builds default `api_base` to `http://localhost:8787`. Release builds default to `https://api.tryskl.fyi`. Override either with `--api-base` or `API_BASE`.
+
+## Check the install
+
+```bash
+skl --version
+skl doctor
+```
+
+`skl doctor` prints the config and data paths skl uses on this machine. Nothing else is needed before `skl create` or `skl use`.

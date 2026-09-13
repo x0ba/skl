@@ -1,0 +1,34 @@
+---
+title: Move a project to the current layout
+description: Move old .claude and .cursor project links onto .agents/skills, and turn symlinks into copies.
+---
+
+# Move a project to the current layout
+
+Early skl versions linked skills into `.claude/skills` and `.cursor/skills` and wrote symlinks by default. `skl doctor` prints a `warn` line when it finds either in the current project. `skl use` never runs these migrations for you.
+
+## Move old links onto `.agents/skills`
+
+From the project root, run:
+
+```bash
+skl migrate targets
+```
+
+skl creates `.agents/skills/<name>` for every project skill it finds and rewrites `skills.toml` to list that directory. The old links stay until you remove them:
+
+```bash
+skl migrate targets --prune-old
+```
+
+`--prune-old` deletes the old `.claude`, `.cursor`, and `.codex` links after `.agents/skills` exists. Pass `--project <dir>` to migrate another directory.
+
+If a real directory that skl does not manage is in the way, the command stops and names the path. Move that directory aside and run the command again.
+
+## Turn symlinks into copies
+
+```bash
+skl migrate projections --materialize
+```
+
+skl replaces every symlink listed in `skills.toml` with a copy from this machine's library and updates each entry to `mode = "copy"`. `skl use --all` does the same when the default mode is copy. Use either before you commit a project for Cursor Cloud. See [Use skills with Cursor Cloud](/how-to/cursor-cloud).

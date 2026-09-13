@@ -1,11 +1,11 @@
 ---
 title: skl sync
-description: Hash-sync the personal library. Never project or home agent dirs.
+description: Sync the library with the server by content hash. Never writes project or home agent directories.
 ---
 
 # skl sync
 
-Sync the personal library by content hash. It does not change agent or project directories.
+Sync `~/.local/share/skl/skills` with the server by content hash.
 
 ## Synopsis
 
@@ -18,25 +18,40 @@ skl sync --allow-warnings
 
 ## Flags
 
-- `--keep-local` — resolve every conflict by keeping the local version and overwriting the remote one
-- `--keep-remote` — resolve every conflict by keeping the remote version and overwriting the local one
-- `--allow-warnings` — allow warning-level secret findings; blocked findings still refuse upload
+- `--keep-local`. Resolve every conflict by keeping the local skill and overwriting the server copy.
+- `--keep-remote`. Resolve every conflict by keeping the server skill and overwriting the local copy.
+- `--allow-warnings`. Upload skills that have warning-level secret findings. Block-level findings still refuse.
 
-`--keep-local` and `--keep-remote` cannot be used together. Without either flag, an interactive terminal prompts. A non-interactive shell requires one of them.
+`--keep-local` and `--keep-remote` exclude each other. Without either, an interactive terminal asks per conflict and a non-interactive shell fails.
+
+## Output
+
+```text
+POST https://api.tryskl.fyi/v1/sync  (2 skill(s))
+upload:         1 blob(s)
+download:       0 blob(s)
+conflicts:      0
+missing_skills: 0
+PUT /v1/blobs/<sha256>  (43 bytes)
+PUT /v1/skills/writing-tests/tree
+
+sync done  uploaded=1  downloaded=0  pushed=1  conflicts=0
+```
+
+A conflict prints `hash mismatch: <name>` with the local and remote hashes and timestamps.
 
 ## What it writes
 
-- Uploads and downloads skill data under `{data_dir}/skills`
-- Updates hashes and last-sync metadata in `state.db`
-- Does not change `.agents/skills`, `skills.toml`, or home agent directories
+- Skill files under `{data_dir}/skills`, for downloaded or overwritten skills.
+- Hashes and last-sync metadata in `state.db`.
+- Nothing under `.agents/skills`, in `skills.toml`, or in home agent directories.
 
-Requires a device token and an existing `state.db`. Secret scan runs before upload.
+Requires a device token and an existing `state.db`. `skl login` creates `state.db`. The secret scan runs before any upload.
 
 ## Errors
 
 - `not logged in; run skl login`
-- `no local skill index; run skl init first`
-- `upload blocked: …` (block-level secrets)
-- `conflict: …` when unresolved
-- `non-interactive sync needs --keep-local or --keep-remote`
-- `cannot reach API at <url>`
+- `local state: no local skill index; run skl init first`
+- `upload blocked: ...` for block-level secret findings.
+- `conflict: non-interactive sync needs --keep-local or --keep-remote`
+- `cannot reach API at <url>: ...`

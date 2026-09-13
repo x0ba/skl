@@ -1,0 +1,72 @@
+---
+title: Self-host the server
+description: Run Postgres, the API, and the web app from a source checkout and point skl at them.
+---
+
+# Self-host the server
+
+There is no published server image. You run Postgres, the API in `apps/api`, and the web app in `apps/web` from a checkout of [x0ba/skl](https://github.com/x0ba/skl). You need Docker for Postgres, Node, and `pnpm`. CI uses Node 22.
+
+## 1. Start Postgres
+
+From the repository root:
+
+```bash
+docker compose up -d postgres
+```
+
+This starts `postgres:16-alpine` on `localhost:5432` with user `skl`, password `skl`, and database `skl`.
+
+## 2. Start the API
+
+```bash
+cd apps/api
+cp .env.example .env
+pnpm install
+pnpm migrate
+pnpm dev
+```
+
+The API listens on `http://localhost:8787`. `GET /v1/health` returns `{"ok":true}`.
+
+Edit `.env` to change these values:
+
+- `DATABASE_URL`, default `postgres://skl:skl@localhost:5432/skl`.
+- `PORT`, default `8787`.
+- `SKL_WEB_ORIGIN`, default `http://localhost:3000`. Used in the device login URL and for CORS.
+- `SKL_API_ORIGIN`, default `http://localhost:8787`.
+- `CLERK_SECRET_KEY` and the other Clerk keys. Required for browser sign-in.
+- `ALLOW_DEV_AUTH`. Controls whether the API accepts `Authorization: Bearer dev:<user_id>` from anyone, with no password. Unset means on when `CLERK_SECRET_KEY` is empty and off when it is set. `true` forces it on even with Clerk configured. `false` forces it off.
+
+Dev auth lets any caller act as any user. Leave `ALLOW_DEV_AUTH` unset or set it to `false` on any API that other machines can reach. Set `ALLOW_DEV_AUTH=true` only on a machine you trust, for local development.
+
+## 3. Start the web app
+
+The web app serves `/device`, where you approve CLI logins.
+
+```bash
+cd apps/web
+cp .env.example .env.local
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:3000`.
+
+## 4. Point the CLI at your API
+
+```bash
+skl --api-base http://localhost:8787 login
+```
+
+To make it stick, set `API_BASE=http://localhost:8787` in your environment or `api_base = "http://localhost:8787"` in `~/.config/skl/config.toml`. `skl login` writes `api_base` to the config file after a successful login.
+
+While dev auth is on, `skl login --dev-user <id>` stores a `dev:<id>` token without the browser step:
+
+```bash
+skl --api-base http://localhost:8787 login --dev-user alice
+```
+
+## What you take on
+
+TLS, backups, Clerk, and updates are yours. The server stores skill content as it is, so anyone with access to the database can read every skill.

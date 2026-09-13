@@ -1,34 +1,41 @@
 ---
 title: skl targets
-description: Show or edit extra agent directories in config.toml.
+description: Show or edit the extras saved in config.toml.
 ---
 
 # skl targets
 
-Show or edit extra agent directories that apply to every activation (`~/.config/skl/config.toml`).
+Show or edit the extra agent directories that every `skl use` on this machine writes to. They are stored under `[targets].extra` in `~/.config/skl/config.toml`.
 
 ## Synopsis
 
 ```bash
 skl targets
-skl targets add <id>…
-skl targets remove <id>…
+skl targets add <id>...
+skl targets remove <id>...
 ```
 
 ## Subcommands
 
-- no subcommand — list `.agents/skills` and configured extras
-- `add` — add extra agent IDs, such as `claude-code`; rejects agents that already use `.agents/skills`
-- `remove` — remove extra agent IDs; accepts aliases such as `claude`
+- No subcommand. Print `.agents/skills` and the saved extras.
+- `add <id>...`. Save one or more agent ids. Rejects `agents`, and rejects ids such as `cursor` and `codex` whose project directory is already `.agents/skills`.
+- `remove <id>...`. Remove ids. Accepts the alias `claude` for `claude-code`.
+
+## Output
+
+```text
+canonical  agents  (.agents/skills)
+extra      claude-code
+config     /home/you/.config/skl/config.toml
+ids        agents (always)  extras: custom catalog (e.g. claude-code)
+```
 
 ## What it writes
 
-`add` and `remove` update `[targets].extra` in `config.toml`. Listing makes no changes.
-
-Output includes `canonical`, `extra`, `config`, and `ids` lines.
+`add` and `remove` rewrite `[targets].extra` in `config.toml`. Listing writes nothing.
 
 ## Errors
 
-- Universal ids such as `cursor` or `codex` on `add` (`… uses project .agents/skills …`)
-- Unknown catalog ids
-- Config dir resolution failures
+- `local state: <id> uses project .agents/skills (already the canonical dest); extras are only for custom project dirs (e.g. claude-code)`
+- `local state: unknown target <id> (custom catalog ids, e.g. claude-code)`
+- `config: ...` when the config directory cannot be resolved.

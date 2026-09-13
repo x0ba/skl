@@ -1,11 +1,11 @@
 ---
 title: skl doctor
-description: Diagnose library, projections, token store, state.db, and API health.
+description: Report paths, token, API health, home agent directories, symlink support, and project warnings.
 ---
 
 # skl doctor
 
-Check the library, project links, token store, `state.db`, and `GET /v1/health`.
+Print a diagnostic report. Doctor reads and never changes skills, projects, or `state.db`.
 
 ## Synopsis
 
@@ -15,16 +15,31 @@ skl doctor
 
 ## Flags
 
-None.
+None beyond the [global flags](/reference#global-flags).
+
+## Output
+
+The report has five sections.
+
+- `== API`. `api_base` and the result of `GET /v1/health`, with a 3 second timeout.
+- `== Auth`. Whether a token is `present`, `absent`, or in `error`, which store holds it, and whether `SKL_TOKEN` or `SKL_TOKEN_FILE` overrides it.
+- `== State`. The `config.toml` and `state.db` paths, whether each exists and is writable, the skill count, and the last sync.
+- `== Agent skill roots`. Every home agent directory skl scans, with `missing` or a skill count.
+- `== Linking`. Whether this machine can create directory symlinks, the current project's `skills.toml` with the mode of each skill, and `warn` lines.
+
+Doctor warns about:
+
+- An old project layout with `.claude` or `.cursor` links. Fix with [`skl migrate targets`](/reference/migrate).
+- Absolute paths in `skills.toml`. Fix with `skl use --all`.
+- Symlinks that a remote agent cannot follow. Fix with `skl use --all`.
+- Project copies whose content differs from this machine's library.
+
+On Windows, a failed symlink check prints `symlink unavailable` and explains that directory symlinks need Developer Mode or the `SeCreateSymbolicLink` privilege.
 
 ## What it writes
 
-Does not change skills, project directories, or `state.db`. It may show the one-time extras prompt and write `[targets]` if you accept.
-
-Prints `api_base`, API health, token presence and source, config and `state.db` status, home directories, the symlink check, and current-project `skills.toml` modes. It also warns about old project layouts, host-absolute manifest paths, link projections that Cursor Cloud cannot follow, and materialized copies that differ from this machine's library.
-
-Health probe times out after 3 seconds.
+Nothing, except that in a terminal it may show the extras checklist once and write the answer to `[targets]` in `config.toml`. The checklist is skipped when `CI`, `SKL_NO_PROMPT`, or `SKL_YES` is set, or when stdin is not a terminal.
 
 ## Errors
 
-After printing its report, doctor returns success. Its prompt is skipped under the same conditions as setup: `CI`, `SKL_NO_PROMPT`, `SKL_YES`, or non-interactive stdin.
+Doctor exits `0` after printing its report, including when the API is unreachable.

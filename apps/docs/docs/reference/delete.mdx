@@ -1,33 +1,38 @@
 ---
 title: skl delete
-description: Remove a skill from SKL and delete the local library copy.
+description: Remove a skill from the server and delete the library copy.
 ---
 
 # skl delete
 
-Delete a skill from SKL and from the local library.
+Delete one or more skills from the server and from the library. Requires a login.
 
 ## Synopsis
 
 ```bash
-skl delete <skill>…
+skl delete <skill>...
 ```
 
-## Flags
+## Arguments
 
-- `SKILL…` — one or more names (required)
+- `<skill>...`. One or more skill names.
 
 ## What it writes
 
-Calls `DELETE /v1/skills/:name`, deletes `{data_dir}/skills/<name>/`, and removes its `state.db` entries. It does not change project or home agent directories.
+For each name, skl calls `DELETE /v1/skills/<name>`, deletes `{data_dir}/skills/<name>/`, and removes the skill's rows from `state.db`. Project directories, `skills.toml`, and home agent directories do not change.
 
-Requires a device token.
+When the server returns `404` and nothing existed locally either, the command fails with `is not managed by SKL`.
+
+## Output
+
+```text
+deleted writing-tests
+```
 
 ## Errors
 
-- `specify at least one skill: skl delete <skill>`
 - `not logged in; run skl login`
-- skill is not managed by SKL (API 404 and nothing local changed)
-- `refusing to delete … (not under the personal library)`
-- `invalid skill name`
-- `API error <status>`
+- `local state: skill <name> is not managed by SKL`
+- `local state: refusing to delete <path> (not under the personal library)`
+- `local state: invalid skill name <name>`
+- `API error <status>: <body>`

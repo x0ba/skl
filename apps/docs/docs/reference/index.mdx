@@ -1,31 +1,39 @@
 ---
 title: Commands
-description: Reference for every skl subcommand.
+description: Every skl subcommand, its flags, what it writes, and its errors.
 ---
 
 # Commands
 
-Each page describes a command's flags, effects, and errors.
+`skl` with no subcommand opens the TUI in a terminal and prints help otherwise.
 
-- [login](/reference/login)
-- [logout](/reference/logout)
-- [setup](/reference/setup)
-- [init](/reference/init)
-- [sync](/reference/sync)
-- [status](/reference/status)
-- [list](/reference/list)
-- [doctor](/reference/doctor)
-- [targets](/reference/targets)
-- [use](/reference/use)
-- [create](/reference/create)
-- [capture](/reference/capture)
-- [delete](/reference/delete)
-- [unuse](/reference/unuse)
-- [migrate](/reference/migrate)
-- [update](/reference/update)
-- [tui](/reference/tui)
+| Command | Purpose |
+|---|---|
+| [`skl login`](/reference/login) | Approve this device and store its token |
+| [`skl logout`](/reference/logout) | Clear the local device token |
+| [`skl setup`](/reference/setup) | First-run prompts for login and import |
+| [`skl init`](/reference/init) | Import skills from home agent directories into the library |
+| [`skl sync`](/reference/sync) | Sync the library with the server by content hash |
+| [`skl status`](/reference/status) | Show login, `api_base`, skill count, and last sync |
+| [`skl list`](/reference/list) | List library skills and their presence on the server |
+| [`skl doctor`](/reference/doctor) | Report paths, token, API health, symlink support, and project warnings |
+| [`skl targets`](/reference/targets) | Show or edit extras saved in `config.toml` |
+| [`skl use`](/reference/use) | Copy a library skill into a project, list, or refresh all |
+| [`skl create`](/reference/create) | Create a library skill and open `SKILL.md` |
+| [`skl capture`](/reference/capture) | Copy a project skill into the library |
+| [`skl delete`](/reference/delete) | Remove a skill from the server and the library |
+| [`skl unuse`](/reference/unuse) | Remove a skill from a project |
+| [`skl migrate`](/reference/migrate) | Move old project layouts and convert symlinks to copies |
+| [`skl update`](/reference/update) | Replace the binary with the latest release |
+| [`skl tui`](/reference/tui) | Open the two-pane skill browser |
 
-Global flags available with every command:
+## Global flags
 
-- `--api-base <url>` (env `API_BASE`)
-- `--no-tui` (also `SKL_NO_TUI=1`)
+- `--api-base <url>`. API origin without a trailing slash. Overrides `config.toml`. Environment: `API_BASE`.
+- `--no-tui`. Print help instead of opening the TUI. Environment: `SKL_NO_TUI=1`.
+- `-h`, `--help`. Print help for the command.
+- `-V`, `--version`. Print the version.
+
+## Exit status
+
+Every command exits `0` on success and `1` on error. Errors print to stderr as `error: <message>`.

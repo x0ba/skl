@@ -1,0 +1,87 @@
+---
+title: Configuration
+description: config.toml fields, environment variables, and the directories skl uses.
+---
+
+# Configuration
+
+skl reads `config.toml` from its config directory. On Linux the default is `~/.config/skl/config.toml`. `SKL_CONFIG_DIR` overrides the directory. `skl doctor` prints the path used on this machine.
+
+A complete file with every default:
+
+```toml
+api_base = "https://api.tryskl.fyi"
+
+[sync]
+auto = true
+frequency_secs = 900
+
+[targets]
+extra = []
+
+[project]
+projection = "copy"
+```
+
+Every field is optional. A missing field uses the default shown.
+
+## Fields
+
+### `api_base`
+
+API origin without a trailing slash. Release builds default to `https://api.tryskl.fyi`. Debug builds default to `http://localhost:8787`. `--api-base` and `API_BASE` override this field. `skl login` writes the origin it used here.
+
+### `[sync] auto`
+
+When `true`, `login`, `init`, `use`, `unuse`, `status`, `create`, `capture`, and `list` run a sync in the background when one is due. A failed background sync does not fail the command. A conflict during a background sync keeps the server copy. Default `true`.
+
+### `[sync] frequency_secs`
+
+Minimum seconds between background syncs. A failed attempt also resets the timer. Default `900`.
+
+### `[targets] extra`
+
+Agent ids whose project directory every `skl use` on this machine also writes. Empty means `.agents/skills` only. `claude` is stored as `claude-code`. Ids such as `cursor` and `codex` are dropped on load with a warning because those agents already read `.agents/skills`. Edit with [`skl targets`](/reference/targets). Default `[]`.
+
+### `[targets] prompted`
+
+Set to `true` by skl after it shows the extras checklist once. Do not set it by hand.
+
+### `[project] projection`
+
+The mode `skl use` writes when `--link` is absent. `copy` or `materialize` writes a directory copy. `link` or `symlink` writes a symlink. Any other value is an error on every command that loads the config. Default `copy`.
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `API_BASE` | API origin. Same as `--api-base`. Wins over `config.toml` |
+| `SKL_CONFIG_DIR` | Directory that holds `config.toml` |
+| `SKL_DATA_DIR` | Directory that holds `state.db` and `skills/` |
+| `SKL_TOKEN` | Device token. Wins over `SKL_TOKEN_FILE` and `state.db` |
+| `SKL_TOKEN_FILE` | File whose first non-empty line is the device token. Wins over `state.db` |
+| `SKL_NO_TUI` | `1`, `true`, or `yes` makes `skl` with no subcommand print help |
+| `SKL_NO_PROMPT` | Skip the setup prompts and the extras checklist |
+| `SKL_YES` | Same as `SKL_NO_PROMPT` |
+| `CI` | Same as `SKL_NO_PROMPT`. Also makes the installer binary-only |
+| `VISUAL`, `EDITOR` | Editor for `skl create` and the TUI `e` key. `VISUAL` wins. Fallback is `vi` |
+
+The installer reads `SKL_INSTALL_DIR`, `SKL_DOWNLOAD_BASE`, `SKL_NON_INTERACTIVE`, and `API_BASE`. See [Installer](/reference/installer). `skl update` reads `SKL_DOWNLOAD_BASE`.
+
+## Directories
+
+| Path | Contents |
+|---|---|
+| `{SKL_DATA_DIR}/skills/<name>/` | The library. One directory per skill |
+| `{SKL_DATA_DIR}/state.db` | SQLite index of the library, the device token, and sync metadata |
+| `{SKL_CONFIG_DIR}/config.toml` | This file |
+
+Defaults by platform:
+
+| Platform | `SKL_DATA_DIR` | `SKL_CONFIG_DIR` |
+|---|---|---|
+| Linux | `$XDG_DATA_HOME/skl`, usually `~/.local/share/skl` | `$XDG_CONFIG_HOME/skl`, usually `~/.config/skl` |
+| macOS | `~/Library/Application Support/skl` | `~/Library/Application Support/skl` |
+| Windows | `%APPDATA%\skl` | `%APPDATA%\skl` |
+
+On Unix, skl creates the data directory with mode `0700` and `state.db` with mode `0600`.

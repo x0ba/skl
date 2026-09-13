@@ -1,11 +1,11 @@
 ---
 title: skl migrate
-description: Move old .claude and .cursor project links onto .agents/skills, or rematerialize projections.
+description: Move old .claude and .cursor project links onto .agents/skills, or replace symlinks with copies.
 ---
 
 # skl migrate
 
-Move old project layouts to `.agents/skills`, or convert link projections to copies. This migration is never run by `skl use`.
+Rewrite a project's layout. `skl use` never runs these commands for you.
 
 ## Synopsis
 
@@ -14,31 +14,41 @@ skl migrate targets
 skl migrate targets --prune-old
 skl migrate targets --project <dir>
 skl migrate projections --materialize
+skl migrate projections --materialize --project <dir>
 ```
 
 ## Subcommands
 
-`targets` moves old `.claude` and `.cursor` project links to `.agents/skills`.
+### `targets`
 
-`projections --materialize` rematerializes every skill listed in `skills.toml` as a copy. Same effect as `skl use --all` with the default copy projection. Use it to convert existing symlink activations so Cursor Cloud can see the files.
+Move a project from the old `.claude/skills` and `.cursor/skills` links onto `.agents/skills`.
 
-## Flags
+- `--project <dir>`. Project root. Default is the current directory.
+- `--prune-old`. Delete the old `.claude`, `.cursor`, and `.codex` links after `.agents/skills` exists.
 
-- `--project DIR` — project directory (default: current directory)
-- `--prune-old` — remove old `.claude`, `.cursor`, and `.codex` links after `.agents/skills` exists
-- `--materialize` — required for `projections`; write real directories instead of symlinks
+It creates or refreshes `.agents/skills/<name>` for every project skill, from the library copy, and rewrites `skills.toml` to list `agents` as the target. Without `--prune-old`, the old links stay and the command prints `extras   ... (opt-in; old links kept unless --prune-old)`.
 
-## What it writes
+### `projections`
 
-`targets` creates or refreshes `.agents/skills/<name>` for every project skill and rewrites `skills.toml` to use that directory. With `--prune-old`, it deletes the old managed links. Without it, detected extra agent directories may remain.
+Replace symlinks with copies.
 
-`projections --materialize` overwrites managed copies and replaces managed symlinks. It will not clobber an unrelated real directory.
+- `--project <dir>`. Project root. Default is the current directory.
+- `--materialize`. Required. Write a copy for every skill listed in `skills.toml` and set each entry to `mode = "copy"`.
 
-`skl use` does not run this migration. `skl doctor` warns when it finds the old layout or a link projection.
+This has the same effect as `skl use --all` when the default mode is copy. It overwrites managed copies and replaces managed symlinks. It does not overwrite a real directory that skl does not manage.
+
+## Output
+
+```text
+rematerializing 2 skill(s) as copy
+  copy     writing-tests  copy
+  copy*    agents   /path/to/project/.agents/skills/writing-tests
+  updated  /path/to/project/skills.toml
+```
 
 ## Errors
 
-- no project skills to migrate (no old `.claude` or `.cursor` links, and nothing in `skills.toml`)
-- dest conflict when a real unmanaged directory is in the way
-- skill name or path resolution failures
-- `projections` without `--materialize`
+- `local state: no project skills to migrate under <dir> (expected M0 links in .claude/.cursor)`
+- `local state: skill <name> is linked in the project but not found in the personal library`
+- `local state: <path> exists and is not a managed projection; refusing to overwrite (pass --force to clobber a real directory)`
+- `local state: specify --materialize to convert link projections to copies (or skl use --all)`

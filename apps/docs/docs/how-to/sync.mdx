@@ -1,0 +1,67 @@
+---
+title: Sync your library between machines
+description: Log in with a device code, sync the library, resolve conflicts, and log out.
+---
+
+# Sync your library between machines
+
+Sync sends your library to the skl API and back. It never changes a project's `.agents/skills` or a home agent directory such as `~/.claude/skills`. Skip this page to keep the library on one machine.
+
+## Log in
+
+```bash
+skl login
+```
+
+skl prints a URL such as `https://tryskl.fyi/device?user_code=ABCD-2345` and the code. Open the URL, sign in, approve the device, and wait for the terminal to print `Logged in`. The device token is stored in `~/.local/share/skl/state.db`. skl does not need the OS keyring. Versions before 0.2 kept the token there. If `state.db` has no token and the keyring still has one, skl copies it into `state.db` once.
+
+If the code expires, run `skl login` again. If you deny the request in the browser, the CLI exits with `device authorization was denied`.
+
+## Sync
+
+```bash
+skl sync
+```
+
+skl compares the content hash of each skill with the server, uploads skills that are new or changed here, and downloads skills that are new or changed on the server. Only `~/.local/share/skl/skills` changes.
+
+## Set up a second machine
+
+1. Install skl.
+2. Run `skl login` and approve the new device.
+3. Run `skl sync`.
+
+The library downloads. Projects on the second machine stay as they are until you run `skl use --all` in them.
+
+## Resolve a conflict
+
+A conflict is one skill name with different content locally and on the server. In a terminal, skl asks which side to keep for each conflict. In a script, or to decide for every conflict at once, pass a flag:
+
+```bash
+skl sync --keep-local
+skl sync --keep-remote
+```
+
+`--keep-local` overwrites the server copy with yours. `--keep-remote` overwrites your library copy with the server's. skl does not merge. Without a flag in a non-interactive shell, sync fails with `non-interactive sync needs --keep-local or --keep-remote`.
+
+## Upload a skill the secret scanner warned about
+
+Before an upload, skl scans each skill for credentials. A warning stops the upload until you pass `--allow-warnings`:
+
+```bash
+skl sync --allow-warnings
+```
+
+A block, such as a private key or an AWS access key, stops the upload no matter what. Remove the secret from the skill and sync again. See [Secret scanner](/reference/secret-scanner) for the patterns.
+
+## Let skl sync in the background
+
+By default, `login`, `init`, `use`, `unuse`, `status`, `create`, `capture`, and `list` sync in the background when the last sync was more than 900 seconds ago. A failed background sync does not fail the command, and a conflict keeps the server copy. To turn this off, set `auto = false` under `[sync]` in `~/.config/skl/config.toml`. `skl sync` still works. See [Configuration](/reference/configuration) for `frequency_secs`.
+
+## Log out
+
+```bash
+skl logout
+```
+
+skl clears the token from `state.db`. The device stays approved on the server. Revoke it on the [devices page](https://www.tryskl.fyi/devices).

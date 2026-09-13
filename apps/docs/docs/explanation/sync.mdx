@@ -1,0 +1,36 @@
+---
+title: What sync does
+description: How skl sync compares skills by hash, what it never touches, how conflicts resolve, and what the server can read.
+---
+
+# What sync does
+
+`skl sync` makes the library on this machine and the copy on the server the same. This page explains how it decides what to send and what it deliberately leaves alone.
+
+## Hashes, not timestamps
+
+skl hashes the content of every file in a skill and derives one hash for the skill directory. Sync sends the list of names and hashes to the API. The API answers with what to upload, what to download, and which names have a different hash on each side. A file that has not changed is never sent again, because its hash already exists on the server. Touching a file without changing its bytes sends nothing. A skill that exists only on the server is downloaded, so removing a directory from the library by hand brings it back on the next sync. Use `skl delete` to remove a skill for good.
+
+## Conflicts are a choice, not a merge
+
+A conflict is one skill name with two different hashes. skl does not diff `SKILL.md` or try to combine two edits. It asks which side to keep, or takes `--keep-local` or `--keep-remote` and applies that answer to every conflict in the run. The losing copy is overwritten. That is a smaller promise than a merge, and it is one skl can keep for any file a skill might contain, including images and binaries.
+
+Background syncs cannot ask, so they keep the server copy. If you edited a skill on two machines and want this machine's version, run `skl sync --keep-local` yourself before a background sync runs.
+
+## What sync never touches
+
+Sync reads and writes `~/.local/share/skl/skills` and `state.db`. It does not write `.agents/skills` in any project, `skills.toml`, or a home agent directory such as `~/.claude/skills`. After a sync pulls a change, each project keeps its old copy until you run `skl use --all` there. This is deliberate. A sync that rewrote every project on your disk would have to know which projects exist and would change files you did not ask it to change. [How skl stores skills](/explanation/storage) covers the layout this protects.
+
+## What the server can read
+
+Traffic to the API uses TLS. Skill content is stored on the server as it is, addressed by hash. The server, and anyone who runs it, can read every skill you sync. There is no end-to-end encryption. If a skill must stay private, keep it out of the library or do not log in.
+
+Content blobs are stored by hash without a per-user owner. Any logged-in user who knows a blob's exact SHA-256 can request it. Guessing a hash is not practical, but this is a trade-off of the current design, not a guarantee.
+
+The [secret scanner](/reference/secret-scanner) runs before every upload for the same reason. It catches the common credential formats so a pasted key does not leave the machine, and it refuses rather than redacting, because a silently edited file would no longer match its hash.
+
+## Where the token lives
+
+`skl login` stores the device token in `state.db`, not in the OS keyring. Keyrings need a desktop session and break on headless machines and under WSL. The file is created with mode `0600` on Unix. `skl logout` deletes the token locally, and the [devices page](https://www.tryskl.fyi/devices) revokes it on the server.
+
+Versions before 0.2 kept the token in the keyring. skl still touches the keyring in two places for those installs. When `state.db` holds no token, skl reads the keyring once and copies the token into `state.db`. `skl logout` also tries to delete the keyring entry and ignores any failure. A token that appears in `state.db` without a fresh `skl login` came from that copy.

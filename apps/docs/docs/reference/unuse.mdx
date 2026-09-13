@@ -1,32 +1,42 @@
 ---
 title: skl unuse
-description: Remove project skill directories and entries from skills.toml.
+description: Remove a skill's copy or symlink from a project and drop it from skills.toml.
 ---
 
 # skl unuse
 
-Remove project skill directories and entries from `skills.toml`.
+Remove one or more skills from the project. The library does not change.
 
 ## Synopsis
 
 ```bash
-skl unuse <skill>…
+skl unuse <skill>...
 skl unuse <skill> --project <dir>
 ```
 
-## Flags
+## Arguments and flags
 
-- `SKILL…` — one or more names (required)
-- `--project DIR` — project directory (default: current directory)
+- `<skill>...`. One or more skill names.
+- `--project <dir>`. Project root. Default is the current directory.
 
 ## What it writes
 
-Removes `.agents/skills` and configured extra destinations for each name, then updates `skills.toml`. It does not delete the personal library copy. The command may also start automatic sync.
+- Deletes `.agents/skills/<name>` and the skill's directory under every extra the project lists, when skl created them.
+- Removes the skill's entry from `skills.toml`.
+- A background sync may run afterwards.
 
-A real directory that was not recorded as a copy is left in place.
+A real directory that `skills.toml` does not record as a copy is left in place and the command fails.
+
+## Output
+
+```text
+unused writing-tests
+  removed  agents   /path/to/project/.agents/skills/writing-tests
+  updated  /path/to/project/skills.toml
+```
 
 ## Errors
 
-- `specify at least one skill: skl unuse <skill>`
-- dest exists and is not a managed projection (refuses to delete an unmanaged directory)
-- Config or project path resolution failures
+- `local state: specify at least one skill: skl unuse <skill>`
+- `local state: <path> exists and is not a symlink; refusing to delete`
+- `local state: project directory does not exist: <dir>`

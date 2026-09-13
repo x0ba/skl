@@ -1,0 +1,66 @@
+---
+title: Use a skill in a project
+description: Copy a library skill into a project, list what the project uses, refresh copies, and remove them.
+---
+
+# Use a skill in a project
+
+These steps assume the skill is in your library. If it is not, see [Import skills you already have](/how-to/import) or create one with `skl create <name>`.
+
+## Copy a skill into the project
+
+From the project root, run:
+
+```bash
+skl use writing-tests
+```
+
+skl copies the skill to `.agents/skills/writing-tests` and adds the name to `skills.toml`. Pass several names to use several skills in one command. Pass `--project <dir>` to target another directory.
+
+If a real directory that skl does not manage already exists at `.agents/skills/writing-tests`, `skl use` refuses. Pass `--force` to overwrite it.
+
+## See what the project uses
+
+```bash
+skl use
+```
+
+With no names, `skl use` prints each skill in `skills.toml` with its mode, `copy` or `symlink`.
+
+## Refresh copies after you edit a skill
+
+A copy does not follow later edits to the library. After you change a skill in the library, or after `skl sync` pulls changes on this machine, recreate the project's copies:
+
+```bash
+skl use --all
+```
+
+`--all` rewrites every skill listed in `skills.toml` from this machine's library. If a listed skill is missing from the library, the command fails and names it. Run `skl sync`, then `skl use --all` again.
+
+## Symlink instead of copying
+
+To edit a skill in the library and see the change in the project at once, pass `--link`:
+
+```bash
+skl use writing-tests --link
+```
+
+skl creates `.agents/skills/writing-tests` as a symlink into the library. Remote checkouts such as Cursor Cloud cannot follow a symlink into your home directory, so use `--link` for local work only. To make symlinks the default on this machine, set `projection = "link"` under `[project]` in `~/.config/skl/config.toml`. `--link` on the command line always wins.
+
+To turn existing symlinks back into copies, run `skl use --all` without `--link`, or `skl migrate projections --materialize`.
+
+## Remove a skill from the project
+
+```bash
+skl unuse writing-tests
+```
+
+`skl unuse` deletes the project's copy or symlink and removes the name from `skills.toml`. The library copy stays. If a real directory at that path is not one skl created, `skl unuse` leaves it alone and reports the conflict.
+
+## Delete a skill from the library
+
+```bash
+skl delete writing-tests
+```
+
+`skl delete` removes the skill from the server and deletes the library copy. It needs a login. It does not touch project directories or home agent directories. Run `skl unuse` in each project first if you want those copies gone too.

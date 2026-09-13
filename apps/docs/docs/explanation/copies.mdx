@@ -1,0 +1,28 @@
+---
+title: Why skl use writes copies
+description: Copies survive a remote checkout. Symlinks into your home directory do not.
+---
+
+# Why skl use writes copies
+
+`skl use` writes a real directory into `.agents/skills`. Early versions wrote a symlink into the library instead. This page explains the switch and what it costs.
+
+## Where a symlink breaks
+
+A symlink from `.agents/skills/writing-tests` to `/home/you/.local/share/skl/skills/writing-tests` holds an absolute path on your machine. Git stores the path as the link's content. Anyone who clones the repository gets a link to a directory that does not exist on their machine. Cursor Cloud, which checks the repository out on a VM, is the case that matters most for skl. The agent on that VM reads `.agents/skills`, finds a dangling link, and sees no skill.
+
+Relative symlinks do not help. The library is outside the repository, and its path differs from machine to machine.
+
+## What a copy costs
+
+A copy is a snapshot. After you edit the skill in the library, the project keeps the old text until you run `skl use --all`. If you edit the copy inside the project, the library does not change until you run `skl capture`. `skl doctor` warns when a project copy differs from the library so the drift does not go unnoticed.
+
+The copy also lives in the repository, so a skill you commit is visible to everyone with access to the repository. That is the point for Cursor Cloud and a consideration for anything private.
+
+## When to link instead
+
+`skl use --link` keeps the symlink behavior for one command, and `projection = "link"` in `config.toml` makes it the default on one machine. Use it while you iterate on a skill and want the project to follow every save. Switch back to copies with `skl use --all` before you commit for a remote agent. Sync never rewrites project directories, so a project stays in whichever mode you last chose.
+
+## Why not both
+
+The alternative is to keep links locally and have the remote side fetch skills from the API. That means installing skl on every VM, giving it a token, and running it before the agent starts. Committing a copy needs none of that. The repository carries what the agent needs, and skl is only required on the machines where you write skills.

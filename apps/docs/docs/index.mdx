@@ -1,39 +1,29 @@
 ---
 title: skl
-description: Personal skill library, hash sync, and project activation for agent skills.
+description: One library of agent skills on your machine, copied into projects with skl use and kept the same across machines with skl sync.
 slug: /
 ---
 
 # skl
 
-skl keeps a personal library of agent skills and can sync it between machines by content hash. A skill is a directory that contains `SKILL.md`. Use `skl use` to make a library skill available in a project. It copies the skill into `.agents/skills/<name>` (so Cursor Cloud can see it) and records the name in `skills.toml`.
-
-Sync is optional. The hosted API is [https://api.tryskl.fyi](https://api.tryskl.fyi). Skip login and the personal library stays on this machine at `~/.local/share/skl/skills`.
-
-## Quickstart
+skl keeps your agent skills in one library at `~/.local/share/skl/skills`. A skill is a directory with a `SKILL.md` at its root. `skl use <name>` copies a skill from the library into `.agents/skills/<name>` in a project. `skl sync` keeps the library the same on every machine you log in from. Sync is optional. Without it, the library stays on this machine.
 
 ```bash
 curl -fsSL https://tryskl.fyi/install.sh | sh
-```
-
-Then:
-
-```bash
-skl login
-skl init
-skl sync
+skl create writing-tests
 cd /path/to/project
 skl use writing-tests
 ```
 
-Run `skl init` only when you already have skills in home agent directories. `skl login` and `skl sync` are only needed to use the hosted library. Running `skl` with an interactive terminal opens the TUI.
+Run `skl` with no arguments in a terminal to open the TUI.
 
-If you want the same path with more explanation, start at [Getting started](/guide/getting-started).
+## Where to go
 
-## Supported platforms
-
-The installer supports Linux `x86_64` and `aarch64`, macOS on Intel and Apple silicon, and Windows `x86_64` through Git Bash. It installs to `~/.local/bin/skl` and does not change shell configuration files. If that directory is not on `PATH`, it prints an export command for you to add.
+- New to skl? Follow [Get started with skl](/tutorial/getting-started). You install skl, create a skill, use it in a project, and sync it to a second machine.
+- Have a task? Open the how-to guides, starting with [Use a skill in a project](/how-to/use) and [Sync your library between machines](/how-to/sync).
+- Looking something up? See the [command reference](/reference), [configuration](/reference/configuration), and [skills.toml](/reference/skills-toml).
+- Want to know why skl works this way? Read [How skl stores skills](/explanation/storage), [Why skl use writes copies](/explanation/copies), and [What sync does](/explanation/sync).
 
 ## Getting help
 
-File an issue at [github.com/x0ba/skl/issues](https://github.com/x0ba/skl/issues). First run `skl doctor` and include its output. It reports resolved paths, token status, API health, and whether the machine can create directory symlinks.
+File an issue at [github.com/x0ba/skl/issues](https://github.com/x0ba/skl/issues). Run `skl doctor` first and paste its output. It prints the paths skl resolved, whether a token is present, whether the API answers, and whether this machine can create directory symlinks.

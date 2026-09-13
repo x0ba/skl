@@ -1,0 +1,42 @@
+---
+title: Add an extra agent directory
+description: Make skl use also write to .claude/skills or another agent's project directory.
+---
+
+# Add an extra agent directory
+
+`skl use` always writes to `.agents/skills`. Cursor, Codex, and other agents that read that directory need nothing else. An extra is an additional project directory for an agent that reads its own path. The common case is Claude Code, which reads `.claude/skills`.
+
+## Add an extra for one command
+
+Pass `-a` with the agent id:
+
+```bash
+skl use writing-tests -a claude-code
+```
+
+skl writes `.agents/skills/writing-tests` and `.claude/skills/writing-tests`. It also records `claude-code` under `[targets].extra` in the project's `skills.toml`, so later `skl use` and `skl use --all` commands in that project write both directories without the flag. Repeat `-a` for more than one agent. `claude` is accepted as `claude-code`.
+
+## Add an extra for every project on this machine
+
+```bash
+skl targets add claude-code
+```
+
+`skl targets add` saves the id under `[targets].extra` in `~/.config/skl/config.toml`. Every `skl use` on this machine then writes that directory too. `skl targets` lists what is saved, and `skl targets remove claude-code` removes it.
+
+The first time you run `skl init` or `skl doctor` in a terminal, skl shows a checklist of agents it found on this machine plus Claude Code. Move with the arrow keys, toggle with space, and confirm with enter. Confirm with nothing toggled to keep only `.agents/skills`. skl asks once and records the answer.
+
+## Which ids work
+
+Any agent whose project directory is not `.agents/skills`. `skl doctor` lists every id skl knows under `== Agent skill roots`. `cursor` and `codex` are rejected because those agents already read `.agents/skills`. An unknown id fails with `unknown target`.
+
+## Remove an extra from a project
+
+`skl unuse` removes a skill from every directory the project lists, so remove the skills before you edit the list.
+
+1. Run `skl unuse <name>` for each skill in the project.
+2. Delete the id from `[targets].extra` in the project's `skills.toml`.
+3. Run `skl use <name>` for each skill again.
+
+If the id is also saved on this machine, run `skl targets remove <id>` first. Otherwise step 3 writes the extra again.

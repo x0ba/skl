@@ -1,11 +1,11 @@
 ---
 title: skl status
-description: Login, api_base, local skill count, last sync.
+description: Show api_base, token presence, paths, auto-sync settings, skill count, and last sync.
 ---
 
 # skl status
 
-Show login status, `api_base`, local skill count, and the last sync.
+Print the state of this machine's skl install.
 
 ## Synopsis
 
@@ -15,20 +15,30 @@ skl status
 
 ## Flags
 
-None.
+None beyond the [global flags](/reference#global-flags).
+
+## Output
+
+```text
+api_base     https://api.tryskl.fyi
+token        yes (dev:alice)
+config       /home/you/.config/skl/config.toml
+state.db     /home/you/.local/share/skl/state.db
+auto_sync    on
+sync_frequency 900s
+local_skills 2
+last_sync    at=1789276397  uploaded=0  downloaded=0  pushed=0  conflicts=0  missing_skills=0
+```
+
+- `token` is `yes` with a preview or `no` with the login hint.
+- `last_sync` is `(none)` before the first sync.
+- `sync_issue` appears when the last sync attempt failed.
+- `auto_sync    ran ...` appears when this command ran a background sync.
 
 ## What it writes
 
-Does not write to disk, apart from a possible scheduled automatic sync. Prints:
-
-- `api_base`
-- `token` (`yes` with a preview, or `no`)
-- `config` and `state.db` paths
-- `auto_sync` on or off, and `sync_frequency`
-- `local_skills`
-- `last_sync` summary, or `(none)`
-- `sync_issue` when the last attempt failed
+Nothing on disk, apart from a background sync when one is due.
 
 ## Errors
 
-If the configuration directory cannot be resolved, status still succeeds. It prints the error on the `config` line.
+When the configuration directory cannot be resolved, status still exits `0` and prints the error on the `config` line.

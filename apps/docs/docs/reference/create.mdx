@@ -1,11 +1,11 @@
 ---
 title: skl create
-description: Create a personal-library skill and open SKILL.md in the editor.
+description: Create a library skill and open its SKILL.md in the editor.
 ---
 
 # skl create
 
-Create a skill in the personal library and open `SKILL.md` in an editor. `skl new` is an alias.
+Create a skill in the library and open `SKILL.md` in your editor. `skl new` is an alias.
 
 ## Synopsis
 
@@ -14,29 +14,33 @@ skl create <skill>
 skl new <skill>
 ```
 
-## Flags
+## Arguments
 
-- `SKILL` — required name
-
-The name cannot be empty, start with `.`, or contain `/` or `\`.
+- `<skill>`. The skill name. It cannot be empty, start with `.`, or contain `/` or `\`.
 
 ## What it writes
 
-`{data_dir}/skills/<name>/SKILL.md` with:
+`{data_dir}/skills/<skill>/SKILL.md` with this content:
 
 ```md
 ---
 name: <skill>
-description:
+description: 
 ---
 ```
 
-Indexes the skill in `state.db` and opens `$VISUAL` or `$EDITOR` (falling back to `vi`). If the editor fails, the files remain and skl prints a warning. The command may also start automatic sync.
+skl then indexes the skill in `state.db` and opens the file in `$VISUAL`, then `$EDITOR`, then `vi`. If the editor exits with an error, the skill stays on disk and skl prints a warning. A background sync may run afterwards.
 
-It does not change project directories.
+`skl create` does not change any project directory.
+
+## Output
+
+```text
+created writing-tests  (/home/you/.local/share/skl/skills/writing-tests)
+```
 
 ## Errors
 
-- `invalid skill name`
-- skill already exists in the personal library
-- Filesystem errors while creating the directory
+- `local state: invalid skill name <skill>`
+- `local state: skill <skill> already exists in the personal library at <path>`
+- Filesystem errors while creating the directory.
