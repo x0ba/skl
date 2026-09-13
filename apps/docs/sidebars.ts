@@ -1,6 +1,5 @@
 import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
 
-// One Diátaxis mode per folder: tutorial, how-to, reference, explanation.
 const sidebars: SidebarsConfig = {
   docsSidebar: [
     {
