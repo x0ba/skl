@@ -1,0 +1,35 @@
+---
+title: Use skills with Cursor Cloud
+description: Commit real copies under .agents/skills so a remote checkout sees them.
+---
+
+# Use skills with Cursor Cloud
+
+Cursor Cloud checks out your repository on a remote VM. That VM has no `~/.local/share/skl` library and cannot follow a symlink into your home directory. The agent only sees files that are in the repository. The same applies to any other remote checkout.
+
+## Commit the copies
+
+From the project root, make sure every listed skill is a real copy, then commit:
+
+```bash
+skl sync
+skl use --all
+git add .agents/skills skills.toml
+git commit -m "Add agent skills"
+```
+
+`skl use` writes copies by default, so a project you set up with `skl use <name>` already has real directories. `skl use --all` rewrites every skill listed in `skills.toml` from this machine's library and turns any leftover symlinks into copies. skl does not run `git add` for you.
+
+Keep `.agents/skills` out of `.gitignore`. Do not add `--link` to a `skl use` command whose result you want to commit.
+
+## Check a project before you push
+
+```bash
+skl doctor
+```
+
+Under `== Linking`, doctor lists the mode of each skill in `skills.toml` and prints a `warn` line for any symlink that a remote agent cannot follow. Fix it with `skl use --all`.
+
+## Refresh after you change a skill
+
+A committed copy is a snapshot. After you edit a skill in the library, run `skl use --all` in each project that uses it and commit the change.

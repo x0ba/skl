@@ -1,49 +1,54 @@
 ---
-title: Import existing skills
-description: Copy home agent skills into the personal library with init, or promote a project skill with capture.
+title: Import skills you already have
+description: Copy skills from home agent directories with skl init, or capture a skill from a project.
 ---
 
-# Import existing skills
+# Import skills you already have
 
-Use two commands to add skills to the personal library. `skl init` imports from home agent directories. `skl capture` imports a skill from a project.
+The library is the only place `skl use` and `skl sync` read from. Skills in `~/.claude/skills`, `~/.cursor/skills`, or inside a project have to be imported first.
 
-## Init
+## Import from home agent directories
+
+To copy every skill from your home agent directories into the library, run:
 
 ```bash
 skl init
 ```
 
-`skl init` finds skills in supported home directories and copies each one that is not already in `~/.local/share/skl/skills`. It leaves the source directories unchanged and never overwrites an existing library skill.
+`skl init` scans `~/.agents/skills`, `~/.config/agents/skills`, `~/.claude/skills`, `~/.cursor/skills`, `~/.codex/skills`, and the home directory of every other agent skl knows. It copies each skill that is not already in the library. It leaves the source directories as they are and never overwrites a library skill. Run `skl doctor` to see which directories exist on this machine and how many skills each holds.
 
-Roots include:
+The first time you run `skl init` or `skl doctor` in a terminal, skl may ask once whether to add extras such as Claude Code. See [Add an extra agent directory](/how-to/extras).
 
-- `~/.agents/skills`
-- `~/.config/agents/skills`
-- `~/.claude/skills`
-- `~/.cursor/skills`
-- `~/.codex/skills`
-- other catalog globals on this machine
+## Capture a skill from a project
 
-`skl doctor` lists the directories it can find. After `init`, you can sync the library. Sync does not change those home directories.
-
-Init may ask once whether you want **sticky extras** such as Claude Code. See [Extra agents](/guide/agents).
-
-## Capture
+To copy a skill that lives inside a project into the library, run `skl capture` from the project root with the skill name or path:
 
 ```bash
 skl capture writing-tests
 skl capture .agents/skills/writing-tests
 ```
 
-`skl capture` copies a project skill into the personal library. It resolves a path or name from `.agents/skills` and any configured extra agent directories.
+A name resolves under `.agents/skills` and under any extra agent directory, whether saved in your config or listed in the project's `skills.toml`. The source must be a directory that contains `SKILL.md`.
 
-After a successful capture, the project directory is replaced with a symlink to the library copy. Use `--keep-copy` to leave the project directory as a real copy.
+After the copy, skl adds the name to `skills.toml` and replaces the project directory with a symlink to the library copy. To leave the project directory as a real copy instead, pass `--keep-copy`:
 
-### Flags
+```bash
+skl capture writing-tests --keep-copy
+```
 
-- `--force` overwrites an existing library skill of the same name.
-- `--as NAME` stores the skill under a different name.
-- `--keep-copy` copies the skill into the library and leaves the project directory as a real copy.
-- `--project DIR` sets the project root. Default is the current directory.
+If the library already has a skill with that name, capture fails. Pass `--force` to overwrite the library copy, or `--as` to store it under another name:
 
-If the library already has that name, use `--force` or `--as`; otherwise capture fails. The source must be a directory containing `SKILL.md`.
+```bash
+skl capture writing-tests --force
+skl capture writing-tests --as writing-tests-v2
+```
+
+Pass `--project <dir>` to capture from a project other than the current directory.
+
+## Check the result
+
+```bash
+skl list
+```
+
+Every imported skill appears with its path under `~/.local/share/skl/skills`. If you are logged in and auto-sync is on, the next command that syncs uploads the new skills. Run `skl sync` to upload them now.

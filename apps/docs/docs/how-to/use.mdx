@@ -1,90 +1,66 @@
 ---
-title: Basic usage
-description: Create, use, unuse, list, status, delete, migrate, and update skills.
+title: Use a skill in a project
+description: Copy a library skill into a project, list what the project uses, refresh copies, and remove them.
 ---
 
-# Basic usage
+# Use a skill in a project
 
-These commands assume skl is installed. For sync, see [Setting up sync](/guide/sync).
+These steps assume the skill is in your library. If it is not, see [Import skills you already have](/how-to/import) or create one with `skl create <name>`.
 
-## Create
+## Copy a skill into the project
 
-```bash
-skl create writing-tests
-```
-
-`skl new` is an alias. The command creates `~/.local/share/skl/skills/writing-tests/SKILL.md` with `name` and `description` frontmatter, then opens `$VISUAL` or `$EDITOR` (falling back to `vi`).
-
-Names cannot start with `.` or contain `/` or `\`. Creating a name already in the library fails; edit that skill instead.
-
-If the editor fails, the skill is still on disk.
-
-## Use
+From the project root, run:
 
 ```bash
 skl use writing-tests
 ```
 
-`skl use` makes a library skill available in the current project. It creates `.agents/skills/writing-tests` as a real copy (materialize) and adds the name to `skills.toml`. Use `--link` for a local symlink. `--all` rematerializes every listed skill from this machine's library.
+skl copies the skill to `.agents/skills/writing-tests` and adds the name to `skills.toml`. Pass several names to use several skills in one command. Pass `--project <dir>` to target another directory.
+
+If a real directory that skl does not manage already exists at `.agents/skills/writing-tests`, `skl use` refuses. Pass `--force` to overwrite it.
+
+## See what the project uses
 
 ```bash
 skl use
 ```
 
-With no arguments, `skl use` lists skills already active in the current project.
+With no names, `skl use` prints each skill in `skills.toml` with its mode, `copy` or `symlink`.
+
+## Refresh copies after you edit a skill
+
+A copy does not follow later edits to the library. After you change a skill in the library, or after `skl sync` pulls changes on this machine, recreate the project's copies:
 
 ```bash
 skl use --all
 ```
 
-`--all` recreates every skill listed in `skills.toml` from this machine's personal library. If a listed skill is missing locally, sync first, then run `skl use --all` again.
+`--all` rewrites every skill listed in `skills.toml` from this machine's library. If a listed skill is missing from the library, the command fails and names it. Run `skl sync`, then `skl use --all` again.
+
+## Symlink instead of copying
+
+To edit a skill in the library and see the change in the project at once, pass `--link`:
 
 ```bash
-skl use writing-tests -a claude-code
+skl use writing-tests --link
 ```
 
-`-a` / `--agent` adds an additional project directory for this activation. Repeat the flag for multiple agent IDs. `claude` is an alias for `claude-code`.
+skl creates `.agents/skills/writing-tests` as a symlink into the library. Remote checkouts such as Cursor Cloud cannot follow a symlink into your home directory, so use `--link` for local work only. To make symlinks the default on this machine, set `projection = "link"` under `[project]` in `~/.config/skl/config.toml`. `--link` on the command line always wins.
 
-Cursor and Codex already read `.agents/skills`. Do not add them as extras.
+To turn existing symlinks back into copies, run `skl use --all` without `--link`, or `skl migrate projections --materialize`.
 
-`--project DIR` sets the project root. Default is the current directory.
-
-## Unuse
+## Remove a skill from the project
 
 ```bash
 skl unuse writing-tests
 ```
 
-`skl unuse` removes the project's copy or link and removes the name from `skills.toml`. It leaves the personal library unchanged.
+`skl unuse` deletes the project's copy or symlink and removes the name from `skills.toml`. The library copy stays. If a real directory at that path is not one skl created, `skl unuse` leaves it alone and reports the conflict.
 
-## List, status, delete
+## Delete a skill from the library
 
 ```bash
-skl list
-skl status
 skl delete writing-tests
 ```
 
-`skl list` shows locally indexed skills from `state.db`. When you are logged in, it also shows whether each is present remotely.
-
-`skl status` prints `api_base`, whether a device token is present, config and `state.db` paths, auto-sync prefs, local skill count, and last sync.
-
-`skl delete` removes the skill from SKL and deletes the local library copy. It does not change project directories or home agent directories. Because it calls the API, you must be logged in.
-
-## Migrate old project links
-
-```bash
-skl migrate targets
-skl migrate targets --prune-old
-skl migrate targets --project DIR
-```
-
-`skl migrate targets` moves old `.claude` and `.cursor` project links to `.agents/skills`. `--prune-old` removes the old links after the new destination exists. `skl migrate projections --materialize` converts symlink activations to copies. `skl use` does not run these migrations. `skl doctor` warns when it finds the old layout or a link projection.
-
-## Update the CLI
-
-```bash
-skl update
-```
-
-`skl update` replaces this `skl` binary with the latest GitHub Release. See [Installation](/guide/installation) and [skl update](/reference/update).
+`skl delete` removes the skill from the server and deletes the library copy. It needs a login. It does not touch project directories or home agent directories. Run `skl unuse` in each project first if you want those copies gone too.

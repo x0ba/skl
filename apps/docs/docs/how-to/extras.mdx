@@ -1,30 +1,42 @@
 ---
-title: Extra agents
-description: Use .agents/skills as the project directory and add extras such as Claude Code when needed.
+title: Add an extra agent directory
+description: Make skl use also write to .claude/skills or another agent's project directory.
 ---
 
-# Extra agents
+# Add an extra agent directory
 
-The standard project directory is `.agents/skills`. Cursor, Codex, and other agents that read it need no additional configuration.
+`skl use` always writes to `.agents/skills`. Cursor, Codex, and other agents that read that directory need nothing else. An extra is an additional project directory for an agent that reads its own path. The common case is Claude Code, which reads `.claude/skills`.
 
-An **extra destination** is for an agent that uses a different project directory. The common case is Claude Code, which reads `.claude/skills`.
+## Add an extra for one command
 
-## This activation
+Pass `-a` with the agent id:
 
 ```bash
 skl use writing-tests -a claude-code
 ```
 
-`claude` is an alias for `claude-code`. Use `-a <id>` for any catalog agent that has its own project directory. Cursor and Codex cannot be added because they already read `.agents/skills`.
+skl writes `.agents/skills/writing-tests` and `.claude/skills/writing-tests`. It also records `claude-code` under `[targets].extra` in the project's `skills.toml`, so later `skl use` and `skl use --all` commands in that project write both directories without the flag. Repeat `-a` for more than one agent. `claude` is accepted as `claude-code`.
 
-## Sticky extras
+## Add an extra for every project on this machine
 
 ```bash
-skl targets
 skl targets add claude-code
-skl targets remove claude-code
 ```
 
-`skl targets` lists `.agents/skills` and any **sticky extras** stored in `~/.config/skl/config.toml` under `[targets].extra`. These extras apply to future `skl use` commands on the same machine.
+`skl targets add` saves the id under `[targets].extra` in `~/.config/skl/config.toml`. Every `skl use` on this machine then writes that directory too. `skl targets` lists what is saved, and `skl targets remove claude-code` removes it.
 
-`skl init` and `skl doctor` may ask once whether to configure extras. The prompt is skipped in CI, when `SKL_NO_PROMPT` or `SKL_YES` is set, or when stdin is not interactive.
+The first time you run `skl init` or `skl doctor` in a terminal, skl shows a checklist of agents it found on this machine plus Claude Code. Move with the arrow keys, toggle with space, and confirm with enter. Confirm with nothing toggled to keep only `.agents/skills`. skl asks once and records the answer.
+
+## Which ids work
+
+Any agent whose project directory is not `.agents/skills`. `cursor` and `codex` are rejected because those agents already read `.agents/skills`. Run `skl targets add <id>` with a guess. An unknown id fails with `unknown target`, and a rejected id names the reason.
+
+## Remove an extra from a project
+
+`skl unuse` removes a skill from every directory the project lists, so remove the skills before you edit the list.
+
+1. Run `skl unuse <name>` for each skill in the project.
+2. Delete the id from `[targets].extra` in the project's `skills.toml`.
+3. Run `skl use <name>` for each skill again.
+
+If the id is also saved on this machine, run `skl targets remove <id>` first. Otherwise step 3 writes the extra again.

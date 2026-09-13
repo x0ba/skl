@@ -1,27 +1,23 @@
 ---
-title: Self hosting
-description: Run Postgres, the API, and the web app from a source checkout.
+title: Self-host the server
+description: Run Postgres, the API, and the web app from a source checkout and point skl at them.
 ---
 
-# Self hosting
+# Self-host the server
 
-skl is designed for the hosted service. Self-hosting currently requires a source checkout; there is no published application image or Helm chart.
+There is no published server image. You run Postgres, the API in `apps/api`, and the web app in `apps/web` from a checkout of [x0ba/skl](https://github.com/x0ba/skl). You need Docker for Postgres, Node, and `pnpm`. CI uses Node 22.
 
-You need Docker for Postgres, Node for `apps/api` and `apps/web`, and a skl binary configured to use your API.
+## 1. Start Postgres
 
-## 1. Postgres
-
-From the repo root:
+From the repository root:
 
 ```bash
 docker compose up -d postgres
 ```
 
-That starts `postgres:16-alpine` on `localhost:5432` with user `skl`, password `skl`, database `skl`.
+This starts `postgres:16-alpine` on `localhost:5432` with user `skl`, password `skl`, and database `skl`.
 
-## 2. API
-
-Use `apps/api/.env.example` as the environment file template.
+## 2. Start the API
 
 ```bash
 cd apps/api
@@ -31,19 +27,19 @@ pnpm migrate
 pnpm dev
 ```
 
-The API listens on `http://localhost:8787`. Health is `http://localhost:8787/v1/health`.
+The API listens on `http://localhost:8787`. `GET /v1/health` returns `{"ok":true}`.
 
-Configure these values in `.env`:
+Edit `.env` to change these values:
 
-- `DATABASE_URL` (default `postgres://skl:skl@localhost:5432/skl`)
-- `PORT` (default `8787`)
-- `SKL_WEB_ORIGIN` (default `http://localhost:3000`, used for the device URL and CORS)
-- `SKL_API_ORIGIN` (default `http://localhost:8787`)
-- `CLERK_SECRET_KEY` and related Clerk keys for browser authentication
+- `DATABASE_URL`, default `postgres://skl:skl@localhost:5432/skl`.
+- `PORT`, default `8787`.
+- `SKL_WEB_ORIGIN`, default `http://localhost:3000`. Used in the device login URL and for CORS.
+- `SKL_API_ORIGIN`, default `http://localhost:8787`.
+- `CLERK_SECRET_KEY` and the other Clerk keys. Required for browser sign-in.
 
-For local development, leave `CLERK_SECRET_KEY` empty. The API then accepts `Authorization: Bearer dev:<user_id>`.
+With `CLERK_SECRET_KEY` empty, the API accepts `Authorization: Bearer dev:<user_id>` from anyone. Use that only on a machine you trust.
 
-## 3. Web
+## 3. Start the web app
 
 The web app serves `/device`, where you approve CLI logins.
 
@@ -54,7 +50,7 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:3000`. Device approval is `/device?user_code=…`.
+Open `http://localhost:3000`.
 
 ## 4. Point the CLI at your API
 
@@ -62,10 +58,14 @@ Open `http://localhost:3000`. Device approval is `/device?user_code=…`.
 skl --api-base http://localhost:8787 login
 ```
 
-You can instead set `API_BASE=http://localhost:8787` or `api_base` in `config.toml`. Debug builds already use `http://localhost:8787` by default.
+To make it stick, set `API_BASE=http://localhost:8787` in your environment or `api_base = "http://localhost:8787"` in `~/.config/skl/config.toml`. `skl login` writes `api_base` to the config file after a successful login.
 
-When Clerk is unset on the API, `skl login --dev-user <id>` stores `Authorization: Bearer dev:<id>` and skips device approval. This flag is for local development, not the hosted login flow.
+While Clerk is unset, `skl login --dev-user <id>` stores a `dev:<id>` token without the browser step:
 
-## What you do not get
+```bash
+skl --api-base http://localhost:8787 login --dev-user alice
+```
 
-You operate Postgres, the API, and the web app yourself, including TLS, backups, and Clerk. Anyone with access to the Postgres database can read stored skill blobs.
+## What you take on
+
+TLS, backups, Clerk, and updates are yours. The server stores skill content as it is, so anyone with access to the database can read every skill.

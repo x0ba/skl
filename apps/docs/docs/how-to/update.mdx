@@ -1,0 +1,22 @@
+---
+title: Update skl
+description: Replace the skl binary with the latest GitHub Release.
+---
+
+# Update skl
+
+```bash
+skl update
+```
+
+`skl update` downloads the latest release for this machine, checks it against `SHA256SUMS`, runs `--version` on the new file, and then replaces the binary you ran. When the installed binary already matches the latest release, it does nothing. Pass `--force` to download and replace anyway. `skl upgrade` is an alias.
+
+Your config, library, and `state.db` do not change.
+
+If `skl update` fails, run the install script again. It replaces the binary in `SKL_INSTALL_DIR`, which defaults to `~/.local/bin`:
+
+```bash
+curl -fsSL https://tryskl.fyi/install.sh | sh -s -- --non-interactive
+```
+
+If you built skl from source, run `cargo install --path crates/cli` again from a fresh checkout instead.
