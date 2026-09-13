@@ -507,6 +507,23 @@ skl_assert_sync_posts() {
   fi
 }
 
+skl_count_sync_runs() {
+  local haystack="$1"
+  printf '%s\n' "$haystack" | grep -F -c -- "sync done  uploaded=" || true
+}
+
+skl_assert_sync_runs() {
+  local haystack="$1"
+  local expected="$2"
+  local got
+  got="$(skl_count_sync_runs "$haystack")"
+  if [[ "$got" != "$expected" ]]; then
+    echo "expected $expected sync done run(s), got $got" >&2
+    echo "$haystack" >&2
+    exit 1
+  fi
+}
+
 skl_assert_contains() {
   local haystack="$1"
   local needle="$2"
