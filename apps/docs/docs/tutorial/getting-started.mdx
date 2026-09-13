@@ -1,0 +1,155 @@
+---
+title: Get started with skl
+description: Install skl, create a skill, copy it into a project, and sync it to a second machine.
+---
+
+# Get started with skl
+
+In this tutorial we install skl, create a skill in the library, copy it into a project, and sync it so a second machine can use it. You need a terminal, `curl`, and about ten minutes. The sync steps need a browser for login. If you only want the library on this machine, stop after step 3.
+
+## 1. Install skl
+
+Run the installer:
+
+```bash
+curl -fsSL https://tryskl.fyi/install.sh | sh
+```
+
+It downloads the release binary for your platform to `~/.local/bin/skl` and prints:
+
+```text
+==> installed /home/you/.local/bin/skl
+```
+
+If `~/.local/bin` is not on your `PATH`, the installer also prints an `export PATH=...` line. Run that line now and add it to your shell configuration later.
+
+Next the installer asks two questions. Answer `n` to both for now. We come back to login in step 4.
+
+```text
+Log in now? [Y/n] n
+Import existing skills (skl init)? [Y/n] n
+```
+
+Check the install:
+
+```bash
+skl --version
+```
+
+You see `skl 0.4.2` or newer.
+
+## 2. Create a skill
+
+Create a skill named `writing-tests`:
+
+```bash
+skl create writing-tests
+```
+
+skl writes `~/.local/share/skl/skills/writing-tests/SKILL.md` and opens it in your editor. The file starts with a `name` and an empty `description`. Type a sentence after `description:`, save, and close the editor. The terminal shows:
+
+```text
+created writing-tests  (/home/you/.local/share/skl/skills/writing-tests)
+```
+
+List the library:
+
+```bash
+skl list
+```
+
+You see one row named `writing-tests`. The `remote` column shows `-` because we are not logged in yet.
+
+## 3. Use the skill in a project
+
+Change into any project directory and use the skill:
+
+```bash
+cd /path/to/project
+skl use writing-tests
+```
+
+You see:
+
+```text
+using writing-tests  (agents  /home/you/.local/share/skl/skills/writing-tests)
+  copy     agents   /path/to/project/.agents/skills/writing-tests
+  updated  /path/to/project/skills.toml
+```
+
+skl copied the skill into `.agents/skills/writing-tests` and wrote its name into `skills.toml`. Cursor, Codex, and other agents that read `.agents/skills` now see the skill. Run `skl use` with no name to see what the project uses:
+
+```text
+name                     source     mode
+writing-tests            library    copy
+```
+
+Commit `.agents/skills` and `skills.toml` when you want the project to carry the skill.
+
+## 4. Log in and sync
+
+Log in:
+
+```bash
+skl login
+```
+
+skl prints a URL and a code:
+
+```text
+To approve this device, open:
+  https://tryskl.fyi/device?user_code=ABCD-2345
+And enter code:  ABCD-2345
+
+Waiting for approval (poll /v1/auth/device/token) ...
+```
+
+Open the URL in a browser, sign in, and approve the device. The terminal continues with `Logged in. Device token stored in local state`.
+
+Now sync:
+
+```bash
+skl sync
+```
+
+You see the upload:
+
+```text
+upload:         1 blob(s)
+download:       0 blob(s)
+conflicts:      0
+missing_skills: 0
+...
+sync done  uploaded=1  downloaded=0  pushed=1  conflicts=0
+```
+
+Run `skl list` again. The `remote` column for `writing-tests` now says `yes`.
+
+## 5. Pull the library on a second machine
+
+On another machine, install skl as in step 1 and answer `n` to both questions. Then:
+
+```bash
+skl login
+skl sync
+```
+
+The sync downloads the skill:
+
+```text
+download:       1 blob(s)
+...
+wrote skill writing-tests → /home/you/.local/share/skl/skills/writing-tests
+```
+
+The library on the second machine now has `writing-tests`. Its projects do not change until you run `skl use` in them. Clone the project from step 3 and run:
+
+```bash
+skl use --all
+```
+
+skl recreates every skill listed in `skills.toml` from this machine's library.
+
+## What you built
+
+You have one library that holds `writing-tests`, one project that carries a copy of it, and a second machine with the same library. From here, [Use a skill in a project](/how-to/use) covers removing and refreshing skills, and [Import skills you already have](/how-to/import) covers bringing in skills from `~/.claude/skills` and other directories.

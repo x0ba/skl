@@ -1,11 +1,13 @@
 # skl docs
 
-User-facing documentation. Docusaurus, served at the site root.
+User-facing documentation for skl. Docusaurus, served at the site root of `https://docs.tryskl.fyi`.
 
 ```bash
-cd docs
+cd apps/docs
 pnpm install
-pnpm start
+pnpm start --port 3001
 ```
 
-`pnpm start` opens a local server. `pnpm build` writes static files to `docs/build`. Node 20 or newer is required.
+`pnpm start` serves the site with live reload. `pnpm build` writes static files to `apps/docs/build` and fails on a broken internal link. Node 20 or newer is required.
+
+Pages live under `docs/` in one folder per Diátaxis mode: `tutorial/`, `how-to/`, `reference/`, and `explanation/`. Keep each page in one mode. `sidebars.ts` lists every page.

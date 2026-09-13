@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'skl',
-  tagline: 'Sync your agent skills across machines and projects.',
+  tagline: 'One library of agent skills. Copied into projects, synced across machines.',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -31,7 +31,7 @@ const config: Config = {
         docs: {
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/x0ba/skl/tree/main/docs/',
+          editUrl: 'https://github.com/x0ba/skl/tree/main/apps/docs/',
         },
         blog: false,
         theme: {
@@ -73,7 +73,7 @@ const config: Config = {
           title: 'Docs',
           items: [
             {label: 'Home', to: '/'},
-            {label: 'Getting started', to: '/guide/getting-started'},
+            {label: 'Get started', to: '/tutorial/getting-started'},
             {label: 'Reference', to: '/reference'},
           ],
         },
