@@ -29,12 +29,10 @@ use crate::local::skills::{hash_bytes, write_blob_file};
 /// scrub warnings, and cannot narrate requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncOptions {
-    /// `skl sync` and the TUI `s` key. Request lines print regardless of conflict mode.
     Explicit {
         conflict: ConflictMode,
         allow_warnings: bool,
     },
-    /// Piggyback after a parent verb. Keep remote. Warnings block. Request lines hidden.
     Auto,
 }
 
@@ -47,7 +45,6 @@ impl Default for SyncOptions {
     }
 }
 
-/// HTTP request lines only. Progress (`upload:` counts, `wrote skill`, `sync done`) stays bare.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RequestLines {
     Show,
