@@ -6,7 +6,7 @@
 #      B status (pull) → skill present in B library without manual `skl sync`.
 #      Piggyback is KeepRemote: same-slug overwrites after upload conflict
 #      and restore remote, so this path publishes *new* slugs.
-#   2. Two rapid verbs within 15m → only one POST /v1/sync
+#   2. Two rapid verbs within 15m → only one sync run
 #   3. API down during `use` → link succeeds; `status` shows sync_issue
 #
 # Usage:
@@ -87,7 +87,7 @@ hello from machine A
   a_init="$(run_a init 2>&1)"
   echo "$a_init"
   skl_assert_contains "$a_init" "Imported 1 skill"
-  skl_assert_contains "$a_init" "POST $API/v1/sync"
+  skl_assert_contains "$a_init" "sync done"
 
   echo "    B: init empty home (import 0 + due maybe_run download)"
   prepare_machine "$MACHINE_B" "$TOKEN_B"
@@ -95,7 +95,7 @@ hello from machine A
   b_init="$(run_b init 2>&1)"
   echo "$b_init"
   skl_assert_contains "$b_init" "Imported 0 skill"
-  skl_assert_contains "$b_init" "POST $API/v1/sync"
+  skl_assert_contains "$b_init" "sync done"
   skl_assert_file_contains "$(skl_library_of "$MACHINE_B" "$SKILL_NAME")/SKILL.md" \
     "hello from machine A"
 
@@ -111,14 +111,15 @@ second skill from machine A
   a_push="$(run_a init 2>&1)"
   echo "$a_push"
   skl_assert_contains "$a_push" "Imported 2 skill"
-  skl_assert_contains "$a_push" "POST $API/v1/sync"
+  skl_assert_contains "$a_push" "sync done"
 
   echo "    B: age due, then status (best-effort sync — not display-only)"
   skl_age_auto_sync "$MACHINE_B" "$AGE_SECS"
   local b_status
   b_status="$(run_b status 2>&1)"
   echo "$b_status"
-  skl_assert_contains "$b_status" "POST $API/v1/sync"
+  skl_assert_contains "$b_status" "sync done"
+  skl_assert_sync_posts "$b_status" 0
   skl_assert_contains "$b_status" "auto_sync    on"
   skl_assert_contains "$b_status" "sync_frequency 900s"
   skl_assert_contains "$b_status" "last_sync"
@@ -163,41 +164,36 @@ throttle seed
 "
   prepare_machine "$home" "$TOKEN_A"
 
-  echo "    init (due) → one POST"
+  echo "    init (due) → one sync run"
   local first
   first="$(run_home "$home" "$TOKEN_A" init 2>&1)"
   echo "$first"
-  local first_posts
-  first_posts="$(skl_count_sync_posts "$first")"
-  if [[ "$first_posts" -lt 1 ]]; then
-    echo "expected first due verb to POST /v1/sync" >&2
-    exit 1
-  fi
+  skl_assert_sync_runs "$first" 1
 
-  echo "    status immediately → no POST"
+  echo "    status immediately → no sync run"
   local second
   second="$(run_home "$home" "$TOKEN_A" status 2>&1)"
   echo "$second"
-  skl_assert_sync_posts "$second" 0
+  skl_assert_sync_runs "$second" 0
   skl_assert_contains "$second" "last_sync"
   skl_assert_contains "$second" "auto_sync    on"
   skl_assert_contains "$second" "sync_frequency 900s"
 
-  echo "    use immediately → no POST (link still succeeds)"
+  echo "    use immediately → no sync run (link still succeeds)"
   local third
   third="$(run_home "$home" "$TOKEN_A" use "$skill" --project "$project" 2>&1)"
   echo "$third"
-  skl_assert_sync_posts "$third" 0
+  skl_assert_sync_runs "$third" 0
   skl_assert_contains "$third" "using $skill"
   skl_assert_symlink_to \
     "$project/.agents/skills/${skill}" \
     "$(skl_library_of "$home" "$skill")"
 
-  echo "    doctor → no POST /v1/sync; display last_sync only"
+  echo "    doctor → no sync run; display last_sync only"
   local doctor
   doctor="$(run_home "$home" "$TOKEN_A" doctor 2>&1)"
   echo "$doctor"
-  skl_assert_sync_posts "$doctor" 0
+  skl_assert_sync_runs "$doctor" 0
   skl_assert_contains "$doctor" "last_sync"
 
   echo "OK: throttle — only the first due verb hit the network"

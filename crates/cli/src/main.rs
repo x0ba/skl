@@ -242,7 +242,7 @@ async fn run() -> Result<(), SklError> {
             };
             commands::sync::run(
                 api_base,
-                sync::SyncOptions {
+                sync::SyncOptions::Explicit {
                     conflict,
                     allow_warnings,
                 },

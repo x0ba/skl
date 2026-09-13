@@ -150,7 +150,7 @@ pub async fn run(api_base: String) -> Result<()> {
                 eprintln!("syncing…");
                 let result = crate::commands::sync::run(
                     api_base.clone(),
-                    SyncOptions {
+                    SyncOptions::Explicit {
                         conflict: ConflictMode::Prompt,
                         allow_warnings: false,
                     },

@@ -4,6 +4,7 @@
 //! PUT /v1/skills/:name/tree → GET /v1/blobs/:hash → re-POST if resolved.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -21,17 +22,36 @@ use crate::local::db::{LocalDb, SyncSummary};
 use crate::local::library;
 use crate::local::skills::{hash_bytes, write_blob_file};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SyncOptions {
-    pub conflict: ConflictMode,
-    pub allow_warnings: bool,
+/// Who asked for this sync. The variant fixes conflict policy, scrub consent,
+/// and whether HTTP request lines reach stderr.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SyncOptions {
+    Explicit {
+        conflict: ConflictMode,
+        allow_warnings: bool,
+    },
+    Auto,
 }
 
 impl Default for SyncOptions {
     fn default() -> Self {
-        Self {
+        Self::Explicit {
             conflict: ConflictMode::Defer,
             allow_warnings: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RequestLines {
+    Show,
+    Hide,
+}
+
+impl RequestLines {
+    fn emit(self, line: fmt::Arguments<'_>) {
+        if matches!(self, Self::Show) {
+            eprintln!("{line}");
         }
     }
 }
@@ -69,6 +89,14 @@ pub async fn run_with_opts(
     _home: &Path,
     opts: SyncOptions,
 ) -> Result<SyncOutcome> {
+    let (conflict, allow_warnings, request_lines): (ConflictMode, bool, RequestLines) = match opts {
+        SyncOptions::Explicit {
+            conflict,
+            allow_warnings,
+        } => (conflict, allow_warnings, RequestLines::Show),
+        SyncOptions::Auto => (ConflictMode::KeepRemote, false, RequestLines::Hide),
+    };
+
     if !paths.db_file.exists() {
         return Err(SklError::LocalState(
             "no local skill index; run `skl init` first".into(),
@@ -79,10 +107,13 @@ pub async fn run_with_opts(
     library::reindex_library_only(&db, paths)?;
     let body = db.sync_request()?;
 
-    scrub::scrub_before_upload(&db, &body, opts.allow_warnings)?;
+    scrub::scrub_before_upload(&db, &body, allow_warnings)?;
 
     let client = ApiClient::new(api_base)?.with_token(token);
-    eprintln!("POST {api_base}/v1/sync  ({} skill(s))", body.skills.len());
+    request_lines.emit(format_args!(
+        "POST {api_base}/v1/sync  ({} skill(s))",
+        body.skills.len()
+    ));
     let plan = client.sync(&body).await?;
 
     eprintln!("upload:         {} blob(s)", plan.upload.len());
@@ -91,7 +122,7 @@ pub async fn run_with_opts(
     eprintln!("missing_skills: {}", plan.missing_skills.len());
 
     let mtimes = local_mtimes(&db, &plan)?;
-    let resolutions = conflict::resolve_conflicts(&plan.conflicts, opts.conflict, &mtimes)?;
+    let resolutions = conflict::resolve_conflicts(&plan.conflicts, conflict, &mtimes)?;
     for resolution in &resolutions {
         match resolution.choice {
             ConflictChoice::KeepLocal => {
@@ -112,9 +143,18 @@ pub async fn run_with_opts(
     let keep_local = names_with(&resolutions, ConflictChoice::KeepLocal);
     let keep_remote = names_with(&resolutions, ConflictChoice::KeepRemote);
 
-    let uploaded = upload_blobs(&client, &db, &plan, &keep_remote, opts.allow_warnings).await?;
-    let pushed = push_trees(&client, &body, &plan, &keep_local).await?;
-    let downloaded = download_blobs(&client, &db, paths, &plan, &keep_remote).await?;
+    let uploaded = upload_blobs(
+        &client,
+        &db,
+        &plan,
+        &keep_remote,
+        allow_warnings,
+        request_lines,
+    )
+    .await?;
+    let pushed = push_trees(&client, &body, &plan, &keep_local, request_lines).await?;
+    let downloaded =
+        download_blobs(&client, &db, paths, &plan, &keep_remote, request_lines).await?;
 
     let mut remaining_conflicts = plan
         .conflicts
@@ -127,10 +167,10 @@ pub async fn run_with_opts(
     }
     if !keep_local.is_empty() || !keep_remote.is_empty() {
         let retry = db.sync_request()?;
-        eprintln!(
+        request_lines.emit(format_args!(
             "re-POST {api_base}/v1/sync  ({} skill(s) after keep-local/keep-remote)",
             retry.skills.len()
-        );
+        ));
         let plan2 = client.sync(&retry).await?;
         remaining_conflicts = plan2.conflicts.len();
         eprintln!("re-POST conflicts: {}", plan2.conflicts.len());
@@ -196,6 +236,7 @@ async fn upload_blobs(
     plan: &SyncResponse,
     skip_skills: &BTreeSet<String>,
     allow_warnings: bool,
+    request_lines: RequestLines,
 ) -> Result<Vec<String>> {
     let uploads = plan.upload.iter().map(|hash| {
         async move {
@@ -217,7 +258,10 @@ async fn upload_blobs(
                 )));
             }
             scrub::scrub_blob_before_upload(hash, &bytes, allow_warnings)?;
-            eprintln!("PUT /v1/blobs/{hash}  ({} bytes)", bytes.len());
+            request_lines.emit(format_args!(
+                "PUT /v1/blobs/{hash}  ({} bytes)",
+                bytes.len()
+            ));
             let put = client.put_blob(hash, bytes).await?;
             if put.hash != *hash {
                 return Err(SklError::LocalState(format!(
@@ -240,6 +284,7 @@ async fn push_trees(
     body: &SyncRequest,
     plan: &SyncResponse,
     keep_local: &BTreeSet<String>,
+    request_lines: RequestLines,
 ) -> Result<Vec<String>> {
     let mut skip: BTreeSet<&str> = plan.conflicts.iter().map(|c| c.skill.as_str()).collect();
     for name in keep_local {
@@ -255,7 +300,7 @@ async fn push_trees(
                 tree_hash: tree.tree_hash.clone(),
                 files: tree.files.clone(),
             };
-            eprintln!("PUT /v1/skills/{name}/tree");
+            request_lines.emit(format_args!("PUT /v1/skills/{name}/tree"));
             let res = client.put_skill_tree(name, &commit).await?;
             if res.tree_hash != tree.tree_hash {
                 return Err(SklError::LocalState(format!(
@@ -277,6 +322,7 @@ async fn download_blobs(
     paths: &Paths,
     plan: &SyncResponse,
     keep_remote: &BTreeSet<String>,
+    request_lines: RequestLines,
 ) -> Result<Vec<String>> {
     // Fetch manifests first: download.skills / paths are sets, not pairs.
     // Resolve their exact hashes, deduplicate across skills, then fetch in parallel.
@@ -307,7 +353,7 @@ async fn download_blobs(
     }
     let blob_cache: BTreeMap<String, Vec<u8>> =
         stream::iter(hashes.into_iter().map(|hash| async move {
-            eprintln!("GET /v1/blobs/{hash}");
+            request_lines.emit(format_args!("GET /v1/blobs/{hash}"));
             let bytes = client.get_blob(&hash).await?;
             if hash_bytes(&bytes) != hash {
                 return Err(SklError::LocalState(format!(
@@ -436,9 +482,16 @@ mod tests {
         let client = ApiClient::new(server.uri())
             .unwrap()
             .with_token("dev:alice");
-        let uploaded = upload_blobs(&client, &db, &plan, &BTreeSet::new(), false)
-            .await
-            .unwrap();
+        let uploaded = upload_blobs(
+            &client,
+            &db,
+            &plan,
+            &BTreeSet::new(),
+            false,
+            RequestLines::Hide,
+        )
+        .await
+        .unwrap();
         assert_eq!(uploaded, hashes);
         let peak = state.lock().unwrap().1;
         assert!(peak > 1, "uploads must overlap");
@@ -475,9 +528,16 @@ mod tests {
         let client = ApiClient::new(server.uri())
             .unwrap()
             .with_token("dev:alice");
-        let err = download_blobs(&client, &db, &paths, &plan, &BTreeSet::new())
-            .await
-            .unwrap_err();
+        let err = download_blobs(
+            &client,
+            &db,
+            &paths,
+            &plan,
+            &BTreeSet::new(),
+            RequestLines::Hide,
+        )
+        .await
+        .unwrap_err();
         assert!(err.to_string().contains("hash check"));
         assert!(!paths.library_skill("new-skill").exists());
     }
@@ -778,7 +838,7 @@ mod tests {
             "dev:alice",
             &paths,
             &home,
-            SyncOptions {
+            SyncOptions::Explicit {
                 conflict: crate::hooks::conflict::ConflictMode::KeepLocal,
                 allow_warnings: false,
             },
@@ -874,7 +934,7 @@ mod tests {
             "dev:alice",
             &paths,
             &home,
-            SyncOptions {
+            SyncOptions::Explicit {
                 conflict: crate::hooks::conflict::ConflictMode::KeepRemote,
                 allow_warnings: false,
             },

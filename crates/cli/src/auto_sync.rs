@@ -3,14 +3,12 @@
 //! - [`is_due`] — `last_sync_at` **and** `last_auto_sync_attempt_at` vs
 //!   [`crate::config::SyncPrefs::frequency_secs`] (default 900s).
 //! - [`maybe_run`] — skip / run / fail-soft. Never returns `Err`.
-//! - Background conflicts use [`ConflictMode::KeepRemote`] (no TTY).
 //!
 //! Callers (`login` / `init` / `use` / `unuse` / `capture` / `create` / `status` / optional `list`)
 //! ignore the result so the parent verb stays successful.
 
 use crate::auth;
 use crate::config::{self, Paths, SyncPrefs};
-use crate::hooks::conflict::ConflictMode;
 use crate::local::db::LocalDb;
 use crate::sync::{self, SyncOptions, SyncOutcome};
 
@@ -120,18 +118,7 @@ async fn maybe_run_with(
         Ok(home) => home,
         Err(err) => return fail_soft(paths, reason, err.to_string()),
     };
-    match sync::run_with_opts(
-        api_base,
-        &token,
-        paths,
-        &home,
-        SyncOptions {
-            conflict: ConflictMode::KeepRemote,
-            allow_warnings: false,
-        },
-    )
-    .await
-    {
+    match sync::run_with_opts(api_base, &token, paths, &home, SyncOptions::Auto).await {
         Ok(outcome) => AutoSyncResult::Ran(outcome),
         Err(err) => fail_soft(paths, reason, err.to_string()),
     }
