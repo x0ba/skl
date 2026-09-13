@@ -16,7 +16,7 @@ skl login --dev-user <user_id>
 
 ## Flags
 
-- `--dev-user <user_id>`. Store `Authorization: Bearer dev:<user_id>` without a device poll. The API accepts this token only when `CLERK_SECRET_KEY` is unset, which is the local development setup. See [Self-host the server](/how-to/self-host).
+- `--dev-user <user_id>`. Store `Authorization: Bearer dev:<user_id>` without a device poll. The API accepts this token only when its `ALLOW_DEV_AUTH` setting is on, which is the default while `CLERK_SECRET_KEY` is empty. See [Self-host the server](/how-to/self-host).
 
 ## Output
 
@@ -30,6 +30,8 @@ Logged in. Device token stored in local state
 ```
 
 The device appears on the server as `skl@<hostname>`.
+
+Commands that need the token read `SKL_TOKEN`, then `SKL_TOKEN_FILE`, then `state.db`. When none of those has a token, skl reads the keyring entry left by versions before 0.2 once and copies it into `state.db`.
 
 ## What it writes
 

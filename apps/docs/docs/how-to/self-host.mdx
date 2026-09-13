@@ -36,8 +36,9 @@ Edit `.env` to change these values:
 - `SKL_WEB_ORIGIN`, default `http://localhost:3000`. Used in the device login URL and for CORS.
 - `SKL_API_ORIGIN`, default `http://localhost:8787`.
 - `CLERK_SECRET_KEY` and the other Clerk keys. Required for browser sign-in.
+- `ALLOW_DEV_AUTH`. Controls whether the API accepts `Authorization: Bearer dev:<user_id>` from anyone, with no password. Unset means on when `CLERK_SECRET_KEY` is empty and off when it is set. `true` forces it on even with Clerk configured. `false` forces it off.
 
-With `CLERK_SECRET_KEY` empty, the API accepts `Authorization: Bearer dev:<user_id>` from anyone. Use that only on a machine you trust.
+Dev auth lets any caller act as any user. Leave `ALLOW_DEV_AUTH` unset or set it to `false` on any API that other machines can reach. Set `ALLOW_DEV_AUTH=true` only on a machine you trust, for local development.
 
 ## 3. Start the web app
 
@@ -60,7 +61,7 @@ skl --api-base http://localhost:8787 login
 
 To make it stick, set `API_BASE=http://localhost:8787` in your environment or `api_base = "http://localhost:8787"` in `~/.config/skl/config.toml`. `skl login` writes `api_base` to the config file after a successful login.
 
-While Clerk is unset, `skl login --dev-user <id>` stores a `dev:<id>` token without the browser step:
+While dev auth is on, `skl login --dev-user <id>` stores a `dev:<id>` token without the browser step:
 
 ```bash
 skl --api-base http://localhost:8787 login --dev-user alice

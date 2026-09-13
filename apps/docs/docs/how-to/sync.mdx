@@ -13,7 +13,7 @@ Sync sends your library to the skl API and back. It never changes a project's `.
 skl login
 ```
 
-skl prints a URL such as `https://tryskl.fyi/device?user_code=ABCD-2345` and the code. Open the URL, sign in, approve the device, and wait for the terminal to print `Logged in`. The device token is stored in `~/.local/share/skl/state.db`. skl does not use the OS keyring.
+skl prints a URL such as `https://tryskl.fyi/device?user_code=ABCD-2345` and the code. Open the URL, sign in, approve the device, and wait for the terminal to print `Logged in`. The device token is stored in `~/.local/share/skl/state.db`. skl does not need the OS keyring. Versions before 0.2 kept the token there. If `state.db` has no token and the keyring still has one, skl copies it into `state.db` once.
 
 If the code expires, run `skl login` again. If you deny the request in the browser, the CLI exits with `device authorization was denied`.
 

@@ -32,3 +32,5 @@ The [secret scanner](/reference/secret-scanner) runs before every upload for the
 ## Where the token lives
 
 `skl login` stores the device token in `state.db`, not in the OS keyring. Keyrings need a desktop session and break on headless machines and under WSL. The file is created with mode `0600` on Unix. `skl logout` deletes the token locally, and the [devices page](https://www.tryskl.fyi/devices) revokes it on the server.
+
+Versions before 0.2 kept the token in the keyring. skl still touches the keyring in two places for those installs. When `state.db` holds no token, skl reads the keyring once and copies the token into `state.db`. `skl logout` also tries to delete the keyring entry and ignores any failure. A token that appears in `state.db` without a fresh `skl login` came from that copy.

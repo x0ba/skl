@@ -19,7 +19,7 @@ None beyond the [global flags](/reference#global-flags).
 
 ## What it writes
 
-Deletes `meta.device_token` from `state.db`. It does not edit `config.toml` and does not revoke the device on the server. Revoke devices on the [devices page](https://www.tryskl.fyi/devices).
+Deletes `meta.device_token` from `state.db`. It also tries to delete the keyring entry left by skl versions before 0.2 and ignores any failure. It does not edit `config.toml` and does not revoke the device on the server. Revoke devices on the [devices page](https://www.tryskl.fyi/devices).
 
 ## Errors
 
