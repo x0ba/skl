@@ -4,9 +4,10 @@ This directory is the maintained source for verifying user-facing skl behavior. 
 
 ## Baseline preconditions
 
-- Launch with `.cursor/skills/verify-skl/helpers/verify-skl.sh launch` so `SKL_DATA_DIR`, `SKL_CONFIG_DIR`, and `HOME` are under `/tmp/skl-verify-$RUN_ID`.
+- Launch with `.cursor/skills/verify-skl/helpers/verify-skl.sh launch` so `SKL_DATA_DIR`, `SKL_CONFIG_DIR`, and `HOME` are under `/tmp/skl-verify-<id>`.
+- Copy the printed `source /tmp/skl-verify-<id>/session.env` line into a later shell, or run helper commands in a fresh shell (they read `/tmp/skl-verify-latest`).
 - Run `.cursor/skills/verify-skl/helpers/verify-skl.sh doctor` and require `skl 0.4.2`, isolate `state.db` / `config.toml`, `auto_sync off`, and no `/workspace/skills.toml`.
-- Put the isolate on the environment (`source $VERIFY_SKL_SESSION`). `VERIFY_SKL_BIN` is `target/debug/skl`.
+- `VERIFY_SKL_BIN` is `target/debug/skl`.
 - Drive through `helpers/verify-skl.sh cli --` or the TUI tmux session. Never `cd` to the skl checkout and run bare `skl use`.
 - `VISUAL=true` / `EDITOR=true` unless a recipe opens a real editor.
 - Never drive an instance whose `SKL_DATA_DIR` you did not create.

@@ -15,11 +15,11 @@ skl is a short-lived binary. There is no server to keep alive for CLI proof. Bui
 
 ```bash
 .cursor/skills/verify-skl/helpers/verify-skl.sh launch
-# source the printed session if a later shell needs the same run:
-source /tmp/skl-verify-$RUN_ID/session.env
 ```
 
-Ready when stdout contains `ready  version=skl 0.4.2` and `root   /tmp/skl-verify-<id>`. The helper runs `cargo build -p skl` from the repo root and uses `target/debug/skl`. Debug `api_base` defaults to `http://localhost:8787`; launch overrides that with `http://127.0.0.1:1` and writes `[sync] auto = false` so piggyback sync never leaves the isolate.
+Launch prints an absolute `source /tmp/skl-verify-<id>/session.env` line. Copy that line into a later shell. `doctor` / `cli` / `cleanup` also read `/tmp/skl-verify-latest` (the last launch's session file), so a fresh shell can run doctor without `$RUN_ID` set. Concurrent runs should pass `VERIFY_SKL_RUN_ID` instead of relying on latest.
+
+Ready when stdout contains `ready  version=skl 0.4.2`, `root   /tmp/skl-verify-<id>`, and the `source` line. The helper runs `cargo build -p skl` from the repo root and uses `target/debug/skl`. Debug `api_base` defaults to `http://localhost:8787`; launch overrides that with `http://127.0.0.1:1` and writes `[sync] auto = false` so piggyback sync never leaves the isolate.
 
 Isolate layout:
 
@@ -126,7 +126,7 @@ Proof standards:
 .cursor/skills/verify-skl/helpers/verify-skl.sh cleanup
 ```
 
-Stops the tmux session this run started (by session name / pane pid, never `pkill -f skl`), then deletes only `$ROOT` matching `/tmp/skl-verify-*`. Evidence stays at `/tmp/skl-verify-evidence/$RUN_ID`.
+Stops the tmux session this run started (by session name / pane pid, never `pkill -f skl`), then deletes only `/tmp/skl-verify-$RUN_ID` for that run. It refuses `/tmp/skl-verify-evidence` and any other isolate. Evidence stays at `/tmp/skl-verify-evidence/$RUN_ID`.
 
 After a failed iteration, run the same cleanup before the next launch so the next `tui-start` does not collide.
 
@@ -136,14 +136,15 @@ After a failed iteration, run the same cleanup before the next launch so the nex
 
 | Command | What it does |
 |---|---|
-| `launch` | `cargo build -p skl`, isolate dirs, session.env, version gate |
+| `launch` | `cargo build -p skl`, isolate dirs, session.env, `/tmp/skl-verify-latest`, version gate |
 | `doctor` | isolate + `skl status` + `skl doctor` from the isolate project |
 | `cli -- <args>` | `skl <args>` with isolate env, cwd = isolate project |
+| `plant <name>` | write an unmanaged `.agents/skills/<name>/SKILL.md` in the isolate project |
 | `tui-start` / `tui-capture` / `tui-stop` | one tmux session named `skl-verify-$RUN_ID` |
 | `evidence <id>` | copy logs, trees, and skill files into the evidence dir |
-| `cleanup` | tear down isolate and tmux; keep evidence |
+| `cleanup` | tear down this run's isolate and tmux; keep evidence |
 
-Reuse a run in another shell with `source /tmp/skl-verify-$RUN_ID/session.env` or `VERIFY_SKL_RUN_ID=...`. A later `launch` with a new `VERIFY_SKL_RUN_ID` ignores leftover `VERIFY_SKL_ROOT` / `VERIFY_SKL_EVIDENCE` from that source.
+Reuse a run in another shell by copying the printed `source /tmp/skl-verify-<id>/session.env` line, or run helper commands as-is (they follow `/tmp/skl-verify-latest`). `VERIFY_SKL_RUN_ID=...` pins a concurrent run. A later `launch` with a new `VERIFY_SKL_RUN_ID` ignores leftover `VERIFY_SKL_ROOT` / `VERIFY_SKL_EVIDENCE` from that source.
 
 ## Maintenance
 

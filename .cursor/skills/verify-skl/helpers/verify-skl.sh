@@ -4,6 +4,7 @@
 #   helpers/verify-skl.sh launch
 #   helpers/verify-skl.sh doctor
 #   helpers/verify-skl.sh cli -- create verify-greeter
+#   helpers/verify-skl.sh plant verify-captured
 #   helpers/verify-skl.sh tui-start
 #   helpers/verify-skl.sh tui-capture
 #   helpers/verify-skl.sh tui-stop
@@ -25,6 +26,7 @@ ROOT="${VERIFY_SKL_ROOT:-}"
 EVIDENCE="${VERIFY_SKL_EVIDENCE:-}"
 SESSION_NAME=""
 TMUX_CONF="/exec-daemon/tmux.portal.conf"
+LATEST_POINTER="/tmp/skl-verify-latest"
 
 tmux_bin() {
   if [[ -f "$TMUX_CONF" ]]; then
@@ -39,16 +41,30 @@ die() {
   exit 1
 }
 
+source_session_file() {
+  local file="$1"
+  [[ -f "$file" ]] || return 1
+  # shellcheck disable=SC1090
+  source "$file"
+}
+
+# Explicit SESSION / RUN_ID / ROOT never fall through to the latest pointer.
+# That pointer is only for a fresh shell that has none of those set.
 resolve_run() {
-  if [[ -n "${VERIFY_SKL_SESSION:-}" && -f "$VERIFY_SKL_SESSION" ]]; then
-    # shellcheck disable=SC1090
-    source "$VERIFY_SKL_SESSION"
-  elif [[ -n "$RUN_ID" && -f "/tmp/skl-verify-${RUN_ID}/session.env" ]]; then
-    # shellcheck disable=SC1090
-    source "/tmp/skl-verify-${RUN_ID}/session.env"
-  elif [[ -n "$ROOT" && -f "$ROOT/session.env" ]]; then
-    # shellcheck disable=SC1090
-    source "$ROOT/session.env"
+  if [[ -n "${VERIFY_SKL_SESSION:-}" ]]; then
+    source_session_file "$VERIFY_SKL_SESSION" \
+      || die "no launch session at VERIFY_SKL_SESSION=$VERIFY_SKL_SESSION"
+  elif [[ -n "${VERIFY_SKL_RUN_ID:-}" ]]; then
+    source_session_file "/tmp/skl-verify-$VERIFY_SKL_RUN_ID/session.env" \
+      || die "no launch session for VERIFY_SKL_RUN_ID=$VERIFY_SKL_RUN_ID"
+  elif [[ -n "${VERIFY_SKL_ROOT:-}" ]]; then
+    source_session_file "$VERIFY_SKL_ROOT/session.env" \
+      || die "no launch session at VERIFY_SKL_ROOT=$VERIFY_SKL_ROOT"
+  elif [[ -f "$LATEST_POINTER" ]]; then
+    local latest
+    latest="$(cat "$LATEST_POINTER")"
+    source_session_file "$latest" \
+      || die "latest session pointer is stale: $latest"
   fi
   RUN_ID="${VERIFY_SKL_RUN_ID:-${RUN_ID:-}}"
   ROOT="${VERIFY_SKL_ROOT:-${ROOT:-}}"
@@ -56,9 +72,19 @@ resolve_run() {
   SESSION_NAME="${VERIFY_SKL_TMUX:-}"
 }
 
+expected_isolate() {
+  [[ -n "${1:-}" ]] || return 1
+  printf '%s' "/tmp/skl-verify-$1"
+}
+
+is_evidence_path() {
+  local path="$1"
+  [[ "$path" == "/tmp/skl-verify-evidence" || "$path" == /tmp/skl-verify-evidence/* ]]
+}
+
 require_launch() {
   resolve_run
-  [[ -n "$RUN_ID" && -n "$ROOT" ]] || die "no launch session. Run: helpers/verify-skl.sh launch"
+  [[ -n "$RUN_ID" && -n "$ROOT" ]] || die "no launch session. Run launch, then the printed source line (or rely on $LATEST_POINTER)."
   [[ -f "$ROOT/session.env" ]] || die "missing $ROOT/session.env. Re-run launch."
   # shellcheck disable=SC1091
   source "$ROOT/session.env"
@@ -138,6 +164,7 @@ EOF
   # shellcheck disable=SC1091
   source "$ROOT/session.env"
   export_isolate
+  printf '%s\n' "$ROOT/session.env" >"$LATEST_POINTER"
 
   echo "ready  version=$version"
   echo "root   $ROOT"
@@ -147,6 +174,7 @@ EOF
   echo "project $VERIFY_SKL_PROJECT"
   echo "evidence $EVIDENCE"
   echo "bin    $VERIFY_SKL_BIN"
+  echo "source $ROOT/session.env"
 }
 
 cmd_doctor() {
@@ -318,40 +346,97 @@ cmd_evidence() {
   echo "evidence $dest"
 }
 
+cmd_plant() {
+  require_launch
+  export_isolate
+  local name="${1:-}"
+  local missing=0
+  shift || true
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --missing-md) missing=1 ;;
+      *) die "plant: unknown flag $1" ;;
+    esac
+    shift
+  done
+  [[ -n "$name" ]] || die "plant <skill-name> [--missing-md]"
+  case "$name" in
+    "" | .* | */* | *\\*) die "plant: invalid skill name \`$name\`" ;;
+  esac
+  local dest="${VERIFY_SKL_PROJECT:?}/.agents/skills/$name"
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  if [[ "$missing" -eq 0 ]]; then
+    printf '%s\n' "---" "name: $name" "description: plant" "---" "" "# $name" >"$dest/SKILL.md"
+    echo "planted $dest/SKILL.md"
+  else
+    echo "planted $dest  (no SKILL.md)"
+  fi
+}
+
 cmd_cleanup() {
+  local caller_run="${VERIFY_SKL_RUN_ID:-}"
+  local caller_root="${VERIFY_SKL_ROOT:-}"
+  if is_evidence_path "$caller_root"; then
+    die "refusing to delete evidence: $caller_root"
+  fi
+  if [[ -n "$caller_run" && -n "$caller_root" ]]; then
+    local caller_expected
+    caller_expected="$(expected_isolate "$caller_run")"
+    if [[ "$caller_root" != "$caller_expected" ]]; then
+      die "cleanup only deletes $caller_expected (this run), not $caller_root"
+    fi
+  fi
   resolve_run
+  [[ -n "$RUN_ID" ]] || die "cleanup needs a run id. Run launch first."
   [[ -n "$ROOT" ]] || die "nothing to clean (no launch session)"
-  SESSION_NAME="${VERIFY_SKL_TMUX:-skl-verify-${RUN_ID:-}}"
+  local expected
+  expected="$(expected_isolate "$RUN_ID")"
+  if is_evidence_path "$ROOT"; then
+    die "refusing to delete evidence: $ROOT"
+  fi
+  if [[ "$ROOT" != "$expected" ]]; then
+    die "cleanup only deletes $expected (this run), not $ROOT"
+  fi
+  if [[ -n "$caller_run" && "$RUN_ID" != "$caller_run" ]]; then
+    die "cleanup only deletes $(expected_isolate "$caller_run") (this run), not $ROOT"
+  fi
+  if [[ -n "$caller_root" && "$ROOT" != "$caller_root" ]]; then
+    die "cleanup only deletes $caller_root (this run), not $ROOT"
+  fi
+  SESSION_NAME="${VERIFY_SKL_TMUX:-skl-verify-$RUN_ID}"
   if [[ -n "$SESSION_NAME" ]] && tmux_bin has-session -t "=$SESSION_NAME" 2>/dev/null; then
     cmd_tui_stop
   fi
   if [[ -n "$EVIDENCE" && -d "$EVIDENCE" ]]; then
     echo "keeping evidence $EVIDENCE"
   fi
-  # Never delete evidence. Never delete paths outside /tmp/skl-verify-*.
-  case "$ROOT" in
-    /tmp/skl-verify-*)
-      rm -rf "$ROOT"
-      echo "removed isolate $ROOT"
-      ;;
-    *)
-      die "refusing to delete unexpected root: $ROOT"
-      ;;
-  esac
+  if [[ -f "$LATEST_POINTER" ]]; then
+    local pointed
+    pointed="$(cat "$LATEST_POINTER")"
+    if [[ "$pointed" == "$ROOT/session.env" ]]; then
+      rm -f "$LATEST_POINTER"
+    fi
+  fi
+  rm -rf -- "$ROOT"
+  echo "removed isolate $ROOT"
 }
 
 usage() {
   cat <<'EOF'
-verify-skl.sh launch|doctor|cli|tui-start|tui-capture|tui-stop|evidence|cleanup
+verify-skl.sh launch|doctor|cli|plant|tui-start|tui-capture|tui-stop|evidence|cleanup
 
 launch        build crates/cli, create /tmp/skl-verify-$RUN_ID isolate
 doctor        read-only check: version, isolate paths, skl status + skl doctor
 cli -- ARGS   run skl ARGS inside the isolate (cwd = isolate project)
+plant NAME    write .agents/skills/NAME/SKILL.md in the isolate project
+plant NAME --missing-md
+              write the dest directory with no SKILL.md
 tui-start     tmux session with `skl tui` in the isolate project
 tui-capture   write the tmux pane to logs/tui-pane.txt
 tui-stop      kill the session this run started
 evidence ID   copy transcripts + trees into /tmp/skl-verify-evidence/$RUN_ID/ID
-cleanup       remove isolate + tmux; keep evidence
+cleanup       remove this run's isolate only; keep evidence
 EOF
 }
 
@@ -365,6 +450,7 @@ main() {
       if [[ "${1:-}" == "--" ]]; then shift; fi
       cmd_cli "$@"
       ;;
+    plant) cmd_plant "$@" ;;
     tui-start) cmd_tui_start ;;
     tui-capture) cmd_tui_capture "${1:-}" ;;
     tui-stop) cmd_tui_stop ;;
