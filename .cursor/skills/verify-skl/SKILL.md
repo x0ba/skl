@@ -108,7 +108,7 @@ Write proof under `/tmp/skl-verify-evidence/$RUN_ID/<feature-id>/` via:
 .cursor/skills/verify-skl/helpers/verify-skl.sh evidence use-skill
 ```
 
-Cleanup never deletes that tree. Copy elsewhere if a reviewer needs a durable attachment; do not commit run artifacts into `.cursor/skills/verify-skl/`.
+That directory gets `cli-last.txt`, `cli-history.txt` (every `cli --` in the run), `doctor.txt`, `status.txt`, dest trees, and `skills.toml`. Cleanup never deletes it. Copy elsewhere if a reviewer needs a durable attachment; do not commit run artifacts into `.cursor/skills/verify-skl/`.
 
 Proof standards:
 

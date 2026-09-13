@@ -87,9 +87,20 @@ cmd_launch() {
   command -v cargo >/dev/null || die "cargo not on PATH"
   [[ -f "$REPO_ROOT/crates/cli/Cargo.toml" ]] || die "not the skl repo: $REPO_ROOT"
 
+  # New isolate. Ignore leftover VERIFY_SKL_ROOT / EVIDENCE from a sourced session.env
+  # unless they already belong to this RUN_ID.
   RUN_ID="${VERIFY_SKL_RUN_ID:-$(date +%Y%m%d%H%M%S)-$$}"
-  ROOT="${VERIFY_SKL_ROOT:-/tmp/skl-verify-$RUN_ID}"
-  EVIDENCE="${VERIFY_SKL_EVIDENCE:-/tmp/skl-verify-evidence/$RUN_ID}"
+  local default_root="/tmp/skl-verify-$RUN_ID"
+  if [[ -n "${VERIFY_SKL_ROOT:-}" && "$VERIFY_SKL_ROOT" == *"/skl-verify-$RUN_ID" ]]; then
+    ROOT="$VERIFY_SKL_ROOT"
+  else
+    ROOT="$default_root"
+  fi
+  if [[ -n "${VERIFY_SKL_EVIDENCE:-}" && "$VERIFY_SKL_EVIDENCE" == *"/$RUN_ID" ]]; then
+    EVIDENCE="$VERIFY_SKL_EVIDENCE"
+  else
+    EVIDENCE="/tmp/skl-verify-evidence/$RUN_ID"
+  fi
   SESSION_NAME="skl-verify-$RUN_ID"
 
   mkdir -p "$ROOT/data" "$ROOT/config" "$ROOT/home" "$ROOT/project" "$ROOT/logs" "$EVIDENCE"
@@ -189,7 +200,11 @@ cmd_cli() {
   require_launch
   export_isolate
   local log="$ROOT/logs/cli-last.txt"
+  local history="$ROOT/logs/cli-history.txt"
   local rc=0
+  {
+    echo "\$ skl $*"
+  } >>"$history"
   set +e
   (
     cd "${VERIFY_SKL_PROJECT:?}"
@@ -199,6 +214,8 @@ cmd_cli() {
   set -e
   cat "$log"
   echo "exit $rc" | tee -a "$log"
+  cat "$log" >>"$history"
+  echo >>"$history"
   return "$rc"
 }
 
@@ -271,6 +288,7 @@ cmd_evidence() {
   cp -f "$ROOT/logs/status.txt" "$dest/status.txt" 2>/dev/null || true
   cp -f "$ROOT/logs/doctor.txt" "$dest/doctor.txt" 2>/dev/null || true
   cp -f "$ROOT/logs/cli-last.txt" "$dest/cli-last.txt" 2>/dev/null || true
+  cp -f "$ROOT/logs/cli-history.txt" "$dest/cli-history.txt" 2>/dev/null || true
   cp -f "$ROOT/logs/tui-pane.txt" "$dest/tui-pane.txt" 2>/dev/null || true
   cp -f "$ROOT/config/config.toml" "$dest/config.toml"
   [[ -f "$project/skills.toml" ]] && cp -f "$project/skills.toml" "$dest/skills.toml"

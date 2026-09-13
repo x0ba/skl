@@ -22,7 +22,7 @@ This directory is the maintained source for verifying user-facing skl behavior. 
 ## Proof and skip reporting
 
 - Capture the user action and the resulting state, not only the last line of stderr.
-- CLI proof includes the command, stdout, stderr, and exit code (the helper appends `exit N` to `logs/cli-last.txt`).
+- CLI proof includes the command, stdout, stderr, and exit code. The helper writes `logs/cli-last.txt` and appends the full stream to `logs/cli-history.txt`.
 - Mutation proof includes a second read of the stored tree (`SKILL.md`, dest file type, `skills.toml`).
 - TUI proof includes a pane capture that shows the ` skl ` header and the skill name.
 - Record the feature ID and entry point with `helpers/verify-skl.sh evidence <feature-id>`.
