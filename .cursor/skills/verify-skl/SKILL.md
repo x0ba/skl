@@ -143,7 +143,7 @@ After a failed iteration, run the same cleanup before the next launch so the nex
 | `evidence <id>` | copy logs, trees, and skill files into the evidence dir |
 | `cleanup` | tear down isolate and tmux; keep evidence |
 
-Reuse a run in another shell with `source /tmp/skl-verify-$RUN_ID/session.env` or `VERIFY_SKL_RUN_ID=...`.
+Reuse a run in another shell with `source /tmp/skl-verify-$RUN_ID/session.env` or `VERIFY_SKL_RUN_ID=...`. A later `launch` with a new `VERIFY_SKL_RUN_ID` ignores leftover `VERIFY_SKL_ROOT` / `VERIFY_SKL_EVIDENCE` from that source.
 
 ## Maintenance
 
